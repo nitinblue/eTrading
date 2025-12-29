@@ -1,4 +1,5 @@
 # trading_bot/broker.py
+comment = '''\
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -21,6 +22,20 @@ from trading_bot.broker import (
 )
 import logging
 
+close comment '''
+
+# trading_bot/broker.py
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+from typing import List, Optional, Dict, Any
+from decimal import Decimal
+
+from tastytrade import Session
+from tastytrade.account import Account
+from tastytrade.instruments import Option
+from tastytrade.order import NewOrder, OrderAction, OrderTimeInForce, OrderType, PriceEffect
+import logging
 logger = logging.getLogger(__name__)
 
 # ========================
