@@ -3,9 +3,9 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 import logging
-from trading_bot.broker import NeutralOrder, OrderLeg, OrderAction, PriceEffect, OrderType
+from brokers import NeutralOrder, OrderLeg, OrderAction, PriceEffect, OrderType
 from trading_bot.trade_execution import TradeExecutor
-from trading_bot.broker import TastytradeBroker  # Switch to MockBroker for testing
+from brokers import TastytradeBroker  # Switch to MockBroker for testing
 # from trading_bot.broker_mock import MockBroker  # Uncomment for dry-run testing
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
