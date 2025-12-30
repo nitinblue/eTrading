@@ -5,15 +5,15 @@ Clean broker selection with one config line switch.
 """
 
 import logging
-from trading_bot.config import Config
-from trading_bot.broker_mock import MockBroker
-from trading_bot.brokers.tastytrade_broker import TastytradeBroker
-from trading_bot.market_data.tastytrade_market_data import TastytradeMarketData  # Optional for real broker
-from trading_bot.trade_execution import TradeExecutor
-from trading_bot.strategy import ShortPutStrategy
-from trading_bot.portfolio import Portfolio
-from trading_bot.positions import PositionsManager
-from trading_bot.risk import RiskManager
+from config import Config
+from broker_mock import MockBroker
+from brokers.tastytrade_broker import TastytradeBroker
+from market_data.tastytrade_market_data import TastytradeMarketData  # Optional for real broker
+from trade_execution import TradeExecutor
+from strategy import ShortPutStrategy
+from portfolio import Portfolio
+from positions import PositionsManager
+from risk import RiskManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

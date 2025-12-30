@@ -1,14 +1,14 @@
 # trading_bot/market_data/tastytrade_market_data.py
 from typing import Dict
 from tastytrade.instruments import get_option_chain
-from trading_bot.market_data.storage import DataStorage  # Adjust path if needed
-from .abstract_market_data import MarketDataProvider
+from market_data.storage import DataStorage  # Adjust path if needed
+from market_data.abstract_market_data import MarketDataProvider
 import logging
 
 logger = logging.getLogger(__name__)
 
 class TastytradeMarketData(MarketDataProvider):
-    def __init__(self, session: Any, use_storage: bool = True, storage_file: str = "market_data.json"):
+    def __init__(self, session: any, use_storage: bool = True, storage_file: str = "market_data.json"):
         self.session = session
         self.use_storage = use_storage
         self.storage = DataStorage(storage_file) if use_storage else None

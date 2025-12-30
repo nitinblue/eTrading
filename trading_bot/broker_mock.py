@@ -1,7 +1,7 @@
 # trading_bot/broker_mock.py
 from typing import List, Optional, Dict
-from .order_model import UniversalOrder  # Import from new file
-from trading_bot.brokers.abstract_broker import Broker  # Absolute
+from order_model import UniversalOrder  # Import from new file
+from brokers.abstract_broker import Broker  # Absolute
 import logging
 
 

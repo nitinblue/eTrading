@@ -1,6 +1,6 @@
 # trading_bot/database.py
 import sqlite3
-from typing import List
+from typing import Dict, List
 
 class Database:
     """Optional persistence for positions, trades."""

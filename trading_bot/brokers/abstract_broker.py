@@ -4,7 +4,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict
 
-from trading_bot.order_model import UniversalOrder  # Absolute import (from package root)
+from order_model import UniversalOrder  # Absolute import (from package root)
 
 class Broker(ABC):
     """Abstract base for broker implementations."""

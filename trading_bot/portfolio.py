@@ -1,7 +1,7 @@
 # trading_bot/portfolio.py
 from typing import List, Dict
-from trading_bot.positions import PositionsManager, Position
-from trading_bot.risk import RiskManager
+from positions import PositionsManager, Position
+from risk import RiskManager
 import logging
 
 

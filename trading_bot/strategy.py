@@ -2,9 +2,9 @@
 # trading_bot/strategy.py
 from abc import ABC, abstractmethod
 from typing import Dict, Optional
-from trading_bot.market_data.abstract_market_data import MarketDataProvider
-from .trade_execution import TradeExecutor
-from .order_model import UniversalOrder, OrderLeg, OrderAction, OrderType, PriceEffect  # Import from new file
+from market_data.abstract_market_data import MarketDataProvider
+from trade_execution import TradeExecutor
+from order_model import UniversalOrder, OrderLeg, OrderAction, OrderType, PriceEffect  # Import from new file
 
 
 import logging

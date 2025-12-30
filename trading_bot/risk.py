@@ -1,6 +1,6 @@
 # trading_bot/risk.py
-from typing import List
-from .positions import Position
+from typing import Dict, List
+from positions import Position
 import logging
 
 logger = logging.getLogger(__name__)
