@@ -3,7 +3,6 @@
 Main entry point for the trading bot.
 Clean broker selection with one config line switch.
 """
-
 import logging
 from config import Config
 from broker_mock import MockBroker
