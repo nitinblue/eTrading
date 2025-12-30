@@ -1,7 +1,7 @@
 # tests/integration/test_full_flow_mock.py
 from trading_bot.trade_execution import TradeExecutor
 from trading_bot.strategy import ShortPutStrategy
-from trading_bot.broker import PriceEffect
+# from trading_bot.broker import PriceEffect
 # Import everything needed from broker.py
 
 def test_full_entry_and_execution_flow(mock_broker, mock_market_data):

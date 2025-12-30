@@ -1,24 +1,36 @@
 # trading_bot/main.py
+"""
+Main entry point for the trading bot.
+Clean broker selection with one config line switch.
+"""
+
 import logging
 from trading_bot.config import Config
-from trading_bot.broker import TastytradeBroker, MockBroker, PriceEffect
-from trading_bot.market_data import TastytradeMarketData  # Or your own
+from trading_bot.broker_mock import MockBroker
+from trading_bot.brokers.tastytrade_broker import TastytradeBroker
+from trading_bot.market_data.tastytrade_market_data import TastytradeMarketData  # Optional for real broker
 from trading_bot.trade_execution import TradeExecutor
 from trading_bot.strategy import ShortPutStrategy
 from trading_bot.portfolio import Portfolio
 from trading_bot.positions import PositionsManager
 from trading_bot.risk import RiskManager
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def main():
+    print("Entering main function")
     config = Config.load('config.yaml')
 
-    # Choose broker
-    if config.general.get('use_mock', True):
+    # === ONE LINE TO SWITCH BROKER ===
+    use_mock = config.general.get('use_mock', True)  # ← Set to False for real Tastytrade
+
+    # Broker selection
+    if use_mock:
         broker = MockBroker()
-        logger.info("Using MockBroker for dry run")
+        broker.connect()
+        logger.info("Using MockBroker (dry-run mode)")
+        market_data = None  # Not needed for mock
     else:
         broker = TastytradeBroker(
             username=config.broker['username'],
@@ -26,11 +38,11 @@ def main():
             is_paper=config.broker.get('environment', 'paper') == 'paper'
         )
         broker.connect()
+        logger.info("Using real Tastytrade broker")
+        market_data = TastytradeMarketData(broker.session)  # Optional: for Greeks/prices
 
     # Core components
     executor = TradeExecutor(broker)
-    market_data = TastytradeMarketData(broker.session) if hasattr(broker, 'session') else None
-
     positions_manager = PositionsManager(broker)
     risk_manager = RiskManager(config.risk)
     portfolio = Portfolio(positions_manager, risk_manager)
@@ -39,7 +51,7 @@ def main():
     strategy_config = config.strategies.get('short_put', {})
     strategy = ShortPutStrategy(market_data, executor, strategy_config)
 
-    # Example trade signal
+    # Sample trade signal (replace with Google Sheets input later)
     sample_signal = {
         'symbol': '.AAPL260131P00195000',
         'iv': 45,
@@ -48,16 +60,15 @@ def main():
         'limit_price': 5.10
     }
 
-    account_id = config.broker.get('default_account_id', None)  # Optional multi-account
+    account_id = config.broker.get('default_account_id')
 
-    logger.info("Evaluating entry...")
+    # Execute sample trade
     result = strategy.execute_entry(sample_signal, account_id=account_id)
+    logger.info(f"Execution Result: {result}")
 
-    logger.info(f"Execution result: {result}")
-
-    # Refresh portfolio
+    # Update portfolio and show net Greeks
     portfolio.update()
-    logger.info(f"Net portfolio Greeks: {portfolio.get_net_greeks()}")
+    logger.info(f"Net Portfolio Greeks: {portfolio.get_net_greeks()}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

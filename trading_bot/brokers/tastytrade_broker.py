@@ -1,106 +1,19 @@
-# trading_bot/broker.py
-comment = '''\
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from enum import Enum
+# trading_bot/brokers/tastytrade_broker.py
+"""Tastytrade broker implementation using the latest tastytrade SDK (tastyware/tastytrade)."""
+
 from typing import List, Optional, Dict, Any
 from decimal import Decimal
 
-from tastytrade import Session
-from tastytrade.account import Account
-from tastytrade.instruments import Option
-from tastytrade.order import NewOrder,OrderTimeInForce
-
-# Import everything needed from broker.py
-from trading_bot.broker import (
-    Broker,
-    NeutralOrder,
-    OrderLeg,
-    OrderAction,
-    PriceEffect,     # <-- Now correctly available
-    OrderType
-)
-import logging
-
-close comment '''
-
-# trading_bot/broker.py
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from enum import Enum
-from typing import List, Optional, Dict, Any
-from decimal import Decimal
-
-from tastytrade import Session
+from tastytrade import Session  # Latest SDK uses Session directly
 from tastytrade.account import Account
 from tastytrade.instruments import Option
 from tastytrade.order import NewOrder, OrderAction, OrderTimeInForce, OrderType, PriceEffect
+
+from trading_bot.order_model import UniversalOrder, OrderLeg
+from trading_bot.brokers.abstract_broker import Broker  # If you have abstract_broker.py
 import logging
+
 logger = logging.getLogger(__name__)
-
-# ========================
-# Broker-Neutral Order Model
-# ========================
-
-class OrderAction(Enum):
-    BUY_TO_OPEN = "BUY_TO_OPEN"
-    BUY_TO_CLOSE = "BUY_TO_CLOSE"
-    SELL_TO_OPEN = "SELL_TO_OPEN"
-    SELL_TO_CLOSE = "SELL_TO_CLOSE"
-
-class OrderType(Enum):
-    MARKET = "MARKET"
-    LIMIT = "LIMIT"
-
-@dataclass
-class OrderLeg:
-    symbol: str
-    quantity: int
-    action: OrderAction
-
-@dataclass
-class NeutralOrder:
-    legs: List[OrderLeg]
-    price_effect: PriceEffect  # Now correctly imported, no error
-    order_type: OrderType = OrderType.LIMIT
-    limit_price: Optional[float] = None
-    time_in_force: str = "DAY"
-    dry_run: bool = True
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "legs": [{"symbol": leg.symbol, "quantity": leg.quantity, "action": leg.action.value} for leg in self.legs],
-            "price_effect": self.price_effect.value,
-            "order_type": self.order_type.value,
-            "limit_price": self.limit_price,
-            "time_in_force": self.time_in_force,
-            "dry_run": self.dry_run
-        }
-
-# ========================
-# Abstract Broker Interface
-# ========================
-
-class Broker(ABC):
-    @abstractmethod
-    def connect(self) -> None:
-        pass
-
-    @abstractmethod
-    def get_positions(self, account_id: Optional[str] = None) -> List[Dict]:
-        pass
-
-    @abstractmethod
-    def get_account_balance(self, account_id: Optional[str] = None) -> Dict:
-        pass
-
-    @abstractmethod
-    def execute_order(self, order: NeutralOrder, account_id: Optional[str] = None) -> Dict:
-        pass
-
-# ========================
-# Tastytrade Broker
-# ========================
 
 class TastytradeBroker(Broker):
     def __init__(self, username: str, password: str, is_paper: bool = True, remember_me: bool = True):
@@ -114,17 +27,15 @@ class TastytradeBroker(Broker):
     def connect(self) -> None:
         try:
             self.session = Session(
-                self.username,
-                self.password,
+                login_name=self.username,
+                password=self.password,
                 is_test=self.is_paper,
                 remember_me=self.remember_me
             )
             logger.info(f"Connected to Tastytrade {'PAPER' if self.is_paper else 'LIVE'} environment.")
-
             accounts_list = Account.get_accounts(self.session)
             self.accounts = {acc.account_number: acc for acc in accounts_list}
             logger.info(f"Loaded {len(self.accounts)} account(s).")
-
         except Exception as e:
             logger.error(f"Tastytrade connection failed: {e}")
             raise
@@ -163,10 +74,9 @@ class TastytradeBroker(Broker):
             "equity": float(balances.equity or 0)
         }
 
-    def execute_order(self, order: NeutralOrder, account_id: Optional[str] = None) -> Dict:
+    def execute_order(self, order: UniversalOrder, account_id: Optional[str] = None) -> Dict:
         if not self.session:
             raise RuntimeError("Broker not connected.")
-
         account = self._get_account(account_id)
 
         if order.dry_run:
@@ -186,14 +96,12 @@ class TastytradeBroker(Broker):
                 price=Decimal(str(order.limit_price)) if order.limit_price else None
             )
 
-            # Credit orders have positive price, debit negative
             if tt_order.price is not None:
                 tt_order.price = abs(tt_order.price) if order.price_effect == PriceEffect.CREDIT else -abs(tt_order.price)
 
             response = account.place_order(self.session, tt_order)
             logger.info(f"Order placed on {account.account_number}")
             return {"status": "success", "details": str(response)}
-
         except Exception as e:
             logger.error(f"Order failed: {e}")
             return {"status": "failed", "error": str(e)}

@@ -1,22 +1,16 @@
 # trading_bot/trade_execution.py
-from typing import Optional
-from .broker import Broker, NeutralOrder
+from typing import Optional, Dict
+from .brokers.abstract_broker import Broker  # From new abstract file
+from .order_model import UniversalOrder  # Import from new file
 import logging
 
 logger = logging.getLogger(__name__)
 
-
 class TradeExecutor:
-    """Handles trade execution using neutral orders. Configurable with validators."""
     def __init__(self, broker: Broker):
         self.broker = broker
 
-    def execute(self, strategy_name: str, order: NeutralOrder, account_id: Optional[str] = None) -> Dict:
-        # Pre-execution hooks (e.g., validate risk; add your RiskManager check here)
+    def execute(self, strategy_name: str, order: UniversalOrder, account_id: Optional[str] = None) -> Dict:
         logger.info(f"Executing {strategy_name} on account {account_id or 'default'}: {order.to_dict()}")
-        
-        # Delegate to broker
         response = self.broker.execute_order(order, account_id)
-        
-        # Post-execution: Log, update positions (optional)
         return response

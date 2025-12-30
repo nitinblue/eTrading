@@ -8,9 +8,13 @@ broker:
   environment: "paper"
   default_account_id: ""
 
+data:
+  use_broker_api: true  # true = fetch from broker; false = use Python calc/storage
+  storage_file: "data_storage.json"  # Cache file
+
 risk:
   max_risk_per_trade: 0.01
-  max_portfolio_risk: 2.0  # revert back to 0.1
+  max_portfolio_risk: 0.1  # revert back to 0.1
 
 strategies:
   short_put:
