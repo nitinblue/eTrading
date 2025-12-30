@@ -23,7 +23,7 @@ def main():
     config = Config.load('config.yaml')
 
     # === ONE LINE TO SWITCH BROKER ===
-    use_mock = config.general.get('use_mock', True)  # ← Set to False for real Tastytrade
+    use_mock = config.general.get('use_mock', False)  # ← Set to False for real Tastytrade
 
     # Broker selection
     if use_mock:
@@ -32,7 +32,7 @@ def main():
         logger.info("Using MockBroker (dry-run mode)")
         market_data = None  # Not needed for mock
     else:
-        broker = TastytradeBroker(
+        broker = TastytradeBroker(          
             username=config.broker['username'],
             password=config.broker['password'],
             is_paper=config.broker.get('environment', 'paper') == 'paper'

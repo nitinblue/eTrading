@@ -26,15 +26,17 @@ class TastytradeBroker(Broker):
 
     def connect(self) -> None:
         try:
-            self.session = Session(
-                login_name=self.username,
-                password=self.password,
-                is_test=self.is_paper,
-                remember_me=self.remember_me
-            )
+            # self.session = Session(
+            #     login_name=self.username,
+            #     password=self.password,
+            #     is_test=self.is_paper,
+            #     remember_me=self.remember_me
+            # )
+            logger.info(f"Connecting to Tastytrade... username={self.username}, paper={self.is_paper}")
+            self.session = Session(self.username, self.password,is_test=self.is_paper)
             logger.info(f"Connected to Tastytrade {'PAPER' if self.is_paper else 'LIVE'} environment.")
-            accounts_list = Account.get_accounts(self.session)
-            self.accounts = {acc.account_number: acc for acc in accounts_list}
+            accounts_list = Account.get(self.session)
+            self.accounts = {acc.account_number: acc for acc in accounts_list}                     
             logger.info(f"Loaded {len(self.accounts)} account(s).")
         except Exception as e:
             logger.error(f"Tastytrade connection failed: {e}")
@@ -70,8 +72,8 @@ class TastytradeBroker(Broker):
         balances = account.get_balances(self.session)
         return {
             "cash_balance": float(balances.cash_balance or 0),
-            "buying_power": float(balances.buying_power or 0),
-            "equity": float(balances.equity or 0)
+            "equity_buying_power": float(balances.equity_buying_power or 0),
+            "margin_equity": float(balances.margin_equity or 0)
         }
 
     def execute_order(self, order: UniversalOrder, account_id: Optional[str] = None) -> Dict:
