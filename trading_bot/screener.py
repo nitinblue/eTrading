@@ -1,6 +1,6 @@
 # trading_bot/screener.py
-from typing import List, Dict
-from .market_data import MarketDataProvider
+from typing import Any, List, Dict
+from trading_bot.market_data import MarketDataProvider
 import logging
 
 logger = logging.getLogger(__name__)

@@ -7,22 +7,22 @@ import logging
 from trading_bot.config import Config
 from trading_bot.broker_mock import MockBroker
 from trading_bot.brokers.tastytrade_broker import TastytradeBroker
-from trading_bot.market_data.tastytrade_market_data import TastytradeMarketData  # Optional for real broker
-from trading_bot.trade_execution import TradeExecutor
-from trading_bot.strategy import ShortPutStrategy
-from trading_bot.portfolio import Portfolio
-from trading_bot.positions import PositionsManager
-from trading_bot.risk import RiskManager
+# from trading_bot.market_data.tastytrade_market_data import TastytradeMarketData  # Optional for real broker
+# from trading_bot.trade_execution import TradeExecutor
+# from trading_bot.strategy import ShortPutStrategy
+# from trading_bot.portfolio import Portfolio
+# from trading_bot.positions import PositionsManager
+# from trading_bot.risk import RiskManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# trading_bot/main.py
-"""
-Main entry point for the trading bot.
-Supports mock mode and real Tastytrade paper/live.
-Now includes real connectivity test, option chain fetch, and market data display.
-"""
+print("1. main.py imports complete")
+from trading_bot.config import Config
+print("2. Config imported")
+config = Config.load()
+print("3. Config loaded:", config.general)
+print("4. main() starting")
 def main():
     print("Starting trading bot...")
     config = Config.load('config.yaml')

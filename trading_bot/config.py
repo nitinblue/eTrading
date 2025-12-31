@@ -1,5 +1,6 @@
 # trading_bot/config.py
 import os
+import os.path  # ADD THIS LINE
 from dotenv import load_dotenv
 load_dotenv()
 print("✅ .env loaded:")
