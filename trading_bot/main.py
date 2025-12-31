@@ -23,17 +23,6 @@ Main entry point for the trading bot.
 Supports mock mode and real Tastytrade paper/live.
 Now includes real connectivity test, option chain fetch, and market data display.
 """
-
-import logging
-from trading_bot.config import Config
-from trading_bot.broker_mock import MockBroker
-from trading_bot.brokers.tastytrade_broker import TastytradeBroker
-from tastytrade.instruments import get_option_chain  # Direct import for demo
-#from tastytrade.search import search_instruments  # For underlying price
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
 def main():
     print("Starting trading bot...")
     config = Config.load('config.yaml')
@@ -73,7 +62,7 @@ def main():
            # 3. Fetch Option Chain for AAPL
             underlying = "GOOGL"
             logger.info(f"Fetching option chain for {underlying}...")
-            chain = get_option_chain(session, underlying)
+            chain = broker.get_option_chain(session, underlying)
 
             expiries = list(chain.keys())[:3]
             for expiry in expiries:
