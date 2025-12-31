@@ -12,8 +12,20 @@ data:
   storage_file: "data_storage.json"  # Cache file
 
 risk:
-  max_risk_per_trade: 0.01
-  max_portfolio_risk: 0.1  # revert back to 0.1
+  max_allocation_per_position: 0.05  # 5% of total capital
+  max_loss_per_trade: 0.002  # 0.2% of total capital
+  max_undefined_risk_allocation: 0.20  # 20% of capital in undefined risk
+  reserved_margin_fraction: 0.20  # 20% margin reserved (not invested)
+  stop_loss_level: -0.01  # e.g., 1% below entry
+  take_profit_level: 0.02  # e.g., 2% above entry
+  max_strategy_concentration: 0.25  # Max 25% in one strategy
+  greek_targets:  # Portfolio-level targets
+    delta_min: -0.10
+    delta_max: 0.10
+    gamma_max: 0.05
+    theta_min: 0.01
+    vega_max: 0.20
+    rho_max: 0.05
 
 strategies:
   short_put:

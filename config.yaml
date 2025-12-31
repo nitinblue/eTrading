@@ -23,4 +23,7 @@ strategies:
     max_loss: 120
     dry_run: true
 
-sheets: {}
+sheets:
+  sheet_id: "YOUR_GOOGLE_SHEET_ID_HERE"          # From the sheet URL
+  worksheet_name: "OptionsPortfolio"             # Tab name
+  service_account_file: "service_account.json"   # Path to your key file
