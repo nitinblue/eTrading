@@ -3,3 +3,4 @@
 *.env
 *.env.*
 /trading_bot/.env
+service_account.json

@@ -141,4 +141,4 @@ class OptionsSheetsSync:
         self.clear_sheet()
         self.update_account_summary(balance)
         self.update_positions_table(position_risks)
-        logger.info("OptionsPortfolio sheet fully synced with Greek attribution")
+        logger.info("Options sheet fully synced with Greek attribution")
