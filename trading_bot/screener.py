@@ -1,4 +1,5 @@
 # trading_bot/screener.py
+from datetime import datetime
 from typing import Any, List, Dict
 from trading_bot.market_data import MarketDataProvider
 import logging
