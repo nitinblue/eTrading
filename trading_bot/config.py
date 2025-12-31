@@ -16,7 +16,7 @@ class Config(BaseModel):
     sheets: Dict[str, Any] = {}
 
     @classmethod
-    def load(cls, file_path: str = 'config.yaml') -> 'Config':
+    def load(cls, file_path: str = 'config.yaml') -> 'Config':       
         with open(file_path, 'r') as f:
             yaml_str = f.read()  # Read as STRING first
         
@@ -24,4 +24,6 @@ class Config(BaseModel):
         yaml_str = os.path.expandvars(yaml_str)
         # print(f"DEBUG YAML after expand: {yaml_str[:200]}...")  # Debug
         data = yaml.safe_load(yaml_str) or {}
+        # print(f"🔍 Final config broker: {data.get('broker', {})}")
+        # print(f"🔍 Final config sheets: {data.get('sheets', {})}")
         return cls(**data)
