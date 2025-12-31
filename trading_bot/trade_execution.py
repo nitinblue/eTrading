@@ -1,7 +1,7 @@
 # trading_bot/trade_execution.py
 from typing import Optional, Dict
-from brokers.abstract_broker import Broker  # From new abstract file
-from order_model import UniversalOrder  # Import from new file
+from trading_bot.brokers.abstract_broker import Broker  # From new abstract file
+from trading_bot.order_model import UniversalOrder  # Import from new file
 import logging
 
 logger = logging.getLogger(__name__)

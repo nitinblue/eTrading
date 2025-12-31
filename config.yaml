@@ -1,0 +1,26 @@
+general:
+  use_mock: false
+  dry_run: true
+
+broker: 
+  username: ${TASTYTRADE_CLIENT_SECRET}
+  password: ${TASTYTRADE_REFRESH_TOKEN}
+  default_account_id: ""
+
+data:
+  use_broker_api: true  # true = fetch from broker; false = use Python calc/storage
+  storage_file: "data_storage.json"  # Cache file
+
+risk:
+  max_risk_per_trade: 0.01
+  max_portfolio_risk: 0.1  # revert back to 0.1
+
+strategies:
+  short_put:
+    min_iv: 30
+    max_delta: 0.25
+    target_profit: 60
+    max_loss: 120
+    dry_run: true
+
+sheets: {}
