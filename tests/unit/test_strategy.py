@@ -1,7 +1,7 @@
 # tests/unit/test_strategy.py
 import pytest
 from trading_bot.strategy import ShortPutStrategy
-from trading_bot.broker import NeutralOrder, OrderAction, PriceEffect
+from trading_bot.brokers import NeutralOrder, OrderAction, PriceEffect
 from unittest.mock import MagicMock
 
 @pytest.fixture
