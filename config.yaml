@@ -35,4 +35,7 @@ strategies:
     max_loss: 120
     dry_run: true
 
-sheets: {}
+sheets: 
+  sheet_id: ${GOOGLE_SHEET_ID} 
+  worksheet_name: "Options"            
+  service_account_file: "service_account.json"  # Path to JSON key
