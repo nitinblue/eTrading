@@ -10,6 +10,8 @@ from typing import Dict, List
 import logging
 from datetime import datetime
 
+from trading_bot.config import Config
+
 logger = logging.getLogger(__name__)
 
 class OptionsSheetsSync:

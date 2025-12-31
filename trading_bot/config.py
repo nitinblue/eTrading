@@ -22,6 +22,6 @@ class Config(BaseModel):
         
         # EXPAND ${VAR_NAME} → env values
         yaml_str = os.path.expandvars(yaml_str)
-        print(f"DEBUG YAML after expand: {yaml_str[:200]}...")  # Debug
+        # print(f"DEBUG YAML after expand: {yaml_str[:200]}...")  # Debug
         data = yaml.safe_load(yaml_str) or {}
         return cls(**data)
