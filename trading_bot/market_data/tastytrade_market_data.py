@@ -1,8 +1,8 @@
 # trading_bot/market_data/tastytrade_market_data.py
 from typing import Dict
 from tastytrade.instruments import get_option_chain
-from market_data.storage import DataStorage  # Adjust path if needed
-from market_data.abstract_market_data import MarketDataProvider
+from trading_bot.market_data.storage import DataStorage  # Adjust path if needed
+from trading_bot.market_data.abstract_market_data import MarketDataProvider
 import logging
 
 logger = logging.getLogger(__name__)

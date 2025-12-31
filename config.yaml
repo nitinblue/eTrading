@@ -1,11 +1,10 @@
 general:
-  use_mock: true
+  use_mock: false
   dry_run: true
 
-broker:
-  username: "dummy@example.com"
-  password: "dummy_password"
-  environment: "paper"
+broker: 
+  username: ${TASTYTRADE_CLIENT_SECRET}
+  password: ${TASTYTRADE_REFRESH_TOKEN}
   default_account_id: ""
 
 data:

@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Trading Bot (Debug)",
+            "type": "python",
+            "request": "launch",
+            "module": "trading_bot.main",   // ← This is the key line
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}

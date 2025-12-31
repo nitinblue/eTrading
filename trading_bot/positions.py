@@ -1,6 +1,6 @@
 # trading_bot/positions.py
 from typing import List, Dict
-from brokers.abstract_broker import Broker  # Absolute
+from trading_bot.brokers.abstract_broker import Broker  # Absolute
 
 class Position:
     def __init__(self, symbol: str, quantity: int, entry_price: float, current_price: float, greeks: Dict):

@@ -9,8 +9,8 @@ from tastytrade.account import Account
 from tastytrade.instruments import Option
 from tastytrade.order import NewOrder, OrderAction, OrderTimeInForce, OrderType, PriceEffect
 
-from order_model import UniversalOrder, OrderLeg
-from brokers.abstract_broker import Broker  # If you have abstract_broker.py
+from trading_bot.order_model import UniversalOrder, OrderLeg
+from trading_bot.brokers.abstract_broker import Broker  # If you have abstract_broker.py
 import logging
 
 logger = logging.getLogger(__name__)
