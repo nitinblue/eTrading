@@ -1,21 +1,20 @@
-# trading_bot/sheets_sync.py
+# trading_bot/options_sheets_sync.py
 """
-Google Sheets sync for OptionsPortfolio worksheet.
-Writes account summary and full position risk report.
+Google Sheets sync for the 'OptionsPortfolio' worksheet.
+Now includes opening/current Greeks and PNL attribution per Greek.
 """
 
 import gspread
 from google.oauth2.service_account import Credentials
 from typing import Dict, List
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# trading_bot/options_sheets_sync.py
 class OptionsSheetsSync:
-    def __init__(self, config: Config):  # Accept Config object
-        self.config = config
-        sheets_config = config.sheets if hasattr(config, 'sheets') else {}
+    def __init__(self, config: Config):
+        sheets_config = getattr(config, 'sheets', {})
         self.sheet_id = sheets_config.get('sheet_id')
         self.worksheet_name = sheets_config.get('worksheet_name', 'OptionsPortfolio')
         self.service_account_file = sheets_config.get('service_account_file', 'service_account.json')
@@ -35,12 +34,15 @@ class OptionsSheetsSync:
             client = gspread.authorize(creds)
             self.sheet = client.open_by_key(self.sheet_id)
 
-            # Get or create worksheet
             try:
                 self.worksheet = self.sheet.worksheet(self.worksheet_name)
                 logger.info(f"Using existing worksheet: {self.worksheet_name}")
             except gspread.WorksheetNotFound:
-                self.worksheet = self.sheet.add_worksheet(title=self.worksheet_name, rows=1000, cols=20)
+                self.worksheet = self.sheet.add_worksheet(
+                    title=self.worksheet_name,
+                    rows=2000,
+                    cols=30
+                )
                 logger.info(f"Created new worksheet: {self.worksheet_name}")
 
         except Exception as e:
@@ -48,15 +50,13 @@ class OptionsSheetsSync:
             raise
 
     def clear_sheet(self):
-        """Clear all data for fresh write."""
         self.worksheet.clear()
         logger.info("Cleared OptionsPortfolio sheet")
 
     def update_account_summary(self, balance: Dict):
-        """Write account summary at top."""
         data = [
             ["Options Portfolio Dashboard", ""],
-            ["Last Updated", "=NOW()"],
+            ["Last Updated", datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
             ["", ""],
             ["Account Summary", ""],
             ["Cash Balance", f"${balance.get('cash_balance', 0):.2f}"],
@@ -68,7 +68,7 @@ class OptionsSheetsSync:
         logger.info("Account summary updated")
 
     def update_positions_table(self, position_risks: List[Dict]):
-        """Write full positions table starting at row 10."""
+        """Write full positions table with opening/current Greeks and PNL attribution."""
         if not position_risks:
             logger.info("No positions to write")
             return
@@ -77,11 +77,19 @@ class OptionsSheetsSync:
             "Trade ID", "Leg ID", "Strategy", "Symbol", "Quantity",
             "Entry Price", "Current Price", "Actual PnL", "PnL Driver",
             "Allocation %", "Buying Power Used", "Stop Loss", "Take Profit",
-            "Undefined Risk", "Violations"
+            "Undefined Risk", "Violations",
+            # Opening Greeks
+            "Open Delta", "Open Gamma", "Open Theta", "Open Vega", "Open Rho",
+            # Current Greeks
+            "Curr Delta", "Curr Gamma", "Curr Theta", "Curr Vega", "Curr Rho",
+            # PNL Attribution
+            "Delta PnL", "Gamma PnL", "Theta PnL", "Vega PnL", "Rho PnL", "Unexplained PnL"
         ]
 
         rows = [headers]
         for risk in position_risks:
+            open_g = risk.get('opening_greeks', {})
+            curr_g = risk.get('current_greeks', {})
             rows.append([
                 risk.get('trade_id', 'N/A'),
                 risk.get('leg_id', 'N/A'),
@@ -97,17 +105,34 @@ class OptionsSheetsSync:
                 f"${risk.get('stop_loss', 0):.2f}",
                 f"${risk.get('take_profit', 0):.2f}",
                 "Yes" if risk.get('is_undefined_risk') else "No",
-                "; ".join(risk.get('violations', []))
+                "; ".join(risk.get('violations', [])),
+                # Opening Greeks
+                f"{open_g.get('delta', 0):.4f}",
+                f"{open_g.get('gamma', 0):.4f}",
+                f"{open_g.get('theta', 0):.4f}",
+                f"{open_g.get('vega', 0):.2f}",
+                f"{open_g.get('rho', 0):.4f}",
+                # Current Greeks
+                f"{curr_g.get('delta', 0):.4f}",
+                f"{curr_g.get('gamma', 0):.4f}",
+                f"{curr_g.get('theta', 0):.4f}",
+                f"{curr_g.get('vega', 0):.2f}",
+                f"{curr_g.get('rho', 0):.4f}",
+                # PNL Attribution
+                f"${risk.get('delta_pnl', 0):.2f}",
+                f"${risk.get('gamma_pnl', 0):.2f}",
+                f"${risk.get('theta_pnl', 0):.2f}",
+                f"${risk.get('vega_pnl', 0):.2f}",
+                f"${risk.get('rho_pnl', 0):.2f}",
+                f"${risk.get('unexplained_pnl', 0):.2f}",
             ])
 
-        # Start at A10
         start_cell = "A10"
         self.worksheet.update(start_cell, rows)
-        logger.info(f"Updated {len(position_risks)} positions in OptionsPortfolio")
+        logger.info(f"Updated {len(position_risks)} positions with full Greek PNL attribution")
 
     def sync_all(self, balance: Dict, position_risks: List[Dict]):
-        """Full sync: clear and write everything."""
         self.clear_sheet()
         self.update_account_summary(balance)
         self.update_positions_table(position_risks)
-        logger.info("OptionsPortfolio sheet fully synced")
+        logger.info("OptionsPortfolio sheet fully synced with Greek attribution")
