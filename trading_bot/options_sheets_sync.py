@@ -3,20 +3,23 @@
 Google Sheets sync for the 'OptionsPortfolio' worksheet.
 Now includes opening/current Greeks and PNL attribution per Greek.
 """
-
+import os
 import gspread
 from google.oauth2.service_account import Credentials
 from typing import Dict, List
 import logging
 from datetime import datetime
 
+from trading_bot.config import Config
+
 logger = logging.getLogger(__name__)
 
 class OptionsSheetsSync:
     def __init__(self, config: Config):
         sheets_config = getattr(config, 'sheets', {})
-        self.sheet_id = sheets_config.get('sheet_id')
-        self.worksheet_name = sheets_config.get('worksheet_name', 'OptionsPortfolio')
+        # self.sheet_id = sheets_config['sheet_id']
+        self.sheet_id=os.getenv('GOOGLE_SHEET_ID')
+        self.worksheet_name = sheets_config.get('worksheet_name', 'Options')
         self.service_account_file = sheets_config.get('service_account_file', 'service_account.json')
 
         if not self.sheet_id:
@@ -25,6 +28,9 @@ class OptionsSheetsSync:
         self._connect()
 
     def _connect(self):
+        logger.info(f"Sheet ID: {self.sheet_id}")
+        logger.info(f"Service account: {self.service_account_file}")
+
         try:
             scopes = [
                 "https://www.googleapis.com/auth/spreadsheets",
@@ -135,4 +141,4 @@ class OptionsSheetsSync:
         self.clear_sheet()
         self.update_account_summary(balance)
         self.update_positions_table(position_risks)
-        logger.info("OptionsPortfolio sheet fully synced with Greek attribution")
+        logger.info("Options sheet fully synced with Greek attribution")

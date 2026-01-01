@@ -15,8 +15,11 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ===========================
 SERVICE_ACCOUNT_FILE = "service_account.json"  # Your Google service account key
-SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE"         # Replace with your sheet ID
-WORKSHEET_NAME = "Orders"                      # Name of the tab with orders
+# SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE"         # Replace with your sheet ID
+# WORKSHEET_NAME = "Orders"                      # Name of the tab with orders
+
+SHEET_ID = "1f8D19G1MBRFXQCeNK6vfPjzVMF_DlRUWoNVWjPRL6_M"
+WORKSHEET_NAME = "Python powered eTrading"    
 
 # Column mapping (adjust if your columns are different)
 COLUMN_MAP = {

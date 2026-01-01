@@ -13,6 +13,7 @@ broker:
     refresh_token: ${TASTYTRADE_REFRESH_TOKEN_LIVE}
 
 risk:
+<<<<<<< HEAD
   max_allocation_per_position: 0.05
   max_loss_per_trade: 0.002
   max_undefined_risk_allocation: 0.20
@@ -23,13 +24,36 @@ risk:
   greek_targets:
     delta_min: -0.10
     delta_max: 0.10
+=======
+  max_allocation_per_position: 0.05  # 5% of total capital
+  max_loss_per_trade: 0.002  # 0.2% of total capital
+  max_undefined_risk_allocation: 0.20  # 20% of capital in undefined risk
+  reserved_margin_fraction: 0.20  # 20% margin reserved (not invested)
+  stop_loss_level: -0.01  # e.g., 1% below entry
+  take_profit_level: 0.02  # e.g., 2% above entry
+  max_strategy_concentration: 0.25  # Max 25% in one strategy
+  greek_targets:  # Portfolio-level targets
+    delta_min: -0.10
+    delta_max: 0.10
+    gamma_max: 0.05
+    theta_min: 0.01
+    vega_max: 0.20
+    rho_max: 0.05
+>>>>>>> a2d3074eaa89e65f81eea4d1269dac9b85efdf4e
 
 strategies:
   short_put:
     min_iv: 30
     max_delta: 0.25
 
+<<<<<<< HEAD
 sheets:
   sheet_id: "YOUR_SHEET_ID"
   worksheet_name: "OptionsPortfolio"
   service_account_file: "service_account.json"
+=======
+sheets: 
+  sheet_id: ${GOOGLE_SHEET_ID} 
+  worksheet_name: "Options"            
+  service_account_file: "service_account.json"  # Path to JSON key
+>>>>>>> a2d3074eaa89e65f81eea4d1269dac9b85efdf4e
