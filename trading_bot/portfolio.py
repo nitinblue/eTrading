@@ -1,9 +1,8 @@
 # trading_bot/portfolio.py
-from typing import List, Dict
-from trading_bot.positions import PositionsManager, Position
-from trading_bot.risk import RiskManager
+from typing import List
+from .positions import PositionsManager, Position
+from .risk import RiskManager
 import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -11,12 +10,12 @@ class Portfolio:
     def __init__(self, positions_manager: PositionsManager, risk_manager: RiskManager):
         self.positions_manager = positions_manager
         self.risk_manager = risk_manager
+        self.broker = positions_manager.broker  # ← Add this line to access broker
         self.total_value: float = 0.0
 
     def update(self):
         self.positions_manager.refresh()
-        # Get capital from broker
-        balance = self.positions_manager.broker.get_account_balance()
+        balance = self.broker.get_account_balance()  # Now works
         capital = balance.get('equity', 100000.0)
         
         self.total_value = sum(p.calculate_pnl() for p in self.positions_manager.positions)

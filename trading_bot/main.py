@@ -1,133 +1,198 @@
 # trading_bot/main.py
 """
-Main entry point for the trading bot.
-Clean broker selection with one config line switch.
+Comprehensive main function for the trading bot.
+Each functionality is in its own def — comment out calls in main() to skip.
+Covers account listing, balances, option chain, trade booking, position reading, risk display, and Sheets sync.
 """
+
 import logging
 from trading_bot.config import Config
 from trading_bot.broker_mock import MockBroker
 from trading_bot.brokers.tastytrade_broker import TastytradeBroker
-from trading_bot.market_data.tastytrade_market_data import TastytradeMarketData  # Optional for real broker
 from trading_bot.trade_execution import TradeExecutor
 from trading_bot.strategy import ShortPutStrategy
 from trading_bot.portfolio import Portfolio
 from trading_bot.positions import PositionsManager
 from trading_bot.risk import RiskManager
 from trading_bot.options_sheets_sync import OptionsSheetsSync
+from trading_bot.utils.trade_utils import book_butterfly, print_option_chain
+from tastytrade.instruments import get_option_chain
+from tastytrade.account import Account
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # trading_bot/main.py
-"""
-Main entry point for the trading bot.
-Supports mock mode and real Tastytrade paper/live.
-Now includes real connectivity test, option chain fetch, and market data display.
-"""
+def get_data_broker(config):
+    """Always connect to LIVE Tastytrade for production-quality market data."""
+    creds = config.broker['data']
+    broker = TastytradeBroker(
+        client_secret=creds['client_secret'],
+        refresh_token=creds['refresh_token'],
+        is_paper=False  # Force live for data
+    )
+    broker.connect()
+    logger.info("Market data broker connected (LIVE account)")
+    return broker
 
-import logging
-from trading_bot.config import Config
-from trading_bot.broker_mock import MockBroker
-from trading_bot.brokers.tastytrade_broker import TastytradeBroker
-from tastytrade.instruments import get_option_chain  # Direct import for demo
-#from tastytrade.search import search_instruments  # For underlying price
+def get_execution_broker(config):
+    """Connect execution broker based on execution_mode."""
+    mode = config.general.get('execution_mode', 'mock').lower()
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-
-def main():
-    print("Starting trading bot...")
-    config = Config.load('config.yaml')
-
-    # === ONE LINE TO SWITCH BROKER ===
-    use_mock = config.general.get('use_mock', True)
-
-    if use_mock:
+    if mode == 'mock':
         broker = MockBroker()
         broker.connect()
-        logger.info("Using MockBroker (dry-run mode)")
-    else:
-        broker = TastytradeBroker(
-            username=config.broker['username'],
-            password=config.broker['password'],
-            is_paper=config.broker.get('environment', 'paper') == 'paper'
-        )
-        broker.connect()
-        logger.info("Using real Tastytrade broker")
+        logger.info("Execution broker: Mock")
+        return broker
 
-    # Core components
-    executor = TradeExecutor(broker)
+    creds_key = 'paper' if mode == 'paper' else 'live'
+    creds = config.broker[creds_key]
+
+    broker = TastytradeBroker(
+        client_secret=creds['client_secret'],
+        refresh_token=creds['refresh_token'],
+        is_paper=(mode == 'paper')
+    )
+    broker.connect()
+    logger.info(f"Execution broker: {mode.upper()} account")
+    return broker
+
+def list_all_accounts(broker):
+    """List all Tastytrade accounts (skip in mock mode)."""
+    if not hasattr(broker, 'session') or broker.session is None:
+        logger.info("Skipping account listing (mock mode)")
+        return
+
+    try:
+        from tastytrade.account import Account
+        accounts = Account.get_accounts(broker.session)
+        logger.info("\n=== ALL ACCOUNTS ===")
+        for acc in accounts:
+            logger.info(f"Account Number: {acc.account_number}")
+            logger.info(f"  Type: {acc.account_type_name}")
+            logger.info(f"  Opened: {acc.opened_at}")
+            logger.info("---")
+    except Exception as e:
+        logger.error(f"Failed to list accounts: {e}")
+
+def get_account_balances(broker):
+    """Get account balances (skip in mock mode)."""
+    if not hasattr(broker, 'session') or broker.session is None:
+        logger.info("Skipping account balances (mock mode)")
+        return
+
+    try:
+        balance = broker.get_account_balance()
+        logger.info("\n=== ACCOUNT BALANCE ===")
+        logger.info(f"Cash Balance: ${balance.get('cash_balance', 0):.2f}")
+        logger.info(f"Equity Buying Power: ${balance.get('equity_buying_power', 0):.2f}")
+        logger.info(f"Derivative Buying Power: ${balance.get('derivative_buying_power', 0):.2f}")
+        logger.info(f"Margin Equity: ${balance.get('margin_equity', 0):.2f}")
+    except Exception as e:
+        logger.error(f"Failed to get balances: {e}")
+
+def fetch_sample_option_chain(broker, underlying: str = "MSFT"):
+    """Fetch and print option chain (skip in mock mode)."""
+    if not hasattr(broker, 'session') or broker.session is None:
+        logger.info("Skipping option chain fetch (mock mode)")
+        return
+
+    print_option_chain(underlying, broker.session)
+
+def book_sample_option_position(broker):
+    """Book sample butterfly (skip in mock mode)."""
+    if not hasattr(broker, 'session') or broker.session is None:
+        logger.info("Skipping butterfly booking (mock mode)")
+        return
+
+    book_butterfly("MSFT", broker.session, quantity=1, limit_credit=3.00, dry_run=True)
+
+def read_current_positions(broker):
+    """Read and display current positions."""
+    positions = broker.get_positions()
+    logger.info("\n=== CURRENT POSITIONS ===")
+    for pos in positions:
+        logger.info(f"Symbol: {pos['symbol']} | Quantity: {pos['quantity']} | Entry Price: ${pos['entry_price']:.2f} | Current Price: ${pos['current_price']:.2f}")
+        logger.info(f"Greeks: {pos['greeks']}")
+        logger.info("---")
+
+def display_position_risk(broker):
+    """Display position-level risk."""
     positions_manager = PositionsManager(broker)
     risk_manager = RiskManager(config.risk)
     portfolio = Portfolio(positions_manager, risk_manager)
 
-    # Update portfolio to get current positions
     portfolio.update()
-
-    # === NEW: List all positions with risk attributes ===
-    capital = portfolio.total_value or 100000.0  # Use actual equity or fallback
-    position_risks = risk_manager.list_positions_api(positions_manager.positions, capital)  # Use list_positions_api for list
-
-    logger.info("\n=== POSITION RISK REPORT ===")
-    for risk in position_risks:
-        logger.info(f"Trade ID: {risk['trade_id']} | Leg: {risk['leg_id']} | Strategy: {risk['strategy']}")
-        logger.info(f"  Allocation: {risk['allocation']:.2%} | PnL: ${risk['pnl']:.2f} | Driver: {risk['pnl_driver']}")
-        logger.info(f"  Buying Power Used: ${risk['buying_power_used']:.2f}")
-        logger.info(f"  Stop Loss: ${risk['stop_loss']:.2f} | Take Profit: ${risk['take_profit']:.2f}")
-        logger.info(f"  Undefined Risk: {risk['is_undefined_risk']}")
-        if risk['violations']:
-            logger.warning(f"  VIOLATIONS: {'; '.join(risk['violations'])}")
-        logger.info("---")
-
-    # Portfolio-level summary (use assess_portfolio if you have it, or skip if not)
-    try:
-        portfolio_risk = risk_manager.assess_portfolio(positions_manager.positions, capital)
-        logger.info("\n=== PORTFOLIO RISK SUMMARY ===")
-        logger.info(f"Net Greeks: {portfolio.get_net_greeks()}")
-        logger.info(f"Total Undefined Risk: {portfolio_risk['total_undefined_risk']:.2%}")
-        logger.info(f"Available Margin: ${portfolio_risk['available_margin']:.2f}")
-        logger.info("Strategy Concentration:")
-        for strat, conc in portfolio_risk['strategy_concentration'].items():
-            logger.info(f"  {strat}: {conc:.2%}")
-    except AttributeError:
-        logger.info("assess_portfolio not available — skipping portfolio summary")
-    except ValueError as e:
-        logger.error(f"Portfolio risk violation: {e}")
-
-    # Sample order execution
-    strategy_config = config.strategies.get('short_put', {})
-    strategy = ShortPutStrategy(None, executor, strategy_config)
-
-    sample_signal = {
-        'symbol': '.AAPL260131P00195000',
-        'iv': 45,
-        'delta': -0.17,
-        'quantity': 4,
-        'limit_price': 5.10
-    }
-
-    result = strategy.execute_entry(sample_signal)
-    logger.info(f"Sample Order Result: {result}")
-
-        # Get position risk report
     capital = broker.get_account_balance().get('equity', 100000.0)
     position_risks = risk_manager.list_positions_api(positions_manager.positions, capital)
 
-    # Print report (your existing loop)
     logger.info("\n=== POSITION RISK REPORT ===")
-    # ... your print loop
+    for risk in position_risks:
+        logger.info(f"Trade: {risk['trade_id']} | Strategy: {risk['strategy']}")
+        logger.info(f"  PnL: ${risk['pnl']:.2f} | Allocation: {risk['allocation']:.2%}")
+        logger.info(f"  Driver: {risk['pnl_driver']} | Violations: {risk['violations']}")
+        logger.info("---")
 
-    # Google Sheets sync
-    try:
-        sheets_sync = OptionsSheetsSync(config)
-        sheets_sync.sync_all(
-            balance=broker.get_account_balance(),
-            position_risks=position_risks
-        )
-    except Exception as e:
-        logger.error(f"Google Sheets sync failed: {e}")
+def display_portfolio_risk(broker):
+    """Display portfolio-level risk."""
+    positions_manager = PositionsManager(broker)
+    risk_manager = RiskManager(config.risk)
+    portfolio = Portfolio(positions_manager, risk_manager)
 
+    portfolio.update()  # This calls risk_manager.assess() internally
+
+    capital = broker.get_account_balance().get('equity', 100000.0)
+    # Use list_positions_api for reporting (returns list)
+    position_risks = risk_manager.list_positions_api(positions_manager.positions, capital)
+
+    logger.info("\n=== PORTFOLIO RISK SUMMARY ===")
+    net_greeks = portfolio.get_net_greeks()
+    logger.info(f"Net Greeks: {net_greeks}")
+
+    # Calculate summary from position_risks
+    total_undefined = sum(r['buying_power_used'] for r in position_risks if r['is_undefined_risk']) / capital if capital > 0 else 0
+    available_margin = capital * (1 - risk_manager.reserved_margin) - sum(r['buying_power_used'] for r in position_risks)
+
+    logger.info(f"Total Undefined Risk: {total_undefined:.2%}")
+    logger.info(f"Available Margin: ${available_margin:.2f}")
+
+def sync_google_sheets(broker):
+    """Sync to Google Sheets (if configured)."""
+    sheets = OptionsSheetsSync(config)
+    balance = broker.get_account_balance()
+    positions_manager = PositionsManager(broker)
+    risk_manager = RiskManager(config.risk)
+    portfolio = Portfolio(positions_manager, risk_manager)
+    portfolio.update()
+    capital = balance.get('equity', 100000.0)
+    position_risks = risk_manager.list_positions_api(positions_manager.positions, capital)
+    sheets.sync_all(balance, position_risks)
+
+def main():
+    print("Starting trading bot...")
+    global config
+    config = Config.load('config.yaml')
+
+    # Separate brokers
+    data_broker = get_data_broker(config)        # Always live for data
+    execution_broker = get_execution_broker(config)  # Configurable
+
+    # === Comprehensive Workflow — Comment out what you don't want ===
+    list_all_accounts(execution_broker)
+
+    get_account_balances(execution_broker)
+
+    fetch_sample_option_chain(execution_broker, "MSFT")  # market data from live broker
+
+    book_sample_option_position(execution_broker)
+
+    read_current_positions(execution_broker)
+
+    display_position_risk(execution_broker)
+
+    display_portfolio_risk(execution_broker)
+
+    # sync_google_sheets(execution_broker)  # Uncomment to sync Sheets
     logger.info("Bot run complete.")
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 # trading_bot/risk.py
 from typing import List, Dict
 from .positions import Position
-from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,71 +16,44 @@ class RiskManager:
         self.take_profit_level = self.config.get('take_profit_level', 0.02)
         self.max_strategy_concentration = self.config.get('max_strategy_concentration', 0.25)
         self.greek_targets = self.config.get('greek_targets', {})
-        self.multiplier = 100  # Standard for options
 
     def assess_position(self, position: Position, capital: float) -> Dict:
-        """Assess risk for a single position, including Greek PNL attribution."""
-        allocation = abs(position.quantity * position.current_price * self.multiplier) / capital if capital > 0 else 0
-        actual_pnl = position.calculate_pnl()
+        allocation = abs(position.quantity * position.current_price * 100) / capital if capital > 0 else 0
+        pnl = position.calculate_pnl()
         pnl_driver = self._determine_pnl_driver(position)
-
-        # Greek PNL attribution
-        change_underlying = position.current_underlying_price - position.opening_underlying_price
-        days_passed = (datetime.now() - position.opening_time).days
-        change_iv = position.current_iv - position.opening_iv
-        change_rate = position.current_rate - position.opening_rate
-
-        opening_greeks = position.opening_greeks
-        current_greeks = position.greeks
-
-        delta_pnl = opening_greeks.get('delta', 0) * change_underlying * self.multiplier
-        gamma_pnl = 0.5 * opening_greeks.get('gamma', 0) * (change_underlying ** 2) * self.multiplier
-        theta_pnl = opening_greeks.get('theta', 0) * days_passed * self.multiplier
-        vega_pnl = opening_greeks.get('vega', 0) * change_iv * self.multiplier / 100
-        rho_pnl = opening_greeks.get('rho', 0) * change_rate * self.multiplier / 100
-
-        greek_pnl = delta_pnl + gamma_pnl + theta_pnl + vega_pnl + rho_pnl
-        unexplained_pnl = actual_pnl - greek_pnl
-
         is_undefined_risk = 'undefined' in position.strategy.lower()
         buying_power_used = allocation * capital
 
         violations = []
         if allocation > self.max_allocation:
             violations.append(f"Allocation {allocation:.2%} > {self.max_allocation:.2%}")
-        if actual_pnl < -self.max_loss * capital:
-            violations.append(f"Max loss ${-actual_pnl:.2f} > {self.max_loss * capital:.2f}")
+        if pnl < -self.max_loss * capital:
+            violations.append(f"Max loss ${-pnl:.2f} > {self.max_loss * capital:.2f}")
 
         return {
-            'trade_id': position.trade_id,
-            'leg_id': position.leg_id,
-            'strategy': position.strategy,
+            'trade_id': getattr(position, 'trade_id', 'N/A'),
+            'leg_id': getattr(position, 'leg_id', 'N/A'),
+            'strategy': getattr(position, 'strategy', 'Unknown'),
+            'symbol': getattr(position, 'symbol', 'N/A'),
+            'quantity': position.quantity,
+            'entry_price': position.entry_price,
+            'current_price': position.current_price,
             'allocation': allocation,
-            'actual_pnl': actual_pnl,
+            'pnl': pnl,
             'pnl_driver': pnl_driver,
             'stop_loss': position.entry_price * (1 + self.stop_loss_level),
             'take_profit': position.entry_price * (1 + self.take_profit_level),
             'buying_power_used': buying_power_used,
             'is_undefined_risk': is_undefined_risk,
-            'opening_greeks': opening_greeks,
-            'current_greeks': current_greeks,
-            'delta_pnl': delta_pnl,
-            'gamma_pnl': gamma_pnl,
-            'theta_pnl': theta_pnl,
-            'vega_pnl': vega_pnl,
-            'rho_pnl': rho_pnl,
-            'unexplained_pnl': unexplained_pnl,
             'violations': violations
         }
 
     def list_positions_api(self, positions: List[Position], capital: float) -> List[Dict]:
-        """Enhanced API to list all positions with Greek PNL attribution."""
+        """Return detailed position risk data for reporting."""
         return [self.assess_position(p, capital) for p in positions]
 
-    # ... (keep assess_portfolio and other methods as before)
-
-    def assess(self, positions: List[Position], capital: float) -> Dict:
-        """Main portfolio-level risk assessment (called by Portfolio.update())."""
+    def assess(self, positions: List[Position], capital: float):
+        """Portfolio-level risk check — called by Portfolio.update()."""
         position_risks = self.list_positions_api(positions, capital)
         total_undefined = sum(r['buying_power_used'] for r in position_risks if r['is_undefined_risk']) / capital if capital > 0 else 0
         strategy_concentration = self._calculate_strategy_concentration(position_risks, capital)
@@ -99,17 +71,7 @@ class RiskManager:
         if violations:
             raise ValueError("Portfolio risk violations: " + "; ".join(violations))
 
-        available_margin = capital * (1 - self.reserved_margin) - sum(r['buying_power_used'] for r in position_risks)
-
-        return {
-            'position_risks': position_risks,
-            'net_greeks': net_greeks,
-            'total_undefined_risk': total_undefined,
-            'strategy_concentration': strategy_concentration,
-            'available_margin': available_margin,
-            'violations': violations
-        }
-
+    # Helper methods (unchanged)
     def _determine_pnl_driver(self, position: Position) -> str:
         greeks = position.greeks
         drivers = []

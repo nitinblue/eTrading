@@ -15,31 +15,38 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class TastytradeBroker(Broker):
-    def __init__(self, username: str, password: str, is_paper: bool = True, remember_me: bool = True):
-        self.username = username
-        self.password = password
+# trading_bot/brokers/tastytrade_broker.py
+"""
+Tastytrade broker using OAuth2 (JWT) tokens — latest SDK compatible.
+"""
+from tastytrade import Session
+from tastytrade.account import Account
+from tastytrade.instruments import Option
+from tastytrade.order import NewOrder, OrderAction, OrderTimeInForce, OrderType, PriceEffect
+from decimal import Decimal
+from typing import Optional, Dict, List
+import logging
+
+logger = logging.getLogger(__name__)
+
+class TastytradeBroker:
+    def __init__(self, client_secret: str, refresh_token: str, is_paper: bool = True):
+        self.client_secret = client_secret
+        self.refresh_token = refresh_token
         self.is_paper = is_paper
-        self.remember_me = remember_me
         self.session: Optional[Session] = None
         self.accounts: Dict[str, Account] = {}
 
-    def connect(self) -> None:
+    def connect(self):
         try:
-            # self.session = Session(
-            #     login_name=self.username,
-            #     password=self.password,
-            #     is_test=self.is_paper,
-            #     remember_me=self.remember_me
-            # )
-            logger.info(f"Connecting to Tastytrade... username={self.username}, paper={self.is_paper}")
-            self.session = Session(self.username, self.password,is_test=self.is_paper)
-            logger.info(f"Connected to Tastytrade {'PAPER' if self.is_paper else 'LIVE'} environment.")
-            accounts_list = Account.get(self.session)
-            self.accounts = {acc.account_number: acc for acc in accounts_list}                     
-            logger.info(f"Loaded {len(self.accounts)} account(s).")
+            # Latest SDK: positional arguments
+            self.session = Session(self.client_secret, self.refresh_token, is_test=self.is_paper)
+            logger.info(f"Connected to Tastytrade {'PAPER' if self.is_paper else 'LIVE'} via OAuth2")
+            accounts_list = Account.get_accounts(self.session)
+            self.accounts = {acc.account_number: acc for acc in accounts_list}
+            logger.info(f"Loaded {len(self.accounts)} account(s)")
         except Exception as e:
-            logger.error(f"Tastytrade connection failed: {e}")
+            logger.error(f"Tastytrade OAuth2 connection failed: {e}")
             raise
 
     def _get_account(self, account_id: Optional[str]) -> Account:
