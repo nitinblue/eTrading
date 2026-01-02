@@ -32,7 +32,7 @@ def book_butterfly(underlying: str, broker_session, quantity: int = 1, limit_cre
             raise ValueError(f"No expiry with sufficient call options for {underlying}")
 
         # Prefer ~45 DTE
-        target_date = datetime.now().date() + timedelta(days=45)
+        target_date = datetime.now().date() + timedelta(days=4)
         selected_exp, calls = min(valid_expiries, key=lambda x: abs((x[0] - target_date).days))
         
         dte = (selected_exp - datetime.now().date()).days

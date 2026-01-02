@@ -174,7 +174,7 @@ def main():
     config = Config.load('config.yaml')
 
     # Separate brokers
-    data_broker = get_data_broker(config)        # Always live for data
+    #data_broker = get_data_broker(config)        # Always live for data
     execution_broker = get_execution_broker(config)  # Configurable
 
     # === Comprehensive Workflow — Comment out what you don't want ===

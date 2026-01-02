@@ -42,7 +42,8 @@ class TastytradeBroker:
             # Latest SDK: positional arguments
             self.session = Session(self.client_secret, self.refresh_token, is_test=self.is_paper)
             logger.info(f"Connected to Tastytrade {'PAPER' if self.is_paper else 'LIVE'} via OAuth2")
-            accounts_list = Account.get_accounts(self.session)
+            # accounts_list = Account.get_accounts(self.session)
+            accounts_list = Account.get(self.session)
             self.accounts = {acc.account_number: acc for acc in accounts_list}
             logger.info(f"Loaded {len(self.accounts)} account(s)")
         except Exception as e:

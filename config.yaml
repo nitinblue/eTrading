@@ -3,14 +3,14 @@ general:
 
 broker:
   data:  # Always live for market data
-    client_secret: ${TASTYTRADE_CLIENT_SECRET_DATA}
-    refresh_token: ${TASTYTRADE_REFRESH_TOKEN_DATA}
+    client_secret: ${TASTYTRADE_CLIENT_SECRET_PAPER}
+    refresh_token: ${TASTYTRADE_REFRESH_TOKEN_PAPER}
   paper:
     client_secret: ${TASTYTRADE_CLIENT_SECRET_PAPER}
     refresh_token: ${TASTYTRADE_REFRESH_TOKEN_PAPER}
   live:
-    client_secret: ${TASTYTRADE_CLIENT_SECRET_LIVE}
-    refresh_token: ${TASTYTRADE_REFRESH_TOKEN_LIVE}
+    client_secret: ${TASTYTRADE_CLIENT_SECRET_PAPER}
+    refresh_token: ${TASTYTRADE_REFRESH_TOKEN_PAPER}
 
 risk:
   max_allocation_per_position: 0.05  # 5% of total capital
