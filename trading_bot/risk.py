@@ -33,19 +33,24 @@ class RiskManager:
         return {
             'trade_id': getattr(position, 'trade_id', 'N/A'),
             'leg_id': getattr(position, 'leg_id', 'N/A'),
-            'strategy': getattr(position, 'strategy', 'Unknown'),
-            'symbol': getattr(position, 'symbol', 'N/A'),
+            'strategy': position.strategy,
+            'symbol': position.symbol,
             'quantity': position.quantity,
             'entry_price': position.entry_price,
             'current_price': position.current_price,
-            'allocation': allocation,
             'pnl': pnl,
             'pnl_driver': pnl_driver,
-            'stop_loss': position.entry_price * (1 + self.stop_loss_level),
-            'take_profit': position.entry_price * (1 + self.take_profit_level),
+            'allocation': allocation,
             'buying_power_used': buying_power_used,
             'is_undefined_risk': is_undefined_risk,
-            'violations': violations
+            'violations': violations,
+            # New
+            'volume': position.volume,
+            'open_interest': position.open_interest,
+            'stop_loss': position.stop_loss,
+            'take_profit': position.take_profit,
+            'stop_hit': position.is_stop_hit(position.current_price),
+            'tp_hit': position.is_tp_hit(position.current_price),
         }
 
     def list_positions_api(self, positions: List[Position], capital: float) -> List[Dict]:

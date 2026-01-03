@@ -3,27 +3,37 @@ from typing import List, Dict
 from trading_bot.brokers.abstract_broker import Broker
 from datetime import datetime
 
+# trading_bot/positions.py
 class Position:
-    def __init__(self, symbol: str, quantity: int, entry_price: float, current_price: float, greeks: Dict, opening_greeks: Dict, opening_iv: float, opening_rate: float, opening_time: datetime, opening_underlying_price: float, trade_id: str, leg_id: str, strategy: str, current_iv: float, current_rate: float, current_underlying_price: float):
-        self.symbol = symbol
-        self.quantity = quantity
-        self.entry_price = entry_price
-        self.current_price = current_price
-        self.greeks = greeks
-        self.opening_greeks = opening_greeks
-        self.opening_iv = opening_iv
-        self.opening_rate = opening_rate
-        self.opening_time = opening_time
-        self.opening_underlying_price = opening_underlying_price
-        self.trade_id = trade_id
-        self.leg_id = leg_id
-        self.strategy = strategy
-        self.current_iv = current_iv  # Add
-        self.current_rate = current_rate  # Add
-        self.current_underlying_price = current_underlying_price  # Add
+    def __init__(self, **kwargs):
+        self.symbol = kwargs.get('symbol')
+        self.quantity = kwargs.get('quantity', 0)
+        self.entry_price = kwargs.get('entry_price', 0.0)
+        self.current_price = kwargs.get('current_price', 0.0)
+        self.greeks = kwargs.get('greeks', {})
+        self.trade_id = kwargs.get('trade_id', 'N/A')
+        self.leg_id = kwargs.get('leg_id', 'N/A')
+        self.strategy = kwargs.get('strategy', 'Unknown')
+        # New fields
+        self.volume = kwargs.get('volume', 0)  # Daily volume
+        self.open_interest = kwargs.get('open_interest', 0)
+        self.stop_loss = kwargs.get('stop_loss')  # Price level
+        self.take_profit = kwargs.get('take_profit')  # Price level
 
     def calculate_pnl(self) -> float:
         return (self.current_price - self.entry_price) * self.quantity * 100
+
+    def is_stop_hit(self, current_price: float) -> bool:
+        if self.quantity > 0:  # Long
+            return current_price <= self.stop_loss if self.stop_loss else False
+        else:  # Short
+            return current_price >= self.stop_loss if self.stop_loss else False
+
+    def is_tp_hit(self, current_price: float) -> bool:
+        if self.quantity > 0:  # Long
+            return current_price >= self.take_profit if self.take_profit else False
+        else:  # Short
+            return current_price <= self.take_profit if self.take_profit else False
 
 class PositionsManager:
     def __init__(self, broker: Broker):

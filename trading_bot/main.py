@@ -15,7 +15,9 @@ from trading_bot.portfolio import Portfolio
 from trading_bot.positions import PositionsManager
 from trading_bot.risk import RiskManager
 from trading_bot.options_sheets_sync import OptionsSheetsSync
-from trading_bot.utils.trade_utils import book_butterfly, print_option_chain
+from trading_bot.strategy_screener import StrategyScreener
+from trading_bot.utils.trade_utils import print_option_chain
+from trading_bot.strategies.orb_0dte import ORB0DTEStrategy
 from tastytrade.instruments import get_option_chain
 from tastytrade.account import Account
 
@@ -105,7 +107,7 @@ def book_sample_option_position(broker):
         logger.info("Skipping butterfly booking (mock mode)")
         return
 
-    book_butterfly("MSFT", broker.session, quantity=1, limit_credit=3.00, dry_run=True)
+    #book_butterfly("MSFT", broker.session, quantity=1, limit_credit=3.00, dry_run=True)
 
 def read_current_positions(broker):
     """Read and display current positions."""
@@ -128,9 +130,14 @@ def display_position_risk(broker):
 
     logger.info("\n=== POSITION RISK REPORT ===")
     for risk in position_risks:
-        logger.info(f"Trade: {risk['trade_id']} | Strategy: {risk['strategy']}")
+        logger.info(f"Trade: {risk['trade_id']} | Strategy: {risk['strategy']} | Symbol: {risk['symbol']}")
+        logger.info(f"  Qty: {risk['quantity']} | Entry: ${risk['entry_price']:.2f} | Current: ${risk['current_price']:.2f}")
         logger.info(f"  PnL: ${risk['pnl']:.2f} | Allocation: {risk['allocation']:.2%}")
-        logger.info(f"  Driver: {risk['pnl_driver']} | Violations: {risk['violations']}")
+        logger.info(f"  Driver: {risk['pnl_driver']} | Vol: {risk['volume']} | OI: {risk['open_interest']}")
+        logger.info(f"  Stop Loss: ${risk['stop_loss']:.2f} {'(HIT)' if risk['stop_hit'] else ''}")
+        logger.info(f"  Take Profit: ${risk['take_profit']:.2f} {'(HIT)' if risk['tp_hit'] else ''}")
+        if risk['violations']:
+            logger.warning(f"  Violations: {'; '.join(risk['violations'])}")
         logger.info("---")
 
 def display_portfolio_risk(broker):
@@ -168,6 +175,17 @@ def sync_google_sheets(broker):
     position_risks = risk_manager.list_positions_api(positions_manager.positions, capital)
     sheets.sync_all(balance, position_risks)
 
+def run_strategy_screener(broker):
+    screener = StrategyScreener(config, broker.session)
+    underlyings = ["SPY", "QQQ", "IWM", "MSFT", "AAPL", "TSLA", "NVDA"]
+    screener.run_all_screeners(underlyings)
+
+# check out implementation of a strategy screener
+def run_0dte_orb_strategy(broker):
+    """Run 0DTE Opening Range Breakout strategy."""
+    strategy = ORB0DTEStrategy(broker.session, config)
+    strategy.run()
+
 def main():
     print("Starting trading bot...")
     global config
@@ -184,13 +202,17 @@ def main():
 
     fetch_sample_option_chain(data_broker, "MSFT")  # market data from live broker
 
-    book_sample_option_position(execution_broker)
+    # book_sample_option_position(execution_broker)
 
     read_current_positions(execution_broker)
 
     display_position_risk(execution_broker)
 
     display_portfolio_risk(execution_broker)
+
+    run_strategy_screener(execution_broker)
+
+    # run_0dte_orb_strategy(execution_broker)
 
     # sync_google_sheets(execution_broker)  # Uncomment to sync Sheets
     logger.info("Bot run complete.")
