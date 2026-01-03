@@ -1,6 +1,7 @@
 # trading_bot/utils/trade_utils.py
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from tastytrade.instruments import get_option_chain
+from tastytrade.market_data import get_market_data
 from trading_bot.order_model import UniversalOrder, OrderLeg, OrderAction, PriceEffect, OrderType
 from trading_bot.trade_execution import TradeExecutor
 from tabulate import tabulate
@@ -8,6 +9,8 @@ from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
+
+TARGET_EXP = date(2026, 1, 30)   # 30-01-2026
 
 def book_butterfly(underlying: str, broker_session, quantity: int = 1, limit_credit: float = 2.50, dry_run: bool = True):
     """
@@ -109,13 +112,33 @@ def print_option_chain(underlying: str, broker_session):
         
         if not chain:
             raise ValueError(f"No option chain data for {underlying}")
+        
+         # Safety check
+        if TARGET_EXP not in chain:
+            print(f"No options for {TARGET_EXP} in chain for {underlying}")
+            print("Available expiries:", list(chain.keys()))
+            return
 
+        opts = chain[TARGET_EXP]
+        print(f"\n{TARGET_EXP}: {len(opts)} options")
+        option_symbols = []
+
+        for exp in chain.items():
+            for strike in exp.strikes:
+                if strike.call:
+                    option_symbols.append(strike.call.symbol)
+                if strike.put:
+                    option_symbols.append(strike.put.symbol)
+            quotes = get_market_data(broker_session, option_symbols)
+        for sym, q in quotes.items():
+         print(sym, q.bid, q.ask, q.last)
+    
         all_options = []
         for exp, opts in chain.items():
             for opt in opts:
                 # Get quote data
                 try:
-                    quote = opt.get_quote(broker_session)
+                    quote = opt.get_quote(broker_session)                   
                     bid = quote.bid_price or 0.0
                     ask = quote.ask_price or 0.0
                     last = quote.last_price or 0.0

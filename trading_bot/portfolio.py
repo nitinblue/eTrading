@@ -1,5 +1,5 @@
 # trading_bot/portfolio.py
-from typing import List
+from typing import Dict, List
 from .positions import PositionsManager, Position
 from .risk import RiskManager
 import logging

@@ -174,15 +174,15 @@ def main():
     config = Config.load('config.yaml')
 
     # Separate brokers
-    #data_broker = get_data_broker(config)        # Always live for data
+    data_broker = get_data_broker(config)        # Always live for data
     execution_broker = get_execution_broker(config)  # Configurable
 
     # === Comprehensive Workflow — Comment out what you don't want ===
     list_all_accounts(execution_broker)
 
-    get_account_balances(execution_broker)
+    get_account_balances(data_broker)
 
-    fetch_sample_option_chain(execution_broker, "MSFT")  # market data from live broker
+    fetch_sample_option_chain(data_broker, "MSFT")  # market data from live broker
 
     book_sample_option_position(execution_broker)
 
