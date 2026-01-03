@@ -1,6 +1,7 @@
 # trading_bot/utils/trade_utils.py
 from tabulate import tabulate
 from datetime import datetime, timedelta
+from tastytrade.market_data import get_market_data_by_type
 from tastytrade.instruments import get_option_chain
 from tastytrade.instruments import Equity
 import logging
@@ -9,109 +10,89 @@ logger = logging.getLogger(__name__)
 
 def print_option_chain(underlying: str, broker_session):
     """
-    Print option chain in centered format:
-    - Selects expiry closest to 14 DTE with options.
-    - Shows 10 strikes below and above ATM.
-    - Centered table: Calls on left, Strike middle, Puts on right.
-    - Filters strikes with bid/ask > 0.
+    Print ATM option chain (4 strikes below + ATM + 4 above)
     """
-    try:
-        chain = get_option_chain(broker_session, underlying)
-        logger.info(f"Option chain fetched for {underlying}: {len(chain)} expiries available")
+    # Get chain + underlying price
+    chain = get_option_chain(broker_session, underlying)
+    equity = get_market_data_by_type(broker_session, equities=underlying)
+    underlying_price = float(equity[0].last) if equity else 420.0
+    
+    # Pick expiry closest to 14 DTE
+    today = datetime.now().date()
+    expiries = []
+    for exp_date, options in chain.items():
+        dte = (exp_date - today).days
+        if dte >= 0 and options:
+            expiries.append((exp_date, dte, options))
 
-        if not chain:
-            logger.warning(f"No option chain data for {underlying}")
-            return
+    if not expiries:
+        logger.warning("No valid expiries with options")
+        return
 
-        # Get underlying price using Equity (fixed API)
-        try:
-            equity = Equity.get_equity(broker_session, underlying)
-            quote = equity.get_quote(broker_session)
-            underlying_price = quote.last_price or quote.close_price or quote.bid_price or quote.ask_price or 0.0
-            logger.info(f"{underlying} current price: ${underlying_price:.2f}")
-        except Exception as e:
-            logger.warning(f"Underlying price fetch failed: {e} — using fallback")
-            underlying_price = 0  # Fallback, will use mid strike
+    selected_exp, dte, options = min(expiries, key=lambda x: abs(x[1] - 14))
+    logger.info(f"Selected expiry {selected_exp} (DTE {dte}) | Spot: ${underlying_price:.1f}")
 
-        # Find expiry closest to 14 DTE with options
-        target_date = datetime.now().date() + timedelta(days=14)
-        valid_expiries = []
-        for exp in chain:
-            options = chain[exp]
-            if options:
-                dte = (exp - datetime.now().date()).days
-                valid_expiries.append((exp, dte, options))
+    # Calls/Puts
+    calls = [o for o in options if o.option_type == "C"]
+    puts = [o for o in options if o.option_type == "P"]
+    all_strikes = sorted(set(float(o.strike_price) for o in calls + puts))
+    
+    # 🎯 4 below + ATM + 4 above
+    atm_index = min(range(len(all_strikes)), key=lambda i: abs(all_strikes[i] - underlying_price))
+    atm_strike = all_strikes[atm_index]
+    start_idx = max(0, atm_index - 4)
+    end_idx = min(len(all_strikes), atm_index + 5)
+    selected_strikes = all_strikes[start_idx:end_idx]
+    
+    logger.info(f"ATM: ${atm_strike:.1f} | Strikes: {[f'${s:.1f}' for s in selected_strikes]}")
 
-        if not valid_expiries:
-            logger.warning("No expiry with options found")
-            return
+    # 🚀 Symbols for SELECTED STRIKES ONLY
+    call_symbols = [c.symbol.strip() for c in calls if float(c.strike_price) in selected_strikes]
+    put_symbols = [p.symbol.strip() for p in puts if float(p.strike_price) in selected_strikes]
+    all_selected_symbols = list(set(call_symbols + put_symbols))
+    
+    logger.info(f"Fetching quotes for {len(all_selected_symbols)} symbols: {all_selected_symbols[:3]}...")
 
-        valid_expiries.sort(key=lambda x: abs(x[1] - 14))
-        selected_expiry, selected_dte, options = valid_expiries[0]
+    # Get quotes
+    quotes_list = get_market_data_by_type(broker_session, options=all_selected_symbols)
+    quotes = {q.symbol.strip(): q for q in quotes_list}
+    logger.info(f"Quotes matched: {len(quotes_list)}/{len(all_selected_symbols)}")
 
-        logger.info(f"Selected expiry: {selected_expiry} (DTE: {selected_dte} days)")
+    # Table
+    headers = ["Call Bid", "Call Ask", "Call Δ", "Strike", "Put Bid", "Put Ask", "Put Δ"]
+    rows = []
 
-        # Separate calls and puts
-        calls = sorted([o for o in options if o.option_type == 'call'], key=lambda x: x.strike_price)
-        puts = sorted([o for o in options if o.option_type == 'put'], key=lambda x: x.strike_price, reverse=True)
-
-        # All strikes
-        all_strikes = sorted(set(o.strike_price for o in options))
-
-        if underlying_price == 0:
-            underlying_price = all_strikes[len(all_strikes) // 2] if all_strikes else 0
-
-        # 10 below/above ATM
-        atm_index = min(range(len(all_strikes)), key=lambda i: abs(all_strikes[i] - underlying_price))
-        start = max(0, atm_index - 10)
-        end = min(len(all_strikes), atm_index + 11)
-        selected_strikes = all_strikes[start:end]
-
-        # Build table
-        rows = []
-        headers = [
-            "Call Bid", "Call Ask", "Call Delta", "Call Gamma", "Call Theta", "Call Vega",
-            "Strike",
-            "Put Bid", "Put Ask", "Put Delta", "Put Gamma", "Put Theta", "Put Vega"
+    for strike in selected_strikes:
+        call = next((c for c in calls if float(c.strike_price) == strike), None)
+        put = next((p for p in puts if float(p.strike_price) == strike), None)
+        
+        call_sym = call.symbol.strip() if call else None
+        put_sym = put.symbol.strip() if put else None
+        
+        call_q = quotes.get(call_sym) if call_sym else None
+        put_q = quotes.get(put_sym) if put_sym else None
+        
+        logger.debug(f"${strike:.1f}: C={call_sym}={call_q is not None}, P={put_sym}={put_q is not None}")
+        # logger.info(f"call_q:{call_q}, put_q:{put_q}")
+        
+        row = [
+            f"{float(call_q.bid):.2f}" if call_q and call_q.bid else "—",
+            f"{float(call_q.ask):.2f}" if call_q and call_q.ask else "—",            
+            f"{getattr(call_q, 'delta', 0):.3f}" if call_q else "—",
+            f"${strike:.1f}",
+            f"{float(put_q.bid):.2f}" if put_q and put_q.bid else "—",
+            f"{float(put_q.ask):.2f}" if put_q and put_q.ask else "—",
+            f"{getattr(put_q, 'delta', 0):.3f}" if put_q else "—",
         ]
-        rows.append(headers)
+        rows.append(row)
 
-        for strike in selected_strikes:
-            call = next((c for c in calls if c.strike_price == strike), None)
-            put = next((p for p in puts if p.strike_price == strike), None)
-
-            # Get quotes
-            call_bid = call.get_quote(broker_session).bid_price if call else 0.0
-            call_ask = call.get_quote(broker_session).ask_price if call else 0.0
-            put_bid = put.get_quote(broker_session).bid_price if put else 0.0
-            put_ask = put.get_quote(broker_session).ask_price if put else 0.0
-
-            # Skip if no bid/ask
-            if call_bid == 0 and call_ask == 0 and put_bid == 0 and put_ask == 0:
-                continue
-
-            call_greeks = call.greeks if call and call.greeks else None
-            put_greeks = put.greeks if put and put.greeks else None
-
-            rows.append([
-                f"{call_bid:.2f}" if call_bid > 0 else "-",
-                f"{call_ask:.2f}" if call_ask > 0 else "-",
-                f"{call_greeks.delta:.3f}" if call_greeks else "-",
-                f"{call_greeks.gamma:.4f}" if call_greeks else "-",
-                f"{call_greeks.theta:.2f}" if call_greeks else "-",
-                f"{call_greeks.vega:.2f}" if call_greeks else "-",
-                f"{strike:.1f}",
-                f"{put_bid:.2f}" if put_bid > 0 else "-",
-                f"{put_ask:.2f}" if put_ask > 0 else "-",
-                f"{put_greeks.delta:.3f}" if put_greeks else "-",
-                f"{put_greeks.gamma:.4f}" if put_greeks else "-",
-                f"{put_greeks.theta:.2f}" if put_greeks else "-",
-                f"{put_greeks.vega:.2f}" if put_greeks else "-",
-            ])
-
-        table = tabulate(rows, headers="firstrow", tablefmt="grid")
-        logger.info(f"\n{underlying} Option Chain (Expiry: {selected_expiry} | DTE: {dte})\n{table}")
-
-    except Exception as e:
-        logger.error(f"Option chain print failed for {underlying}: {e}")
-        raise
+    # Print
+    table = tabulate(rows, headers=headers, tablefmt="grid")
+    print(f"\n{underlying.upper()} | Exp: {selected_exp} | DTE: {dte} | Spot: ${underlying_price:.1f}")
+    print(table)
+    
+    # Butterfly suggestion
+    if len(selected_strikes) >= 5:
+        body_idx = len(selected_strikes) // 2
+        butterfly = selected_strikes[body_idx-1:body_idx+2]
+        print(f"\n💎 Suggested Butterfly: {'/'.join([f'${s:.0f}' for s in butterfly])}P")
