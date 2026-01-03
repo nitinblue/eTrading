@@ -17,8 +17,8 @@ risk:
   max_loss_per_trade: 0.002
   max_undefined_risk_allocation: 0.20
   reserved_margin_fraction: 0.20
-  stop_loss_level: -0.01
-  take_profit_level: 0.02
+  stop_loss_level: -0.1
+  take_profit_level: 0.5
   max_strategy_concentration: 0.25
   greek_targets:
     delta_min: -0.10
@@ -39,6 +39,20 @@ strategies:
       dry_run: true      # Set false for real trades
       profit_target_pct: 0.50  # Close at 50% profit
       stop_loss_multiplier: 2.0  # Close if loss = 2x credit
+  
+  wheel:
+    enabled: true
+    underlying: "MSFT"  # Spreadsheet input or list
+    min_iv_rank: 40  # For entry
+    max_dte: 45  # For options
+    put_delta_target: -0.16  # OTM put for CSP
+    call_delta_target: 0.16  # OTM call for CC
+    min_premium: 1.50  # Min received for sell
+    quantity: 1  # Contracts
+    dry_run: true  # Set false for real trades
+    state_file: "wheel_state.json"  # Persist state
+    risk_allocation: 0.05  # % of capital per trade
+    
   defined:
     iron_condor:
       name: "Iron Condor"

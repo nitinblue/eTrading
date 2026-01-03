@@ -186,6 +186,14 @@ def run_0dte_orb_strategy(broker):
     strategy = ORB0DTEStrategy(broker.session, config)
     strategy.run()
 
+def run_wheel_strategy(broker):
+    """Run the Wheel Strategy."""
+    from trading_bot.strategies.wheel import WheelStrategy
+    risk_manager = RiskManager(config.risk)
+    underlying = "MSFT"  # Or from config, or list for multiple wheels
+    strategy = WheelStrategy(broker.session, config, risk_manager, underlying)
+    strategy.run()
+
 def main():
     print("Starting trading bot...")
     global config
@@ -214,6 +222,9 @@ def main():
 
     # run_0dte_orb_strategy(execution_broker)
 
+    # Need to work on Polygon API keys and setup, read PendingTasks.txt
+    # run_wheel_strategy(execution_broker)
+    
     # sync_google_sheets(execution_broker)  # Uncomment to sync Sheets
     logger.info("Bot run complete.")
 
