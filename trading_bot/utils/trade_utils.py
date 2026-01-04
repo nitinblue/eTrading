@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from tastytrade.market_data import get_market_data_by_type
 from tastytrade.instruments import get_option_chain
 from tastytrade.instruments import Equity
+from trading_bot.order_model import UniversalOrder, OrderLeg, OrderAction, PriceEffect, OrderType
+from trading_bot.trade_execution import TradeExecutor
 import logging
 
 logger = logging.getLogger(__name__)
@@ -96,3 +98,101 @@ def print_option_chain(underlying: str, broker_session):
         body_idx = len(selected_strikes) // 2
         butterfly = selected_strikes[body_idx-1:body_idx+2]
         print(f"\n💎 Suggested Butterfly: {'/'.join([f'${s:.0f}' for s in butterfly])}P")
+
+
+
+logger = logging.getLogger(__name__)
+
+def sell_otm_put(underlying: str, broker_session, dte: int = 45, delta_target: float = -0.16, quantity: int = 1, dry_run: bool = True):
+    """Sell a slightly OTM put at ~45 DTE."""
+    chain = get_option_chain(broker_session, underlying)
+    target_date = datetime.now().date() + timedelta(days=dte)
+    expiries = sorted(chain.keys())
+    
+    # Find expiry with puts
+    selected_expiry = None
+    for exp in expiries:
+        puts = [o for o in chain[exp] if o.option_type == 'put']
+        if puts:
+            selected_expiry = exp
+            break
+    
+    if not selected_expiry:
+        logger.warning(f"No expiry with put options for {underlying}")
+        return {"status": "failed", "reason": "no_puts"}
+
+    logger.info(f"Using expiry with puts: {selected_expiry} (DTE: {(selected_expiry - datetime.now().date()).days})")
+
+    puts = sorted(puts, key=lambda x: x.greeks.delta if x.greeks else 0)
+
+    if not puts:
+        logger.warning("No puts found")
+        return {"status": "failed", "reason": "no_puts"}
+
+    # Find closest to delta_target
+    put = min(puts, key=lambda x: abs((x.greeks.delta if x.greeks else 0) - delta_target))
+
+    logger.info(f"Selling OTM put: {put.symbol} | Strike: {put.strike_price} | Delta: {put.greeks.delta if put.greeks else 'N/A'}")
+
+    legs = [OrderLeg(symbol=put.symbol, quantity=quantity, action=OrderAction.SELL_TO_OPEN)]
+
+    order = UniversalOrder(
+        legs=legs,
+        price_effect=PriceEffect.CREDIT,
+        order_type=OrderType.LIMIT,
+        limit_price=put.mid_price * 0.9 if hasattr(put, 'mid_price') else 0.0,
+        time_in_force="DAY",
+        dry_run=dry_run
+    )
+
+    executor = TradeExecutor(broker_session)
+    result = executor.execute(f"{underlying} OTM Put Sell", order)
+    logger.info(f"Sell Put Result: {result}")
+    return result
+
+def buy_atm_leap_call(underlying: str, broker_session, dte: int = 365, delta_target: float = 0.50, quantity: int = 1, dry_run: bool = True):
+    """Buy ATM LEAP call at ~1 year DTE."""
+    chain = get_option_chain(broker_session, underlying)
+    target_date = datetime.now().date() + timedelta(days=dte)
+    expiries = sorted(chain.keys())
+    
+    # Find expiry with calls
+    selected_expiry = None
+    for exp in expiries:
+        calls = [o for o in chain[exp] if o.option_type == 'call']
+        if calls:
+            selected_expiry = exp
+            break
+    
+    if not selected_expiry:
+        logger.warning(f"No expiry with call options for {underlying}")
+        return {"status": "failed", "reason": "no_calls"}
+
+    logger.info(f"Using furthest expiry with calls: {selected_expiry} (DTE: {(selected_expiry - datetime.now().date()).days})")
+
+    calls = sorted(calls, key=lambda x: x.greeks.delta if x.greeks else 0)
+
+    if not calls:
+        logger.warning("No calls found")
+        return {"status": "failed", "reason": "no_calls"}
+
+    # Find closest to delta_target
+    call = min(calls, key=lambda x: abs((x.greeks.delta if x.greeks else 0.5) - delta_target))
+
+    logger.info(f"Buying LEAP call: {call.symbol} | Strike: {call.strike_price} | Delta: {call.greeks.delta if call.greeks else 'N/A'}")
+
+    legs = [OrderLeg(symbol=call.symbol, quantity=quantity, action=OrderAction.BUY_TO_OPEN)]
+
+    order = UniversalOrder(
+        legs=legs,
+        price_effect=PriceEffect.DEBIT,
+        order_type=OrderType.LIMIT,
+        limit_price=call.mid_price * 1.1 if hasattr(call, 'mid_price') else 0.0,
+        time_in_force="DAY",
+        dry_run=dry_run
+    )
+
+    executor = TradeExecutor(broker_session)
+    result = executor.execute(f"{underlying} ATM LEAP Call Buy", order)
+    logger.info(f"Buy LEAP Call Result: {result}")
+    return result

@@ -1,5 +1,5 @@
 general:
-  execution_mode: "live"  # "mock", "paper", "live"
+  execution_mode: "paper"  # "mock", "paper", "live"
 
 broker:
   data:  # Always live for market data
@@ -120,6 +120,77 @@ strategies:
       min_iv_rank: 60
       max_dte: 45
       min_credit: 0.00  # Can be free
+
+technical:
+  # General settings
+  period: "2y"  # yfinance period for historical data (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)
+  interval: "1d"  # yfinance interval (1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo)
+
+  # Indicators to calculate (from TA-Lib)
+  indicators:
+    rsi:
+      period: 14
+      oversold: 30
+      overbought: 70
+    sma:
+      short: 50
+      long: 200
+    ema:
+      short: 12
+      long: 26
+    macd:
+      fast: 12
+      slow: 26
+      signal: 9
+    bollinger:
+      period: 20
+      std_dev: 2
+    volume:
+      ma_period: 20  # For volume MA
+      spike_threshold: 2.0  # Volume > 2x MA = spike
+    stoch:
+      fastk_period: 14
+      slowk_period: 3
+      slowd_period: 3
+      overbought: 80
+      oversold: 20
+    adx:
+      period: 14
+      threshold: 25  # >25 = strong trend
+
+  # Phase detection thresholds
+  phase_thresholds:
+    consolidation_rsi_low: 40
+    consolidation_rsi_high: 60
+    accumulation_rsi: 30
+    distribution_rsi: 70
+    trend_strength_adx: 25  # >25 = trending, <25 = ranging
+
+  # Support/Resistance/Order Block
+  support_resistance:
+    lookback: 20  # Days for rolling min/max
+    order_block_lookback: 50  # Days for mode (most frequent price)
+
+  # Signal thresholds for entry (bullish/bearish/neutral)
+  signals:
+    bullish:
+      rsi_max: 30  # RSI < 30 = oversold
+      sma_short_above_long: true  # SMA50 > SMA200
+      macd_cross_up: true
+      adx_above: 25
+    bearish:
+      rsi_min: 70  # RSI > 70 = overbought
+      sma_short_below_long: true
+      macd_cross_down: true
+      adx_above: 25
+    neutral:
+      rsi_range: [40, 60]
+      adx_below: 25  # Ranging market
+
+  # Volume Profile Settings
+  volume_profile:
+    bins: 20  # Number of price bins
+    lookback: 100  # Days for profile
 
 sheets: 
   sheet_id: ${GOOGLE_SHEET_ID} 
