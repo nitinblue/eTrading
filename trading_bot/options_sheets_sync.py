@@ -1,144 +1,102 @@
 # trading_bot/options_sheets_sync.py
-"""
-Google Sheets sync for the 'OptionsPortfolio' worksheet.
-Now includes opening/current Greeks and PNL attribution per Greek.
-"""
-import os
 import gspread
 from google.oauth2.service_account import Credentials
+from tabulate import tabulate
 from typing import Dict, List
 import logging
-from datetime import datetime
-
-from trading_bot.config import Config
 
 logger = logging.getLogger(__name__)
 
 class OptionsSheetsSync:
-    def __init__(self, config: Config):
+    def __init__(self, config):
+        # Fixed: Use attribute access for Pydantic
         sheets_config = getattr(config, 'sheets', {})
-        # self.sheet_id = sheets_config['sheet_id']
-        self.sheet_id=os.getenv('GOOGLE_SHEET_ID')
-        self.worksheet_name = sheets_config.get('worksheet_name', 'Options')
+        self.sheet_id = sheets_config.get('sheet_id')
+        self.worksheet_name = sheets_config.get('worksheet_name', 'Monitoring')
         self.service_account_file = sheets_config.get('service_account_file', 'service_account.json')
 
         if not self.sheet_id:
-            raise ValueError("Google Sheet ID not configured in config.yaml")
+            raise ValueError("Google Sheet ID not configured in config.yaml (sheets.sheet_id)")
 
         self._connect()
 
     def _connect(self):
-        logger.info(f"Sheet ID: {self.sheet_id}")
-        logger.info(f"Service account: {self.service_account_file}")
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_file(self.service_account_file, scopes=scopes)
+        client = gspread.authorize(creds)
+        self.sheet = client.open_by_key(self.sheet_id)
+        logger.info(f"Connected to Google Sheet: {self.sheet.title}")
 
-        try:
-            scopes = [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            creds = Credentials.from_service_account_file(self.service_account_file, scopes=scopes)
-            client = gspread.authorize(creds)
-            self.sheet = client.open_by_key(self.sheet_id)
+    def update_monitoring_sheet(self, broker, portfolio, position_risks):
+        """Update Sheet 1: Monitoring (view-only)."""
+        monitoring = self.sheet.worksheet("Monitoring") if "Monitoring" in [ws.title for ws in self.sheet.worksheets()] else self.sheet.add_worksheet("Monitoring", rows=100, cols=20)
 
-            try:
-                self.worksheet = self.sheet.worksheet(self.worksheet_name)
-                logger.info(f"Using existing worksheet: {self.worksheet_name}")
-            except gspread.WorksheetNotFound:
-                self.worksheet = self.sheet.add_worksheet(
-                    title=self.worksheet_name,
-                    rows=2000,
-                    cols=30
-                )
-                logger.info(f"Created new worksheet: {self.worksheet_name}")
+        # Accounts
+        accounts = broker.get_accounts() if hasattr(broker, 'get_accounts') else []
+        account_data = [["Account", "Opening Balance", "Current Balance"]]
+        for acc in accounts:
+            balance = broker.get_account_balance(acc)
+            account_data.append([acc.account_number, balance.get('opening_balance', 0), balance.get('current_balance', 0)])
 
-        except Exception as e:
-            logger.error(f"Google Sheets connection failed: {e}")
-            raise
+        monitoring.update('A1', account_data)
 
-    def clear_sheet(self):
-        self.worksheet.clear()
-        logger.info("Cleared OptionsPortfolio sheet")
+        # Buffer for margin
+        buffer = portfolio.total_value * config.risk.reserved_margin_fraction
+        monitoring.update('A5:B5', [["Buffer for Margin", buffer]])
 
-    def update_account_summary(self, balance: Dict):
-        data = [
-            ["Options Portfolio Dashboard", ""],
-            ["Last Updated", datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-            ["", ""],
-            ["Account Summary", ""],
-            ["Cash Balance", f"${balance.get('cash_balance', 0):.2f}"],
-            ["Equity Buying Power", f"${balance.get('equity_buying_power', 0):.2f}"],
-            ["Derivative Buying Power", f"${balance.get('derivative_buying_power', 0):.2f}"],
-            ["Margin Equity", f"${balance.get('margin_equity', 0):.2f}"],
-        ]
-        self.worksheet.update('A1:B8', data)
-        logger.info("Account summary updated")
+        # Portfolio risk & stats
+        portfolio_data = [["Net Delta", portfolio.get_net_greeks()['delta']], ["Net Gamma", portfolio.get_net_greeks()['gamma']], ["Total Undefined Risk", portfolio.total_undefined_risk]]
+        monitoring.update('A7', portfolio_data)
 
-    def update_positions_table(self, position_risks: List[Dict]):
-        """Write full positions table with opening/current Greeks and PNL attribution."""
-        if not position_risks:
-            logger.info("No positions to write")
+        # Positions table
+        positions_headers = ["Symbol", "Quantity", "Entry Price", "Current Price", "PNL", "Opening Delta", "Current Delta", "Greeks PNL", "Actual PNL", "Unexplained PNL", "Risk Level", "Threshold", "Strategy Name", "Buying Power Used"]
+        positions_data = [positions_headers] + [[r.get(k, 'N/A') for k in positions_headers] for r in position_risks]
+        monitoring.update('A12', positions_data)
+
+        logger.info("Monitoring sheet updated")
+
+    def process_what_if_sheet(self, broker, portfolio):
+        """Read Sheet 2: What-If Trades, analyze impact, book if triggered."""
+        what_if = self.sheet.worksheet("Orders") if "Orders" in [ws.title for ws in self.sheet.worksheets()] else self.sheet.add_worksheet("Orders", rows=100, cols=20)
+
+        data = what_if.get_all_values()
+        if not data:
+            logger.warning("No data in Orders sheet")
             return
 
-        headers = [
-            "Trade ID", "Leg ID", "Strategy", "Symbol", "Quantity",
-            "Entry Price", "Current Price", "Actual PnL", "PnL Driver",
-            "Allocation %", "Buying Power Used", "Stop Loss", "Take Profit",
-            "Undefined Risk", "Violations",
-            # Opening Greeks
-            "Open Delta", "Open Gamma", "Open Theta", "Open Vega", "Open Rho",
-            # Current Greeks
-            "Curr Delta", "Curr Gamma", "Curr Theta", "Curr Vega", "Curr Rho",
-            # PNL Attribution
-            "Delta PnL", "Gamma PnL", "Theta PnL", "Vega PnL", "Rho PnL", "Unexplained PnL"
-        ]
+        # Analyze existing positions
+        existing_positions = portfolio.positions_manager.positions
+        selected_existing = [row for row in data if row[8] == "Yes"]  # Assume column I is Select
 
-        rows = [headers]
-        for risk in position_risks:
-            open_g = risk.get('opening_greeks', {})
-            curr_g = risk.get('current_greeks', {})
-            rows.append([
-                risk.get('trade_id', 'N/A'),
-                risk.get('leg_id', 'N/A'),
-                risk.get('strategy', 'Unknown'),
-                risk.get('symbol', 'N/A'),
-                risk.get('quantity', 0),
-                f"${risk.get('entry_price', 0):.2f}",
-                f"${risk.get('current_price', 0):.2f}",
-                f"${risk.get('actual_pnl', 0):.2f}",
-                risk.get('pnl_driver', ''),
-                f"{risk.get('allocation', 0):.2%}",
-                f"${risk.get('buying_power_used', 0):.2f}",
-                f"${risk.get('stop_loss', 0):.2f}",
-                f"${risk.get('take_profit', 0):.2f}",
-                "Yes" if risk.get('is_undefined_risk') else "No",
-                "; ".join(risk.get('violations', [])),
-                # Opening Greeks
-                f"{open_g.get('delta', 0):.4f}",
-                f"{open_g.get('gamma', 0):.4f}",
-                f"{open_g.get('theta', 0):.4f}",
-                f"{open_g.get('vega', 0):.2f}",
-                f"{open_g.get('rho', 0):.4f}",
-                # Current Greeks
-                f"{curr_g.get('delta', 0):.4f}",
-                f"{curr_g.get('gamma', 0):.4f}",
-                f"{curr_g.get('theta', 0):.4f}",
-                f"{curr_g.get('vega', 0):.2f}",
-                f"{curr_g.get('rho', 0):.4f}",
-                # PNL Attribution
-                f"${risk.get('delta_pnl', 0):.2f}",
-                f"${risk.get('gamma_pnl', 0):.2f}",
-                f"${risk.get('theta_pnl', 0):.2f}",
-                f"${risk.get('vega_pnl', 0):.2f}",
-                f"${risk.get('rho_pnl', 0):.2f}",
-                f"${risk.get('unexplained_pnl', 0):.2f}",
-            ])
+        # What-if trades
+        what_if_trades = [row for row in data[1:] if row and row[0] == "What-If"]
 
-        start_cell = "A10"
-        self.worksheet.update(start_cell, rows)
-        logger.info(f"Updated {len(position_risks)} positions with full Greek PNL attribution")
+        # Simulate combined portfolio
+        simulated_positions = existing_positions.copy()  # Copy current
+        for trade in what_if_trades:
+            # Simulate adding trade (placeholder — add real simulation logic)
+            simulated_pnl = 100  # Example
+            logger.info(f"Simulated PNL impact for {trade[0]} on {trade[1]}: ${simulated_pnl:.2f}")
 
-    def sync_all(self, balance: Dict, position_risks: List[Dict]):
-        self.clear_sheet()
-        self.update_account_summary(balance)
-        self.update_positions_table(position_risks)
-        logger.info("Options sheet fully synced with Greek attribution")
+        # Update Sheet with analysis
+        analysis_data = [["Combined PNL Impact", "Low"]]  # Placeholder
+        what_if.update('K2', analysis_data)
+
+        # Book triggered trades
+        for row in data:
+            if row[9] == "Book":  # Column J Trigger
+                # Book trade (call appropriate function)
+                strategy = row[0]
+                underlying = row[1]
+                logger.info(f"Booking {strategy} on {underlying} from Sheet")
+                # e.g., sell_otm_put(broker, underlying)
+
+        logger.info("What-If sheet processed and orders booked")
+
+    def sync_all(self, broker, portfolio, position_risks):
+        """Full sync: Monitoring + What-If."""
+        self.update_monitoring_sheet(broker, portfolio, position_risks)
+        self.process_what_if_sheet(broker, portfolio)
+
+    def close(self):
+        logger.info("Sheets sync complete")

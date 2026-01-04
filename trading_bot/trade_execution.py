@@ -14,3 +14,5 @@ class TradeExecutor:
         logger.info(f"Executing {strategy_name} on account {account_id or 'default'}: {order.to_dict()}")
         response = self.broker.execute_order(order, account_id)
         return response
+    
+    

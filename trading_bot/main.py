@@ -20,7 +20,9 @@ from trading_bot.strategy_screener import StrategyScreener
 from trading_bot.utils.trade_utils import print_option_chain
 from trading_bot.strategies.orb_0dte import ORB0DTEStrategy
 from tastytrade.instruments import get_option_chain
+from trading_bot.trades import sell_otm_put, buy_atm_leap_call
 from tastytrade.account import Account
+
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -216,6 +218,84 @@ def run_wheel_strategy(broker):
     strategy = WheelStrategy(broker.session, config, risk_manager, underlying)
     strategy.run()
 
+def test_book_trades(broker):
+    """Book sample trades to test positions."""
+    from trading_bot.utils.trade_utils import sell_otm_put, buy_atm_leap_call
+
+    # Sell OTM put
+    sell_otm_put("MSFT", broker.session, dte=45, delta_target=-0.16, quantity=1, dry_run=True)
+
+    # Buy ATM LEAP call
+    buy_atm_leap_call("MSFT", broker.session, dte=365, delta_target=0.50, quantity=1, dry_run=True)
+    
+
+
+# New function
+def test_book_sample_trades(broker, dry_run=False):
+    logger.info("\n=== BOOKING HARDCODED TRADES (Paper Account) ===")
+    sell_otm_put(broker, dry_run=dry_run)
+    buy_atm_leap_call(broker, dry_run=dry_run)
+
+# In main.py — add these test functions
+
+def test_rsi_ma_signal():
+    from trading_bot.technical_analyzer import TechnicalAnalyzer
+
+    analyzer = TechnicalAnalyzer(config)
+
+    underlying = "MSFT"
+    data = analyzer.fetch_historical_data(underlying, period="2y")
+    if data.empty:
+        logger.error(f"No data for {underlying}")
+        return
+
+    indicators = analyzer.calculate_indicators(data)
+    phase = analyzer.detect_phases(data, indicators)
+    levels = analyzer.find_order_blocks_support_resistance(data)
+
+    logger.info(f"\n=== TECHNICAL ANALYSIS TEST: {underlying} ===")
+    logger.info(f"Current Price: ${data['Close'].iloc[-1]:.2f}" if not data.empty else "N/A")
+    logger.info(f"RSI (14): {indicators.get('rsi', 'N/A'):.2f}")
+    logger.info(f"SMA Short (50): ${indicators.get('sma_short', 'N/A'):.2f}")
+    logger.info(f"SMA Long (200): ${indicators.get('sma_long', 'N/A'):.2f}")
+    logger.info(f"Phase: {phase.upper()}")
+    logger.info(f"Support: ${levels['support']:.2f} | Resistance: ${levels['resistance']:.2f} | Order Block: ${levels['order_block']:.2f}")
+
+    bullish = analyzer.get_positive_signal(underlying, 'bullish')
+    bearish = analyzer.get_positive_signal(underlying, 'bearish')
+    neutral = analyzer.get_positive_signal(underlying, 'neutral')
+
+    logger.info(f"Signal — Bullish: {bullish} | Bearish: {bearish} | Neutral: {neutral}")
+
+def test_multiple_stocks():
+    from trading_bot.technical_analyzer import TechnicalAnalyzer
+
+    analyzer = TechnicalAnalyzer(config)
+
+    stocks = ["MSFT", "AAPL", "SPY", "TSLA", "NVDA"]
+    logger.info("\n=== MULTI-STOCK TECHNICAL SCAN ===")
+    for stock in stocks:
+        try:
+            bullish = analyzer.get_positive_signal(stock, 'bullish')
+            bearish = analyzer.get_positive_signal(stock, 'bearish')
+            neutral = analyzer.get_positive_signal(stock, 'neutral')
+            logger.info(f"{stock}: Bullish={bullish} | Bearish={bearish} | Neutral={neutral}")
+        except Exception as e:
+            logger.error(f"Scan failed for {stock}: {e}")
+
+def test_phase_detection():
+    from trading_bot.technical_analyzer import TechnicalAnalyzer
+
+    analyzer = TechnicalAnalyzer(config)
+
+    underlying = "AAPL"
+    data = analyzer.fetch_historical_data(underlying, period="1y")
+    indicators = analyzer.calculate_indicators(data)
+    phase = analyzer.detect_phases(data, indicators)
+
+    logger.info(f"\n=== PHASE DETECTION TEST: {underlying} ===")
+    logger.info(f"Detected Phase: {phase.upper()}")
+    
 def main():
     print("Starting trading bot...")
     global config
@@ -228,7 +308,10 @@ def main():
     # === Comprehensive Workflow — Comment out what you don't want ===
     list_all_accounts(execution_broker)
 
-    get_account_balances(data_broker)
+    get_account_balances(execution_broker)
+
+    # New test functions to book simple trades.
+    test_book_sample_trades(execution_broker,dry_run=False)
 
     fetch_sample_option_chain(data_broker, "MSFT")  # market data from live broker
 
@@ -241,16 +324,28 @@ def main():
     display_position_risk(execution_broker)
 
     display_portfolio_risk(execution_broker)
+    
+    
+    # Test technical analysis
+    # test_rsi_ma_signal()
+    # test_multiple_stocks()
+    # test_phase_detection()
 
-    run_strategy_screener(execution_broker)
+    # run_strategy_screener(execution_broker)
 
     # run_0dte_orb_strategy(execution_broker)
 
     # Need to work on Polygon API keys and setup, read PendingTasks.txt
     # run_wheel_strategy(execution_broker)
     
+    
     # sync_google_sheets(execution_broker)  # Uncomment to sync Sheets
     logger.info("Bot run complete.")
 
 if __name__ == "__main__":
     main()
+    
+    
+    
+
+    

@@ -52,3 +52,37 @@ You should see real-time trade data.
 ==================
 Polygon being used in wheel.py for few technical indicators.
 =================
+
+====================
+Information on Market Data souring..
+===========================
+Top Free Alternatives
+
+yfinance (Best Overall Free Option)
+Historical data: Unlimited (daily, intraday, adjusted prices, dividends, splits).
+Real-time: Delayed quotes.
+Python library: pip install yfinance.
+Example:Pythonimport yfinance as yf
+data = yf.download("MSFT", period="1y")
+print(data.tail())
+Pros: No API key needed, fast, reliable for most use cases.
+Cons: Unofficial (scrapes Yahoo), occasional rate limits.
+Recommended for you — easiest drop-in replacement.
+
+Alpha Vantage (Free Tier Strong)
+Historical + real-time (delayed).
+Free API key (500 requests/day).
+Python: pip install alpha-vantage.
+Good for fundamentals + technical indicators.
+
+Finnhub (Generous Free Tier)
+Real-time + historical + fundamentals.
+Free API key (60 calls/min).
+Python: pip install finnhub-python.
+
+EODHD (Free Plan Available)
+Global EOD historical data.
+Free tier: Limited calls, 1-year depth.
+
+Marketstack or Twelve Data (Free Tiers)
+EOD data, some intraday.

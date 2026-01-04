@@ -8,10 +8,12 @@
 """
 
 from datetime import datetime
+from logging import config
 from tastytrade.instruments import get_option_chain
 from tastytrade.dxfeed.quote import Quote
 from trading_bot.order_model import UniversalOrder, OrderLeg, OrderAction, PriceEffect, OrderType
 from trading_bot.trade_execution import TradeExecutor
+from trading_bot.technical_analyzer import TechnicalAnalyzer
 import logging
 
 logger = logging.getLogger(__name__)
@@ -111,6 +113,12 @@ class ORB0DTEStrategy:
             logger.info("0DTE ORB strategy disabled")
             return
 
+
+        analyzer = TechnicalAnalyzer(self.session, self.underlying)
+        if not analyzer.get_positive_signal(self.underlying, 'bullish'):  # For bullish entry
+            logger.info("No positive signal — skipping")
+            return
+    
         logger.info("Running 0DTE ORB strategy")
 
         or_high, or_low = self.calculate_opening_range()

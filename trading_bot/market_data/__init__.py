@@ -1,10 +1,16 @@
 # trading_bot/market_data/__init__.py
-"""Market data package."""
+from .tastytrade import TastytradeMarketData
+from trading_bot.config import Config
+import logging
 
-from .abstract_market_data import MarketDataProvider  # Expose the abstract class
+logger = logging.getLogger(__name__)
 
-# Optional: expose specific implementations
-# from .tastytrade_market_data import TastytradeMarketData
-# from .calculator import BlackScholesCalculator
+_instance = None
 
-__all__ = ['MarketDataProvider']
+def get_market_data_provider():
+    """Singleton — always live Tastytrade for market data."""
+    global _instance
+    if _instance is None:
+        config = Config.load('config.yaml')
+        _instance = TastytradeMarketData(config)
+    return _instance
