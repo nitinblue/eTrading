@@ -20,6 +20,7 @@ from trading_bot.utils.trade_utils import print_option_chain
 from trading_bot.strategies.orb_0dte import ORB0DTEStrategy
 from tastytrade.instruments import get_option_chain
 from trading_bot.trades import sell_otm_put, buy_atm_leap_call
+from trading_bot.agents import TechOrchestratorDude
 from tastytrade.account import Account
 
 
@@ -273,6 +274,13 @@ def test_phase_detection():
 
     logger.info(f"\n=== PHASE DETECTION TEST: {underlying} ===")
     logger.info(f"Detected Phase: {phase.upper()}")
+
+def test_agentic_system(broker, config):
+    from trading_bot.agents import TechOrchestratorDude
+
+    orchestrator = TechOrchestratorDude(config, broker.session)
+    result = orchestrator.run("Analyze MSFT for Wheel entry")
+    logger.info(f"Agentic System Result: {result}")
     
 def main():
     print("Starting trading bot...")
@@ -289,17 +297,17 @@ def main():
     get_account_balances(execution_broker)
 
     # New test functions to book simple trades.
-    test_book_sample_trades(execution_broker,dry_run=False)
+    #test_book_sample_trades(execution_broker,dry_run=False)
 
-    fetch_sample_option_chain(data_broker, "MSFT")  # market data from live broker
+    #fetch_sample_option_chain(data_broker, "MSFT")  # market data from live broker
 
     # book_sample_option_position(execution_broker)
 
-    read_current_positions(execution_broker)
+    #read_current_positions(execution_broker)
 
-    display_position_risk(execution_broker)
+    #display_position_risk(execution_broker)
 
-    display_portfolio_risk(execution_broker)
+    #display_portfolio_risk(execution_broker)
     
     
     # Test technical analysis
@@ -314,6 +322,7 @@ def main():
     # Need to work on Polygon API keys and setup, read PendingTasks.txt
     # run_wheel_strategy(execution_broker)
     
+    test_agentic_system(execution_broker, config)  # Add this
     
     # sync_google_sheets(execution_broker)  # Uncomment to sync Sheets
     logger.info("Bot run complete.")
