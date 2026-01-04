@@ -1,5 +1,5 @@
 general:
-  execution_mode: "live"  # "mock", "paper", "live"
+  execution_mode: "paper"  # "mock", "paper", "live"
 
 broker:
   data:  # Always live for market data

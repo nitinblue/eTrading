@@ -102,7 +102,7 @@ class TastytradeBroker:
             tt_order = NewOrder(
                 time_in_force=getattr(OrderTimeInForce, order.time_in_force),
                 order_type=getattr(OrderType, order.order_type.value),
-                legs=legs,
+                legs=order.legs,
                 price=Decimal(str(order.limit_price)) if order.limit_price else None
             )
 

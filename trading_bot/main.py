@@ -5,6 +5,7 @@ Each functionality is in its own def — comment out calls in main() to skip.
 Covers account listing, balances, option chain, trade booking, position reading, risk display, and Sheets sync.
 """
 
+from cmath import exp
 import logging
 from trading_bot.config import Config
 from trading_bot.broker_mock import MockBroker
@@ -106,8 +107,28 @@ def book_sample_option_position(broker):
     if not hasattr(broker, 'session') or broker.session is None:
         logger.info("Skipping butterfly booking (mock mode)")
         return
+def test_butterfly_sandbox(broker_session):
+    # From your chain
+    underlying = "MSFT"
+    exp = "2026-01-16"  # From print_option_chain
+    strikes = [470, 472, 475]  # From table
 
-    #book_butterfly("MSFT", broker.session, quantity=1, limit_credit=3.00, dry_run=True)
+    # Preview
+    print(f"Testing {underlying} {exp} $410/$420/$430P butterfly")
+
+    # 1. Dry run (validate symbols)
+    order = place_butterfly(broker_session, underlying, exp, strikes, quantity=1)
+    print(f"Order preview: {order}")
+
+    # 2. Actually submit (uncomment)
+    # order_id = broker_session.submit_order(order)
+    # print(f"Live paper order ID: {order_id}")
+
+    # 3. Check positions
+    positions = broker_session.get_positions()
+    print("Positions:", positions)
+
+    # book_butterfly("MSFT", broker.session, quantity=1, limit_credit=3.00, dry_run=True)
 
 def read_current_positions(broker):
     """Read and display current positions."""
@@ -211,6 +232,8 @@ def main():
     fetch_sample_option_chain(data_broker, "MSFT")  # market data from live broker
 
     # book_sample_option_position(execution_broker)
+    
+    test_butterfly_sandbox(execution_broker)
 
     read_current_positions(execution_broker)
 
