@@ -22,7 +22,7 @@ from trading_bot.strategy_screener import StrategyScreener
 from trading_bot.utils.trade_utils import print_option_chain
 from trading_bot.strategies.orb_0dte import ORB0DTEStrategy
 from tastytrade.instruments import get_option_chain
-from trading_bot.trades import sell_otm_put, buy_atm_leap_call
+from trading_bot.trades import sell_otm_put, buy_atm_leap_call,book_butterfly
 from trading_bot.agents import TechOrchestratorDude
 from tastytrade.account import Account
 
