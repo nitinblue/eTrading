@@ -1,4 +1,5 @@
 # trading_bot/trades.py
+from decimal import Decimal
 from trading_bot.order_model import UniversalOrder, OrderLeg, OrderAction, PriceEffect, OrderType
 from trading_bot.trade_execution import TradeExecutor
 import logging
@@ -7,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 def sell_otm_put(execution_broker, underlying: str = "MSFT", dte: int = 45, delta_target: float = -0.16, quantity: int = 1, dry_run: bool = False):
     """Hard-coded sell of MSFT Sep 18 2026 $470 Put."""
-    symbol = ".MSFT260918P00470000"
+    symbol = "MSFT  260918P00470000"
     logger.info(f"BOOKING: Selling put {symbol} | Qty: {quantity} | Dry Run: {dry_run}")
 
     legs = [OrderLeg(symbol=symbol, quantity=quantity, action=OrderAction.SELL_TO_OPEN)]
@@ -28,7 +29,7 @@ def sell_otm_put(execution_broker, underlying: str = "MSFT", dte: int = 45, delt
 
 def buy_atm_leap_call(execution_broker, underlying: str = "MSFT", dte: int = 365, delta_target: float = 0.50, quantity: int = 1, dry_run: bool = False):
     """Hard-coded buy of MSFT Sep 18 2026 $470 Call."""
-    symbol = ".MSFT260918C00470000"
+    symbol = "MSFT  260918C00470000"
     logger.info(f"BOOKING: Buying LEAP call {symbol} | Qty: {quantity} | Dry Run: {dry_run}")
 
     legs = [OrderLeg(symbol=symbol, quantity=quantity, action=OrderAction.BUY_TO_OPEN)]
@@ -125,3 +126,26 @@ def buy_atm_leap_call_actual(execution_broker, underlying: str = "MSFT", dte: in
     return result
 
 # Add more templates here later (iron condor, butterfly, wheel entry, etc.)
+def book_butterfly(session,preview, underlying: str, quantity: int = 1,max_debit: float = 1.00):
+    """
+    SUBMIT live paper order (use with caution!)
+    """        
+    logger.info(f"Booking butterfly for {underlying}")
+  
+    legs = [
+        preview[0].build_leg(Decimal(quantity), OrderAction.BUY_TO_OPEN),    # Wing 1
+        preview[1].build_leg(Decimal(quantity * 2), OrderAction.SELL_TO_OPEN),  # Body 2x
+        preview[2].build_leg(Decimal(quantity), OrderAction.BUY_TO_OPEN),    # Wing 2
+    ]
+    order =UniversalOrder(
+        legs=legs,
+        price_effect=PriceEffect.DEBIT,
+        order_type=OrderType.LIMIT,
+        limit_price=max_debit,
+        time_in_force="DAY",
+        dry_run=False
+    )
+    executor = TradeExecutor(session)
+    result = executor.execute(f"{underlying} Butterfly", order)
+    logger.info(f"Result: {result}")
+    return result
