@@ -1,4 +1,5 @@
 # trading_bot/options_sheets_sync.py
+import os
 import gspread
 from google.oauth2.service_account import Credentials
 from tabulate import tabulate
@@ -9,11 +10,14 @@ logger = logging.getLogger(__name__)
 
 class OptionsSheetsSync:
     def __init__(self, config):
+        risk_config = getattr(config, 'risk', {})
         # Fixed: Use attribute access for Pydantic
         sheets_config = getattr(config, 'sheets', {})
-        self.sheet_id = sheets_config.get('sheet_id')
+        # self.sheet_id = sheets_config.get('sheet_id')
+        self.sheet_id = os.getenv('GOOGLE_SHEET_ID')
         self.worksheet_name = sheets_config.get('worksheet_name', 'Monitoring')
         self.service_account_file = sheets_config.get('service_account_file', 'service_account.json')
+        self.risk_config = risk_config
 
         if not self.sheet_id:
             raise ValueError("Google Sheet ID not configured in config.yaml (sheets.sheet_id)")
@@ -28,30 +32,35 @@ class OptionsSheetsSync:
         logger.info(f"Connected to Google Sheet: {self.sheet.title}")
 
     def update_monitoring_sheet(self, broker, portfolio, position_risks):
+        logger.info(f"Updating Monitoring sheet...")
         """Update Sheet 1: Monitoring (view-only)."""
         monitoring = self.sheet.worksheet("Monitoring") if "Monitoring" in [ws.title for ws in self.sheet.worksheets()] else self.sheet.add_worksheet("Monitoring", rows=100, cols=20)
 
         # Accounts
-        accounts = broker.get_accounts() if hasattr(broker, 'get_accounts') else []
+        from tastytrade.account import Account
+        accounts = Account.get(broker.session)
         account_data = [["Account", "Opening Balance", "Current Balance"]]
-        for acc in accounts:
-            balance = broker.get_account_balance(acc)
-            account_data.append([acc.account_number, balance.get('opening_balance', 0), balance.get('current_balance', 0)])
+        for acc in accounts:          
+            balance = broker.get_account_balance()
+            account_data.append([acc.account_number, balance.get('cash_balance', 0), balance.get('margin_equity', 0)])
 
         monitoring.update('A1', account_data)
 
         # Buffer for margin
-        buffer = portfolio.total_value * config.risk.reserved_margin_fraction
+        buffer = portfolio.total_value * self.risk_config.get('reserve_margin_fraction',0.1)
         monitoring.update('A5:B5', [["Buffer for Margin", buffer]])
 
         # Portfolio risk & stats
-        portfolio_data = [["Net Delta", portfolio.get_net_greeks()['delta']], ["Net Gamma", portfolio.get_net_greeks()['gamma']], ["Total Undefined Risk", portfolio.total_undefined_risk]]
+        # portfolio_data = [["Net Delta", portfolio.get_net_greeks()['delta']], ["Net Gamma", portfolio.get_net_greeks()['gamma']], ["Total Undefined Risk", portfolio.total_undefined_risk]]
+        portfolio_data = [["Net Delta", portfolio.get_net_greeks()['delta']], ["Net Gamma", portfolio.get_net_greeks()['gamma']]]
+        logger.info(f"Portfolio Net Greeks: {portfolio_data}")
         monitoring.update('A7', portfolio_data)
 
         # Positions table
+        monitoring.update('A10', [["Positions Details"]])
         positions_headers = ["Symbol", "Quantity", "Entry Price", "Current Price", "PNL", "Opening Delta", "Current Delta", "Greeks PNL", "Actual PNL", "Unexplained PNL", "Risk Level", "Threshold", "Strategy Name", "Buying Power Used"]
         positions_data = [positions_headers] + [[r.get(k, 'N/A') for k in positions_headers] for r in position_risks]
-        monitoring.update('A12', positions_data)
+        monitoring.update('A11', positions_data)
 
         logger.info("Monitoring sheet updated")
 

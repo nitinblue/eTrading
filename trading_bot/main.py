@@ -250,7 +250,7 @@ def sync_google_sheets(broker):
     portfolio.update()
     capital = balance.get('equity', 100000.0)
     position_risks = risk_manager.list_positions_api(positions_manager.positions, capital)
-    sheets.sync_all(balance, position_risks)
+    sheets.sync_all(broker, portfolio, position_risks)
 
 def run_strategy_screener(broker):
     screener = StrategyScreener(config, broker.session)
@@ -401,7 +401,7 @@ def main():
     
     test_agentic_system(execution_broker, config)  # Add this
     
-    # sync_google_sheets(execution_broker)  # Uncomment to sync Sheets
+    sync_google_sheets(execution_broker)  # Uncomment to sync Sheets
     logger.info("Bot run complete.")
 
 if __name__ == "__main__":
