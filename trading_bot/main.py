@@ -5,12 +5,15 @@ Each functionality is in its own def — comment out calls in main() to skip.
 Covers account listing, balances, option chain, trade booking, position reading, risk display, and Sheets sync.
 """
 
+from cmath import exp
+from datetime import datetime
 import logging
 from trading_bot.config import Config
 from trading_bot.broker_mock import MockBroker
 from trading_bot.brokers.tastytrade_broker import TastytradeBroker
 from trading_bot.trade_execution import TradeExecutor
 from trading_bot.strategy import ShortPutStrategy
+from tastytrade.order import Leg
 from trading_bot.portfolio import Portfolio
 from trading_bot.positions import PositionsManager
 from trading_bot.risk import RiskManager
@@ -109,9 +112,80 @@ def book_sample_option_position(broker):
     if not hasattr(broker, 'session') or broker.session is None:
         logger.info("Skipping butterfly booking (mock mode)")
         return
+def test_butterfly_full(data_broker, execution_broker):
+    # print_option_chain("MSFT",data_broker.session)
+    
+    # From table output
+    exp = "2026-01-16"  # Copy from print_option_chain
+    strikes = [160.0, 165.0, 170.0]  # Copy from table
+    
+    print("\n" + "="*60)       
+    preview = place_butterfly_preview(execution_broker.session, "MSFT", exp, strikes)
+    
+    if preview:
+        # Uncomment for paper trade
+        result = submit_butterfly(execution_broker, "MSFT", exp, strikes)
+        print("✅ Ready for paper trade!{result}")
+        
+        # Check positions
+        positions = execution_broker.get_positions()
+        print(f"Current positions: {len([p for p in positions if 'MSFT' in p.instrument])}")
 
-    #book_butterfly("MSFT", broker.session, quantity=1, limit_credit=3.00, dry_run=True)
+def place_butterfly_preview(session, underlying, exp, strikes, quantity=1):
+    """
+    PREVIEW butterfly (no submission) - validates symbols/pricing
+    """
+    chain = get_option_chain(session, underlying)  
+    target_date = datetime.strptime(exp, "%Y-%m-%d").date()  
+  
+    if target_date not in chain:
+        print(f"No {exp} expiry")
+        return None
+    
+    options = chain[target_date]
+    
+    # Find legs
+    wing1_put = next((o for o in options if float(o.strike_price) == strikes[0] and o.option_type == "P"), None)
+    body_put = next((o for o in options if float(o.strike_price) == strikes[1] and o.option_type == "P"), None)
+    wing2_put = next((o for o in options if float(o.strike_price) == strikes[2] and o.option_type == "P"), None)
+    
+    if not all([wing1_put, body_put, wing2_put]):
+        print("Missing option symbols")
+        return None
+    
+    print(f"✅ Butterfly legs found: {wing1_put.symbol}", f"{body_put.symbol}", f"{wing2_put.symbol}")
+    # print(f"  Buy 1x {wing1_put.symbol} @ ${wing1_put.bid or 0:.2f}")
+    # print(f"  Sell 2x {body_put.symbol} @ ${body_put.bid or 0:.2f}")
+    # print(f"  Buy 1x {wing2_put.symbol} @ ${wing2_put.bid or 0:.2f}")
+    
+    # Theoretical debit (use quotes if available)
+    # debit = (float(wing1_put.bid or 0) + float(wing2_put.bid or 0) - 2 * float(body_put.bid or 0))
+    # print(f"📊 Est debit: ${debit:.2f}")       
+    return [wing1_put, body_put, wing2_put]
 
+def submit_butterfly(session, underlying, exp_date, strikes, quantity=1, max_debit=8.50):
+    """
+    SUBMIT live paper order (use with caution!)
+    """
+    preview = place_butterfly_preview(session.session, underlying, exp_date, strikes, quantity)    
+    if not preview:
+        return None
+    return book_butterfly(session,preview,underlying, quantity=1, max_debit=8.50)
+   
+    print("✅ PREVIEW OK - uncomment submit_butterfly for live paper trade")
+    return preview 
+    
+def read_all_orders(broker):
+    """Read and display all orders."""
+    orders = broker.get_all_orders()
+    logger.info("\n=== ALL ORDERS ===")
+    for order in orders:
+        logger.info(f"Order ID: {order['order_id']} | Status: {order['status']} | Created At: {order['updated_at']}")
+        logger.info(f"  Type: {order['order_type']} | Price Effect: {order['price_effect']} ")
+        logger.info(f"  Legs:")
+        for leg in order['legs']:
+            logger.info(f"    Symbol: {leg['symbol']} | Action: {leg['action']} | Quantity: {leg['quantity']}")
+        logger.info("---")
 def read_current_positions(broker):
     """Read and display current positions."""
     positions = broker.get_positions()
@@ -302,6 +376,9 @@ def main():
     #fetch_sample_option_chain(data_broker, "MSFT")  # market data from live broker
 
     # book_sample_option_position(execution_broker)
+    
+    test_butterfly_full(data_broker,execution_broker) ## working butterfly test
+    read_all_orders(execution_broker)
 
     #read_current_positions(execution_broker)
 

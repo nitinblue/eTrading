@@ -7,10 +7,10 @@ from typing import List, Optional, Dict, Any
 from tastytrade.order import PriceEffect  # Used if Tastytrade is active; can be replaced with custom enum
 
 class OrderAction(Enum):
-    BUY_TO_OPEN = "BUY_TO_OPEN"
-    BUY_TO_CLOSE = "BUY_TO_CLOSE"
-    SELL_TO_OPEN = "SELL_TO_OPEN"
-    SELL_TO_CLOSE = "SELL_TO_CLOSE"
+    BUY_TO_OPEN = "Buy to Open"
+    BUY_TO_CLOSE = "Buy to Close"
+    SELL_TO_OPEN = "Sell to Open"
+    SELL_TO_CLOSE = "Sell to Close"
 
 class OrderType(Enum):
     MARKET = "MARKET"

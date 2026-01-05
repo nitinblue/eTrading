@@ -1,6 +1,6 @@
 # trading_bot/trade_execution.py
 from typing import Optional, Dict
-from trading_bot.brokers.abstract_broker import Broker  # From new abstract file
+from trading_bot.brokers.tastytrade_broker import Broker  # From new abstract file
 from trading_bot.order_model import UniversalOrder  # Import from new file
 import logging
 
@@ -14,5 +14,3 @@ class TradeExecutor:
         logger.info(f"Executing {strategy_name} on account {account_id or 'default'}: {order.to_dict()}")
         response = self.broker.execute_order(order, account_id)
         return response
-    
-    

@@ -61,7 +61,7 @@ def print_option_chain(underlying: str, broker_session):
     logger.info(f"Quotes matched: {len(quotes_list)}/{len(all_selected_symbols)}")
 
     # Table
-    headers = ["Call Bid", "Call Ask", "Call Δ", "Strike", "Put Bid", "Put Ask", "Put Δ"]
+    headers = ["Symbol","Call Bid", "Call Ask", "Call Δ", "Strike", "Put Bid", "Put Ask", "Put Δ"]
     rows = []
 
     for strike in selected_strikes:
@@ -78,10 +78,11 @@ def print_option_chain(underlying: str, broker_session):
         # logger.info(f"call_q:{call_q}, put_q:{put_q}")
         
         row = [
+            f"{call_sym if call else '---'}",
             f"{float(call_q.bid):.2f}" if call_q and call_q.bid else "—",
             f"{float(call_q.ask):.2f}" if call_q and call_q.ask else "—",            
             f"{getattr(call_q, 'delta', 0):.3f}" if call_q else "—",
-            f"${strike:.1f}",
+            f"${strike:.1f}",           
             f"{float(put_q.bid):.2f}" if put_q and put_q.bid else "—",
             f"{float(put_q.ask):.2f}" if put_q and put_q.ask else "—",
             f"{getattr(put_q, 'delta', 0):.3f}" if put_q else "—",

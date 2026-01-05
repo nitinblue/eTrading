@@ -96,15 +96,17 @@ class TastytradeBroker:
         try:
             legs = []
             for leg in order.legs:
-                instrument = Option.get_option(self.session, leg.symbol)
-                legs.append(instrument.build_leg(Decimal(leg.quantity), getattr(OrderAction, leg.action.value)))
+                logger.info(f"Leg: {leg.symbol.strip()}")
+                # instrument = Option.get_option(self.session, "MSFT  260116P00410000")
+                # legs.append(instrument.build_leg(Decimal(leg.quantity), getattr(OrderAction, leg.action.value)))
 
             tt_order = NewOrder(
                 time_in_force=getattr(OrderTimeInForce, order.time_in_force),
                 order_type=getattr(OrderType, order.order_type.value),
-                legs=legs,
+                legs=order.legs,
                 price=Decimal(str(order.limit_price)) if order.limit_price else None
             )
+            logger.info(f"TT Order before price effect adjustment: {tt_order}")
 
             if tt_order.price is not None:
                 tt_order.price = abs(tt_order.price) if order.price_effect == PriceEffect.CREDIT else -abs(tt_order.price)
@@ -115,3 +117,34 @@ class TastytradeBroker:
         except Exception as e:
             logger.error(f"Order failed: {e}")
             return {"status": "failed", "error": str(e)}
+        
+    def get_all_orders(self, account_id: Optional[str] = None) -> List[Dict]:
+        if not self.session:
+            raise RuntimeError("Broker not connected.")
+        account = self._get_account(account_id)
+        orders = account.get_live_orders(self.session)
+        logger.info(f"Fetched {len(orders)} orders from account {account.account_number}{orders[0] if orders else ''}")
+        return [
+            {
+                "order_id": order.id,
+                "status": order.status,
+                "symbol": order.underlying_symbol,
+                # "quantity": order.quantity,
+                # "filled_quantity": order.filled_quantity,
+                "price": float(order.price or 0),
+                "order_type": order.order_type,
+                "price_effect": order.price,
+                "legs": [
+                    {
+                        "symbol": leg.symbol,
+                        "quantity": leg.quantity,
+                        "action": leg.action
+                    }
+                    for leg in order.legs
+                ],
+                "time_in_force": order.time_in_force,
+                "updated_at": order.updated_at.isoformat(),
+
+            }
+            for order in orders
+        ]
