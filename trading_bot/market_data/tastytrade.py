@@ -1,4 +1,5 @@
 # trading_bot/market_data/tastytrade.py
+from typing import Dict, List
 from .base import MarketDataProvider
 from tastytrade import Session
 from tastytrade.instruments import get_option_chain

@@ -70,7 +70,7 @@ def list_all_accounts(broker):
 
     try:
         from tastytrade.account import Account
-        accounts = Account.get_accounts(broker.session)
+        accounts = Account.get(broker.session)
         logger.info("\n=== ALL ACCOUNTS ===")
         for acc in accounts:
             logger.info(f"Account Number: {acc.account_number}")
