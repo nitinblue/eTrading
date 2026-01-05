@@ -4,3 +4,4 @@
 *.env.*
 /trading_bot/.env
 service_account.json
+/trading_bot/__pycache__
