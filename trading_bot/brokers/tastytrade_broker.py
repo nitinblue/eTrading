@@ -111,7 +111,7 @@ class TastytradeBroker:
             if tt_order.price is not None:
                 tt_order.price = abs(tt_order.price) if order.price_effect == PriceEffect.CREDIT else -abs(tt_order.price)
 
-            response = account.place_order(self.session, tt_order)
+            response = account.place_order(self.session, tt_order,order.dry_run)
             logger.info(f"Order placed on {account.account_number}")
             return {"status": "success", "details": str(response)}
         except Exception as e:
