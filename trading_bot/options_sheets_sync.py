@@ -69,6 +69,7 @@ class OptionsSheetsSync:
         what_if = self.sheet.worksheet("Orders") if "Orders" in [ws.title for ws in self.sheet.worksheets()] else self.sheet.add_worksheet("Orders", rows=100, cols=20)
 
         data = what_if.get_all_values()
+        logger.info(f"Processing What-If sheet with {len(data)-1} entries {data}")
         if not data:
             logger.warning("No data in Orders sheet")
             return
@@ -89,7 +90,7 @@ class OptionsSheetsSync:
 
         # Update Sheet with analysis
         analysis_data = [["Combined PNL Impact", "Low"]]  # Placeholder
-        what_if.update('K2', analysis_data)
+        what_if.update('J2', analysis_data)
 
         # Book triggered trades
         for row in data:

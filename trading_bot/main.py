@@ -171,10 +171,7 @@ def submit_butterfly(session, underlying, exp_date, strikes, quantity=1, max_deb
     if not preview:
         return None
     return book_butterfly(session,preview,underlying, quantity=1, max_debit=8.50)
-   
-    print("✅ PREVIEW OK - uncomment submit_butterfly for live paper trade")
-    return preview 
-    
+          
 def read_all_orders(broker):
     """Read and display all orders."""
     orders = broker.get_all_orders()
@@ -365,19 +362,17 @@ def main():
     data_broker = get_data_broker(config)        # Always live for data
     execution_broker = get_execution_broker(config)  # Configurable
 
-    # === Comprehensive Workflow — Comment out what you don't want ===
-    list_all_accounts(execution_broker)
-
-    get_account_balances(execution_broker)
+    # =
+    get_account_balances(data_broker)
 
     # New test functions to book simple trades.
-    #test_book_sample_trades(execution_broker,dry_run=False)
+    # test_book_sample_trades(execution_broker,dry_run=False)
 
-    #fetch_sample_option_chain(data_broker, "MSFT")  # market data from live broker
+    # fetch_sample_option_chain(data_broker, "MSFT")  # market data from live broker
 
     # book_sample_option_position(execution_broker)
     
-    test_butterfly_full(data_broker,execution_broker) ## working butterfly test
+    # test_butterfly_full(data_broker,execution_broker) ## working butterfly test
     read_all_orders(execution_broker)
 
     #read_current_positions(execution_broker)
