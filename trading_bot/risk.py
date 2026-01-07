@@ -1,4 +1,5 @@
 # trading_bot/risk.py
+from decimal import Decimal
 from typing import List, Dict
 from .positions import Position
 import logging
@@ -18,11 +19,11 @@ class RiskManager:
         self.greek_targets = self.config.get('greek_targets', {})
 
     def assess_position(self, position: Position, capital: float) -> Dict:
-        allocation = abs(position.quantity * position.current_price * 100) / capital if capital > 0 else 0
+        allocation = abs(Decimal(position.quantity) * Decimal(position.current_price) * 100) / Decimal(capital) if Decimal(capital) > 0 else 0
         pnl = position.calculate_pnl()
         pnl_driver = self._determine_pnl_driver(position)
         is_undefined_risk = 'undefined' in position.strategy.lower()
-        buying_power_used = allocation * capital
+        buying_power_used = Decimal(allocation) * Decimal(capital)
 
         violations = []
         if allocation > self.max_allocation:
@@ -89,11 +90,20 @@ class RiskManager:
         return ", ".join(drivers) or "unknown"
 
     def _aggregate_greeks(self, positions: List[Position]) -> Dict:
-        net = {'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0, 'rho': 0.0}
+        # net = {'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0, 'rho': 0.0}
+        # for p in positions:
+        #     for greek in net:
+        #         net[greek] += Decimal(p.greeks.get(greek, 0.0)) * Decimal(p.quantity)
+        # return net
+        net = {g: 0.0 for g in ['delta', 'gamma', 'theta', 'vega', 'rho']}
+    
         for p in positions:
-            for greek in net:
-                net[greek] += p.greeks.get(greek, 0.0) * p.quantity
+         qty = float(p.quantity)
+        for greek in net:
+            val = p.greeks.get(greek, 0.0) or 0.0
+            net[greek] += float(val) * qty
         return net
+
 
     def _check_greek_targets(self, net_greeks: Dict) -> List[str]:
         violations = []
@@ -109,5 +119,5 @@ class RiskManager:
         conc = {}
         for r in risks:
             strat = r['strategy']
-            conc[strat] = conc.get(strat, 0) + r['buying_power_used'] / capital if capital > 0 else 0
+            conc[strat] = conc.get(strat, 0) + Decimal(r['buying_power_used']) / Decimal(capital) if Decimal(capital) > 0 else 0
         return conc

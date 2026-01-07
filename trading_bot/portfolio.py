@@ -26,9 +26,10 @@ class Portfolio:
             logger.error(f"Risk assessment failed: {e}")
             raise
 
-    def get_net_greeks(self) -> Dict:
-        net = {'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0, 'rho': 0.0}
+    def get_net_greeks(self) -> Dict:       
+        net = {g: 0.0 for g in ['delta', 'gamma', 'theta', 'vega', 'rho']}        
         for p in self.positions_manager.positions:
+            qty = float(p.quantity)
             for greek in net:
-                net[greek] += p.greeks.get(greek, 0.0) * p.quantity
+                net[greek] += p.greeks.get(greek, 0.0) * qty
         return net

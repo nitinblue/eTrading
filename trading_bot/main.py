@@ -373,13 +373,13 @@ def main():
     # book_sample_option_position(execution_broker)
     
     # test_butterfly_full(data_broker,execution_broker) ## working butterfly test
-    read_all_orders(execution_broker)
+    read_all_orders(data_broker)
 
-    #read_current_positions(execution_broker)
+    read_current_positions(data_broker)
 
-    #display_position_risk(execution_broker)
+    # display_position_risk(data_broker)
 
-    #display_portfolio_risk(execution_broker)
+    # display_portfolio_risk(data_broker)
     
     
     # Test technical analysis
@@ -396,7 +396,7 @@ def main():
     
     test_agentic_system(execution_broker, config)  # Add this
     
-    sync_google_sheets(execution_broker)  # Uncomment to sync Sheets
+    sync_google_sheets(data_broker)  # Uncomment to sync Sheets
     logger.info("Bot run complete.")
 
 if __name__ == "__main__":

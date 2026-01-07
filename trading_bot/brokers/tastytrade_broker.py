@@ -66,7 +66,7 @@ class TastytradeBroker:
             {
                 "symbol": pos.symbol,
                 "quantity": pos.quantity,
-                "entry_price": float(pos.average_price or 0),
+                "entry_price": float(pos.average_open_price or 0),
                 "current_price": float(pos.mark_price or 0),
                 "greeks": pos.greeks.to_dict() if hasattr(pos, 'greeks') and pos.greeks else {}
             }

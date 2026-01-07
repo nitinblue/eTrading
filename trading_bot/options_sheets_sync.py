@@ -5,6 +5,7 @@ from google.oauth2.service_account import Credentials
 from tabulate import tabulate
 from typing import Dict, List
 import logging
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class OptionsSheetsSync:
         monitoring.update('A1', account_data)
 
         # Buffer for margin
-        buffer = portfolio.total_value * self.risk_config.get('reserve_margin_fraction',0.1)
+        buffer = float(portfolio.total_value) * float(self.risk_config.get('reserve_margin_fraction',0.1))
         monitoring.update('A5:B5', [["Buffer for Margin", buffer]])
 
         # Portfolio risk & stats
@@ -60,7 +61,7 @@ class OptionsSheetsSync:
         monitoring.update('A10', [["Positions Details"]])
         positions_headers = ["Symbol", "Quantity", "Entry Price", "Current Price", "PNL", "Opening Delta", "Current Delta", "Greeks PNL", "Actual PNL", "Unexplained PNL", "Risk Level", "Threshold", "Strategy Name", "Buying Power Used"]
         positions_data = [positions_headers] + [[r.get(k, 'N/A') for k in positions_headers] for r in position_risks]
-        monitoring.update('A11', positions_data)
+        monitoring.update('A11', positions_data)      
 
         logger.info("Monitoring sheet updated")
 
@@ -107,6 +108,107 @@ class OptionsSheetsSync:
         """Full sync: Monitoring + What-If."""
         self.update_monitoring_sheet(broker, portfolio, position_risks)
         self.process_what_if_sheet(broker, portfolio)
+        self.orders_to_excel(broker)
+        self.positions_to_excel(broker)
 
     def close(self):
         logger.info("Sheets sync complete")
+    
+    def orders_to_excel(self, broker):
+        # Get worksheet (gspread)
+        titles = [ws.title for ws in self.sheet.worksheets()]
+        if "Orders" in titles:
+            worksheet = self.sheet.worksheet("Orders")
+        else:
+            worksheet = self.sheet.add_worksheet("Orders", rows=100, cols=20)
+        logger.info(f"Orders sheet: {worksheet.title}")
+        # Get positions (your custom format)
+        orders_json = broker.get_all_orders()  # → list of dicts!
+        logger.info(f"Positions: {len(orders_json)} items {orders_json}")
+        if not orders_json:
+                logger.warning("No positions to export")
+                return
+        
+        # Your data is already list of dicts (not nested "data.items")
+        items = orders_json  # ← FIXED!
+        
+        # DataFrame
+        df = pd.DataFrame(items)
+    
+        # Convert numerics
+        num_cols = [
+            "quantity", "entry_price", "current_price"
+        ]
+        for col in num_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+    
+        # Rename
+        rename_map = {
+            "symbol": "option_symbol",
+            "entry_price": "avg_open_price",
+            "current_price": "mark_price",
+        }
+        df = df.rename(columns=rename_map)
+        
+        # Add computed columns
+        # df["notional"] = df["quantity"] * 100 * df["avg_open_price"]
+        # df["mark_value"] = df["quantity"] * 100 * df["mark_price"]
+        # df["unrealized_pnl"] = df["mark_value"] - df["notional"]
+    
+        # Write to gspread (list of lists)
+        headers = df.columns.tolist()
+        values = [headers] + df.fillna('').astype(str).values.tolist()
+        
+        worksheet.update(values=values, range_name="A8")
+        logger.info(f"✅ Updated Orders sheet: {len(items)} orders")
+    
+    def positions_to_excel(self, broker):
+        # Get worksheet (gspread)
+        titles = [ws.title for ws in self.sheet.worksheets()]
+        if "Positions" in titles:
+            worksheet = self.sheet.worksheet("Positions")
+        else:
+            worksheet = self.sheet.add_worksheet("Positions", rows=100, cols=20)
+        logger
+        # Get positions (your custom format)
+        positions_json = broker.get_positions()  # → list of dicts!
+        logger.info(f"Positions: {len(positions_json)} items")
+        if not positions_json:
+                logger.warning("No positions to export")
+                return
+        
+        # Your data is already list of dicts (not nested "data.items")
+        items = positions_json  # ← FIXED!
+        
+        # DataFrame
+        df = pd.DataFrame(items)
+    
+        # Convert numerics
+        num_cols = [
+            "quantity", "entry_price", "current_price"
+        ]
+        for col in num_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+    
+        # Rename
+        rename_map = {
+            "symbol": "option_symbol",
+            "entry_price": "avg_open_price",
+            "current_price": "mark_price",
+        }
+        df = df.rename(columns=rename_map)
+        
+        # Add computed columns
+        df["notional"] = df["quantity"] * 100 * df["avg_open_price"]
+        df["mark_value"] = df["quantity"] * 100 * df["mark_price"]
+        df["unrealized_pnl"] = df["mark_value"] - df["notional"]
+    
+        # Write to gspread (list of lists)
+        headers = df.columns.tolist()
+        values = [headers] + df.fillna('').astype(str).values.tolist()
+        
+        worksheet.update(values=values, range_name="A1")
+        logger.info(f"✅ Updated Options sheet: {len(items)} positions")
+        
