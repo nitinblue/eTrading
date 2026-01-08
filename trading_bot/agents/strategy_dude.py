@@ -1,44 +1,58 @@
-# trading_bot/agents/strategy_dude.py (update with ORBHandler)
+# trading_bot/agents/strategy_dude.py
 """
 StrategyDude: Suggests and models strategies.
-- Uses state machine for each strategy handler.
-- Registry for strategies (Wheel, ORB, etc.).
-- Collaborates with other agents via state.
+- Registry for multiple strategies (Wheel, ORB, etc.).
+- Each strategy has its own handler with state machine.
+- Safe dict access to avoid errors.
+- Returns suggestion dict always.
 """
 
-from transitions import Machine
+from typing import Dict
 import logging
-import json
 
 logger = logging.getLogger(__name__)
 
-def strategy_dude(state: Dict) -> Dict:
-    logger.info("StrategyDude: Suggesting strategy...")
-    underlying = state.get('underlying', 'MSFT')
-    strategy_type = state.get('strategy_type', 'wheel')
+# Import handlers (add more as needed)
+# from trading_bot.strategies.wheel_handler import WheelHandler
+# from trading_bot.strategies.orb_handler import ORBHandler
 
-    # Registry for strategies (expanded with ORB)
+def strategy_dude(state: Dict) -> Dict:
+    logger.info("StrategyDude: Processing strategy request...")
+    
+    # Safe defaults
+    underlying = state.get('underlying', 'MSFT')
+    strategy_type = state.get('strategy_type', 'wheel').lower()
+
+    # Registry for strategies
     registry = {
-        'wheel': WheelHandler(underlying),
-        'orb': ORBHandler(underlying),
-        # Add more: 'iron_condor': IronCondorHandler()
+        'wheel': WheelHandler,
+        'orb': ORBHandler,
+        # Add more: 'iron_condor': IronCondorHandler,
     }
 
-    handler = registry.get(strategy_type)
-    if not handler:
-        state['strategy_suggestion'] = {"error": "Unknown strategy"}
+    handler_class = registry.get(strategy_type)
+    if not handler_class:
+        logger.warning(f"Unknown strategy: {strategy_type}")
+        state['strategy_suggestion'] = {
+            "error": f"Unknown strategy '{strategy_type}'",
+            "available_strategies": list(registry.keys())
+        }
         return state
 
-    # Run strategy lifecycle
-    suggestion = handler.run(state)
+    # Create handler instance (each has its own state file)
+    try:
+        handler = handler_class(underlying)
+        suggestion = handler.run(state.copy())  # Use copy to avoid side effects
+    except Exception as e:
+        logger.error(f"Strategy handler {strategy_type} failed: {e}")
+        suggestion = {"error": str(e)}
 
-    # LLM hook (optional - integrate Grok API)
-    # from grok_api import Grok
-    # grok = Grok()
-    # reasoning = grok.reason("Is this a good ORB entry?", suggestion)
-    # suggestion['llm_reasoning'] = reasoning
+    # Ensure suggestion is always a dict
+    if not isinstance(suggestion, dict):
+        suggestion = {"raw_suggestion": suggestion}
 
     state['strategy_suggestion'] = suggestion
+    logger.info(f"Strategy suggestion for {underlying} ({strategy_type}): {suggestion}")
     return state
 
 # Existing WheelHandler (from previous)

@@ -36,6 +36,9 @@ class TastytradeBroker:
         self.is_paper = is_paper
         self.session: Optional[Session] = None
         self.accounts: Dict[str, Account] = {}
+        
+        # Connect immediately on creation
+        self.connect()
 
     def connect(self):
         try:

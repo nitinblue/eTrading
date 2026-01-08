@@ -25,7 +25,7 @@ from tastytrade.instruments import get_option_chain
 from trading_bot.trades import sell_otm_put, buy_atm_leap_call,book_butterfly
 from trading_bot.agents import TechOrchestratorDude
 from tastytrade.account import Account
-
+from trading_bot.technicals.technical_indicators import classify_regime
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -352,6 +352,16 @@ def test_agentic_system(broker, config):
     orchestrator = TechOrchestratorDude(config, broker.session)
     result = orchestrator.run("Analyze MSFT for Wheel entry")
     logger.info(f"Agentic System Result: {result}")
+
+    result = classify_regime("^GSPC")  # SPX
+    print(result)
+
+    # Example: Nasdaq
+    print(classify_regime("^NDX"))
+
+    # Example: Russell
+    print(classify_regime("^RUT"))
+    
     
 def main():
     print("Starting trading bot...")
@@ -373,9 +383,9 @@ def main():
     # book_sample_option_position(execution_broker)
     
     # test_butterfly_full(data_broker,execution_broker) ## working butterfly test
-    read_all_orders(data_broker)
+    # read_all_orders(data_broker)
 
-    read_current_positions(data_broker)
+    # read_current_positions(data_broker)
 
     # display_position_risk(data_broker)
 
@@ -394,7 +404,16 @@ def main():
     # Need to work on Polygon API keys and setup, read PendingTasks.txt
     # run_wheel_strategy(execution_broker)
     
-    test_agentic_system(execution_broker, config)  # Add this
+    # test_agentic_system(execution_broker, config)  # Add this
+    
+    result = classify_regime("^GSPC")  # SPX
+    print(result)
+
+    # Example: Nasdaq
+    print(classify_regime("^NDX"))
+
+    # Example: Russell
+    print(classify_regime("^RUT"))
     
     sync_google_sheets(data_broker)  # Uncomment to sync Sheets
     logger.info("Bot run complete.")
