@@ -10,7 +10,6 @@ MarketNewsDude: First agent in the workflow.
 from typing import Dict
 import yfinance as yf
 import logging
-from tabulate import tabulate 
 
 logger = logging.getLogger(__name__)
 
