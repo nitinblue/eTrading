@@ -1,54 +1,23 @@
-from decimal import Decimal
-from trading_bot.services.portfolio_builder import build_portfolio
+def portfolio_dude(state):
+    broker = state.broker
+    cfg = state.config
 
-from decimal import Decimal, InvalidOperation
-
-def safe_decimal(value, default=0):
-    """
-    Convert a value (string, int, float) to Decimal.
-    If conversion fails, returns default as Decimal.
-    """
+    # --------------------------------------------------
+    # Pull real values if available, else mock
+    # --------------------------------------------------
     try:
-        return Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError):
-        return Decimal(default)
-    
-def portfolio_dude(state: dict) -> dict:
-    broker = state["broker"]
-    config = state["config"]
+        acct = next(iter(broker.accounts.values()))
+        state.net_liquidation = float(acct.net_liquidation)
+        state.buying_power = float(acct.buying_power)
+    except Exception:
+        mock = cfg.get("mock", {})
+        state.net_liquidation = mock.get("net_liquidation", 100_000)
+        state.buying_power = mock.get("buying_power", 50_000)
 
-    positions = broker.get_positions()
-    portfolio = build_portfolio(positions)
-
-    #net_liq = Decimal(str(broker.get_net_liquidation()))
-    net_liq = Decimal("0")
-    net_liq += safe_decimal(portfolio.get("defined_used", 0))
-    net_liq += safe_decimal(portfolio.get("undefined_used", 0))
-
-    defined_cap = net_liq * safe_decimal(config["risk"]["defined_capital_pct"])
-    undefined_cap = net_liq * safe_decimal(config["risk"]["undefined_capital_pct"])
-
-    state["trades"] = portfolio["trades"]
-
-    state["defined_risk_used"] = portfolio["defined_used"]
-    state["undefined_risk_used"] = portfolio["undefined_used"]
-
-    state["defined_risk_available"] = max(
-        Decimal("0"), defined_cap - portfolio["defined_used"]
-    )
-    state["undefined_risk_available"] = max(
-        Decimal("0"), undefined_cap - portfolio["undefined_used"]
-    )
-
-    # Decide which bucket to work on
-    if state["defined_risk_available"] > 0:
-        state["active_risk_bucket"] = "defined"
-        state["risk_remaining"] = state["defined_risk_available"]
-    elif state["undefined_risk_available"] > 0:
-        state["active_risk_bucket"] = "undefined"
-        state["risk_remaining"] = state["undefined_risk_available"]
-    else:
-        state["active_risk_bucket"] = None
-        state["risk_remaining"] = Decimal("0")
+    # --------------------------------------------------
+    # Risk allocation
+    # --------------------------------------------------
+    state.defined_risk_limit = state.net_liquidation * 0.80
+    state.undefined_risk_limit = state.net_liquidation * 0.20
 
     return state

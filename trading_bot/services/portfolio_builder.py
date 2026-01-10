@@ -1,20 +1,23 @@
-from trading_bot.adapters.tastytrade_adapter import tasty_position_to_trade
 from decimal import Decimal
 
-def build_portfolio(tasty_positions):
-    trades = [
-        tasty_position_to_trade(pos)
-        for pos in tasty_positions
-    ]
-
+def build_portfolio(positions):
+    trades = []
     defined_used = Decimal("0")
     undefined_used = Decimal("0")
 
-    for t in trades:
-        if t.defined_risk:
-            defined_used += t.max_loss
-        else:
-            undefined_used += t.margin_requirement
+    for pos in positions:
+        # BE DEFENSIVE
+        try:
+            trade = pos  # or adapter
+            trades.append(trade)
+
+            if getattr(trade, "defined_risk", False):
+                defined_used += trade.max_loss
+            else:
+                undefined_used += getattr(trade, "margin_requirement", Decimal("0"))
+
+        except Exception:
+            continue
 
     return {
         "trades": trades,

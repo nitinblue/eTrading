@@ -1,55 +1,54 @@
-from typing import Dict
 from langgraph.graph import StateGraph, END
-
-from trading_bot.agents.state import TradingState
+from trading_bot.agents.agent_state import AgentState
 from trading_bot.agents.market_news_dude import market_news_dude
 from trading_bot.agents.portfolio_dude import portfolio_dude
-from trading_bot.agents.trader_dude import trader_dude
-from trading_bot.agents.risk_dude import risk_dude
-from trading_bot.agents.adjustment_dude import adjustment_dude
+from trading_bot.agents.risk_dude import trade_defined_risk_dude
+from trading_bot.agents.risk_dude import trade_undefined_risk_dude
+from trading_bot.agents.routing import route_after_portfolio
 
 
-def build_graph():
-    graph = StateGraph(TradingState)
+def run_trading_graph(broker, config):
+
+    # --------------------------------------------------
+    # Initial State
+    # --------------------------------------------------
+    state = AgentState(
+        broker=broker,
+        config=config
+    )
+
+    # --------------------------------------------------
+    # Graph Definition
+    # --------------------------------------------------
+    graph = StateGraph(AgentState)
 
     graph.add_node("market_news", market_news_dude)
     graph.add_node("portfolio", portfolio_dude)
-    graph.add_node("trader", trader_dude)
-    graph.add_node("risk", risk_dude)
-    graph.add_node("adjustment", adjustment_dude)
+    graph.add_node("defined_risk_trader", trade_defined_risk_dude)
+    graph.add_node("undefined_risk_trader", trade_undefined_risk_dude)
 
+    # --------------------------------------------------
+    # Edges
+    # --------------------------------------------------
     graph.set_entry_point("market_news")
 
     graph.add_edge("market_news", "portfolio")
-    graph.add_edge("portfolio", "trader")
-    graph.add_edge("trader", "risk")
 
     graph.add_conditional_edges(
-        "risk",
-        route_after_risk,
+        "portfolio",
+        route_after_portfolio,
         {
-            "loop": "portfolio",
-            "adjust": "adjustment",
-            "done": END,
-        },
+            "defined": "defined_risk_trader",
+            "undefined": "undefined_risk_trader",
+            "end": END
+        }
     )
 
-    graph.add_edge("adjustment", END)
+    graph.add_edge("defined_risk_trader", END)
+    graph.add_edge("undefined_risk_trader", END)
 
-    return graph.compile()
+    app = graph.compile()
 
+    final_state = app.invoke(state)
 
-def route_after_risk(state: Dict) -> str:
-    if state.get("risk_hard_stop"):
-        return "done"
-
-    if state.get("needs_adjustment"):
-        return "adjust"
-
-    if not state.get("proposed_trade"):
-        return "done"
-
-    if state.get("risk_remaining", 0) > 0:
-        return "loop"
-
-    return "done"
+    return final_state

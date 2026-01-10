@@ -8,8 +8,8 @@ Local forever loop runner.
 import time
 import logging
 from trading_bot.config import Config
-from trading_bot.agents.tech_orchestrator_dude import TechOrchestratorDude
-from trading_bot.brokers.tastytrade_broker import TastytradeBroker
+from trading_bot.agents.tech_orchestrator_dude import TechOrchestratectorDude
+from trading_bot.brokers.tastytrade_broker_old import TastytradeBroker
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

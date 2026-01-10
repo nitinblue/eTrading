@@ -14,6 +14,17 @@ class Broker(ABC):
         pass
 
     @abstractmethod
+    def get_positions(self) -> List[Dict]:
+        """Get current positions."""
+        pass
+
+    def response_mapper(self, raw_response: Dict) -> Dict:
+        """Map broker-specific response to standardized format (override in implementations)."""
+        return raw_response
+    
+    
+    '''
+     @abstractmethod
     def get_positions(self, account_id: Optional[str] = None) -> List[Dict]:
         """Get current positions."""
         pass
@@ -31,3 +42,4 @@ class Broker(ABC):
     def response_mapper(self, raw_response: Dict) -> Dict:
         """Map broker-specific response to standardized format (override in implementations)."""
         return raw_response
+    '''

@@ -1,10 +1,4 @@
-def market_news_dude(state: dict) -> dict:
-    """
-    Stub for now.
-    Later: earnings, CPI, FOMC, vol regime.
-    """
-
-    # Hardcode until data plugged in
-    state["market_regime"] = "neutral"
-
+def market_news_dude(state):
+    state.news_summary = "Neutral macro, elevated volatility"
+    state.market_regime = "RANGE_BOUND"
     return state

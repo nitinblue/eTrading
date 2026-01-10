@@ -1,31 +1,37 @@
-from decimal import Decimal
+def trade_defined_risk_dude(state):
+    remaining = state.defined_risk_limit - state.defined_risk_used
 
-def risk_dude(state: dict) -> dict:
-    trade = state.get("proposed_trade")
-
-    state["risk_hard_stop"] = False
-    state["needs_adjustment"] = False
-
-    if not trade:
+    if remaining <= 0:
         return state
 
-    bucket = state["active_risk_bucket"]
-    remaining = state["risk_remaining"]
+    trade = {
+        "strategy": "IRON_CONDOR",
+        "symbol": "SPY",
+        "max_loss": 1500,
+        "prob_profit": 0.68
+    }
 
-    # Defined risk
-    if bucket == "defined":
-        max_loss = trade["max_loss"]
-        if max_loss > remaining:
-            state["proposed_trade"] = None
-        else:
-            state["risk_remaining"] -= max_loss
+    if trade["max_loss"] <= remaining:
+        state.defined_risk_trades.append(trade)
+        state.defined_risk_used += trade["max_loss"]
 
-    # Undefined risk
-    else:
-        margin = trade["margin_required"]
-        if margin > remaining:
-            state["proposed_trade"] = None
-        else:
-            state["risk_remaining"] -= margin
+    return state
+
+def trade_undefined_risk_dude(state):
+    remaining = state.undefined_risk_limit - state.undefined_risk_used
+
+    if remaining <= 0:
+        return state
+
+    trade = {
+        "strategy": "CASH_SECURED_PUT",
+        "symbol": "AAPL",
+        "notional": 25_000,
+        "delta": 0.20
+    }
+
+    if trade["notional"] <= remaining:
+        state.undefined_risk_trades.append(trade)
+        state.undefined_risk_used += trade["notional"]
 
     return state
