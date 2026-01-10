@@ -1,4 +1,4 @@
-from domain.models import Trade
+from trading_bot.domain.models import Trade
 
 STRATEGY_MAP = {
     "IRON_CONDOR": "IRON_CONDOR",

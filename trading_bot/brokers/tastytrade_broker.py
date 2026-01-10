@@ -36,7 +36,7 @@ class TastytradeBroker:
         self.is_paper = is_paper
         self.session: Optional[Session] = None
         self.accounts: Dict[str, Account] = {}
-        
+        logging.info(f"Initializing in is_paper: {is_paper} mode")
         # Connect immediately on creation
         self.connect()
 
@@ -52,13 +52,25 @@ class TastytradeBroker:
         except Exception as e:
             logger.error(f"Tastytrade OAuth2 connection failed: {e}")
             raise
-
-    def _get_account(self, account_id: Optional[str]) -> Account:
+    def get_default_account(self) -> Optional[Account]:
+            """Get default or first account."""
+            if not self.accounts:
+                logger.warning("No accounts loaded")
+                return None
+            return list(self.accounts.values())[0]
+        
+    def _get_account_old(self, account_id: Optional[str]) -> Account:
         if not account_id:
             account_id = next(iter(self.accounts))
         if account_id not in self.accounts:
             raise ValueError(f"Account {account_id} not found.")
         return self.accounts[account_id]
+    
+    def _get_account(self, account_number: str = None) -> Optional[Account]:
+        """Get account object (default to first one)."""
+        if account_number:
+            return self.accounts.get(account_number)
+        return self.get_default_account() if self.accounts else None
 
     def get_positions(self, account_id: Optional[str] = None) -> List[Dict]:
         if not self.session:
@@ -86,7 +98,70 @@ class TastytradeBroker:
             "equity_buying_power": float(balances.equity_buying_power or 0),
             "margin_equity": float(balances.margin_equity or 0)
         }
+        
+    def get_realized_pnl(self, period: str = 'day',  account_id: Optional[str] = None) -> float:
+        """
+        Get realized PNL for a specific period.
+        - period: 'day', 'month', 'ytd', 'total' (or any supported key)
+        - Returns float
+        """
+        account = self._get_account(account_id)
+        if not account:
+            return 0.0
 
+        try:
+            balances = account.get_balances(self.session)
+            if not balances:
+                logger.warning("No balance data available")
+                return 0.0
+
+            key_mapping = {
+                'day': 'realized_day_pnl',
+                'month': 'realized_month_pnl',
+                'ytd': 'realized_ytd_pnl',
+                'total': 'realized_total_pnl'  # May not exist — check docs
+            }
+
+            key = key_mapping.get(period.lower(), 'realized_day_pnl')
+            realized = float(balances.get(key, 0.0))
+
+            logger.info(f"Realized PNL ({period}) for {account.account_number}: ${realized:.2f}")
+            return realized
+
+        except Exception as e:
+            logger.error(f"Failed to get realized PNL ({period}): {e}")
+            return 0.0
+        
+    def get_unrealized_pnl(self, account_id: Optional[str] = None) -> float:
+        """
+        Get total unrealized PNL from all open positions.
+        - Returns float (positive = profit, negative = loss)
+        - Use account_number to specify; defaults to first account
+        """
+        account = self._get_account(account_id)
+        if not account:
+            logger.warning("No account available for unrealized PNL")
+            return 0.0
+
+        try:
+            positions = account.get_positions(self.session)
+            if not positions or 'items' not in positions:
+                logger.info("No open positions found")
+                return 0.0
+
+            total_unrealized = 0.0
+            for pos in positions['items']:
+                # Unrealized PNL is usually in 'unrealized_pnl' or 'mark_to_market'
+                unrealized = float(pos.get('unrealized_pnl', 0.0))
+                total_unrealized += unrealized
+
+            logger.info(f"Unrealized PNL for {account.account_number}: ${total_unrealized:.2f}")
+            return total_unrealized
+
+        except Exception as e:
+            logger.error(f"Failed to get unrealized PNL: {e}")
+            return 0.0
+    
     def execute_order(self, order: UniversalOrder, account_id: Optional[str] = None) -> Dict:
         if not self.session:
             raise RuntimeError("Broker not connected.")

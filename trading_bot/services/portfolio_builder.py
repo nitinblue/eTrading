@@ -1,5 +1,5 @@
-from domain.portfolio import PortfolioState
-from adapters.tastytrade_adapter import tasty_position_to_trade
+from trading_bot.domain.portfolio import PortfolioState
+from trading_bot.adapters.tastytrade_adapter import tasty_position_to_trade
 
 def build_portfolio(tasty_positions, realized_pnl=0.0, unrealized_pnl=0.0):
     trades = [

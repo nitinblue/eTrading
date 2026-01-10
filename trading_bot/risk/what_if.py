@@ -1,6 +1,6 @@
 # risk/what_if.py
 from copy import deepcopy
-from risk.engine import evaluate_portfolio
+from trading_bot.risk.engine import evaluate_portfolio
 
 
 def what_if_add_trade(portfolio, new_trade, configs):

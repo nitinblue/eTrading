@@ -1,5 +1,5 @@
 # mocks/trades.py
-from domain.models import Trade
+from trading_bot.domain.models import Trade
 
 MOCK_TRADES = [
     Trade(

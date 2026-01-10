@@ -1,4 +1,4 @@
-from risk.engine import evaluate_portfolio
+from trading_bot.risk.engine import evaluate_portfolio
 
 def run_risk_check(portfolio, configs):
     result = evaluate_portfolio(portfolio, configs)

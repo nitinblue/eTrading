@@ -1,5 +1,5 @@
-from domain.models import Trade
-from risk.what_if import what_if_add_trade
+from trading_bot.domain.models import Trade
+from trading_bot.risk.what_if import what_if_add_trade
 
 def build_what_if_trade():
     return Trade(
