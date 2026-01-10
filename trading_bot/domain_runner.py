@@ -94,7 +94,7 @@ def main():
     portfolio = mockPortfolio
     # remove.
 
-    logger.info(f"Built portfolio with {len(portfolio.trades)} trades")
+    logger.info(f"Built portfolio with {len(portfolio)} trades")
     
     # 4️⃣ Run live risk check
     risk_snapshot = run_risk_check(portfolio, configs)

@@ -46,6 +46,38 @@ def portfolio_dude(state: Dict) -> Dict:
     # Fetch positions
     try:
         positions = broker.get_positions()
+
+        trades = []
+        exposure_by_symbol = {}
+        exposure_by_strategy = {}
+
+        for p in positions:
+            trade = {
+                "id": p["id"],
+                "symbol": p["symbol"],
+                "strategy": p["strategy"],
+                "risk_type": "DEFINED" if p["defined_risk"] else "UNDEFINED",
+                "max_loss": float(p["max_loss"]),
+                "credit": float(p.get("credit", 0)),
+                "delta": float(p.get("delta", 0)),
+                "dte": int(p.get("dte", 0)),
+            }
+
+            trades.append(trade)
+
+            exposure_by_symbol.setdefault(trade["symbol"], 0)
+            exposure_by_symbol[trade["symbol"]] += trade["max_loss"]
+
+            exposure_by_strategy.setdefault(trade["strategy"], 0)
+            exposure_by_strategy[trade["strategy"]] += trade["max_loss"]
+
+        state["portfolio"] = {
+            "trades": trades,
+            "exposure": {
+                "by_symbol": exposure_by_symbol,
+                "by_strategy": exposure_by_strategy,
+            }
+        }
     except Exception as e:
         logger.error(f"Positions fetch failed: {e}")
         positions = []
