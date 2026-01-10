@@ -1,40 +1,31 @@
-# trading_bot/agents/trader_dude.py
-"""
-TraderDude: Runs basket of strategies for current bucket.
-- Selects strategy based on market conditions (IV, greeks from analysis).
-- Identifies underlying.
-- Prints signal (for now).
-"""
+from decimal import Decimal
 
-from typing import Dict
-import logging
+def trader_dude(state: dict) -> dict:
+    """
+    Finds ONE opportunity per invocation.
+    """
 
-logger = logging.getLogger(__name__)
+    bucket = state.get("active_risk_bucket")
 
-# Simulated strategy basket
-DEFINED_STRATEGIES = ['iron_condor', 'butterfly', 'credit_spread']
-UNDEFINED_STRATEGIES = ['short_strangle', 'short_straddle']
-
-def trader_dude(state: Dict) -> Dict:
-    bucket = state.get('current_bucket')
-    if bucket not in ['defined', 'undefined']:
-        state['output'] = state.get('output', "") + "\nTrader: No bucket"
+    if not bucket:
+        state["proposed_trade"] = None
         return state
 
-    logger.info(f"TraderDude: Running for {bucket} risk bucket")
-
-    # Run basket for bucket
-    strategies = DEFINED_STRATEGIES if bucket == 'defined' else UNDEFINED_STRATEGIES
-
-    # Market conditions from analysis
-    iv = state.get('analysis', {}).get('iv_rank', 50)
-    selected = 'iron_condor' if iv > 50 and bucket == 'defined' else 'short_strangle' if bucket == 'undefined' else 'none'
-
-    if selected != 'none':
-        state['trade_signal'] = {"strategy": selected, "underlying": "MSFT", "bucket": bucket}
-        state['output'] = state.get('output', "") + f"\nSIGNAL: {selected} on MSFT ({bucket} bucket)"
+    # MOCKED trade – replace with real scanners
+    if bucket == "defined":
+        trade = {
+            "strategy": "IRON_CONDOR",
+            "symbol": "SPY",
+            "max_loss": Decimal("500"),
+            "defined_risk": True,
+        }
     else:
-        state['output'] = state.get('output', "") + "\nNo signal"
+        trade = {
+            "strategy": "CASH_SECURED_PUT",
+            "symbol": "AAPL",
+            "margin_required": Decimal("3000"),
+            "defined_risk": False,
+        }
 
-    # After trader, go back to portfolio for next bucket
+    state["proposed_trade"] = trade
     return state

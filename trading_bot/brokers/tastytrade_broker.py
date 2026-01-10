@@ -42,6 +42,8 @@ class TastytradeBroker:
 
     def connect(self):
         try:
+            logger.info(f"Just before connecting self.client_secret: {self.client_secret} self.refresh_token: {self.refresh_token} {'PAPER' if self.is_paper else 'LIVE'} via OAuth2")
+
             # Latest SDK: positional arguments
             self.session = Session(self.client_secret, self.refresh_token, is_test=self.is_paper)
             logger.info(f"Connected to Tastytrade {'PAPER' if self.is_paper else 'LIVE'} via OAuth2")
