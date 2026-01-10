@@ -5,6 +5,8 @@ from trading_bot.config_folder.loader import load_all_configs
 from trading_bot.services.portfolio_builder import build_portfolio
 from trading_bot.services.risk_service import run_risk_check
 from trading_bot.services.what_if_service import run_what_if, build_what_if_trade
+from trading_bot.domain.models import Trade
+
 
 # remove later and connect to brokers.broker_factory.create_broker
 from trading_bot.brokers.tastytrade_broker import TastytradeBroker
@@ -48,6 +50,50 @@ def main():
         unrealized_pnl=broker.get_unrealized_pnl('day')
     )
     
+    mockPortfolio = build_portfolio(
+        [
+            Trade(
+                trade_id="IC1",
+                symbol="SPY",
+                strategy="IRON_CONDOR",
+                risk_type="DEFINED",
+                credit=350,
+                max_loss=1650,
+                delta=5,
+                dte=45,
+                sector="INDEX"
+            ),
+            Trade(
+                trade_id="CSP1",
+                symbol="AAPL",
+                strategy="CSP",
+                risk_type="UNDEFINED",
+                credit=420,
+                max_loss=4800,      # modeled
+                delta=-25,
+                dte=38,
+                sector="TECH"
+            ),
+            Trade(
+                trade_id="VERT1",
+                symbol="MSFT",
+                strategy="VERTICAL",
+                risk_type="DEFINED",
+                credit=180,
+                max_loss=820,
+                delta=18,
+                dte=30,
+                sector="TECH",
+            ),
+        ],
+        realized_pnl=0,
+        unrealized_pnl=0
+    )
+    
+    # remove later temp hack to use mock portfolio for testing
+    portfolio = mockPortfolio
+    # remove.
+
     logger.info(f"Built portfolio with {len(portfolio.trades)} trades")
     
     # 4️⃣ Run live risk check

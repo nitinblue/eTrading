@@ -23,5 +23,6 @@ class Trade:
     max_loss: float           # defined OR modeled
     delta: float
     dte: int
-
     sector: str
+    strike: float = 0.0    # optional, used for modeling
+    atr: float = 0.0      # optional, used for modeling

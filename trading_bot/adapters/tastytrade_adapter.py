@@ -13,10 +13,10 @@ def tasty_position_to_trade(position) -> Trade:
     position = tastytrade position object (mocked shape)
     """
 
-    strategy = STRATEGY_MAP[position.strategy_type]
+    strategy = STRATEGY_MAP[position.strategy]
 
     # === MAX LOSS MODELING ===
-    if position.defined_risk:
+    if position.risk_type == "DEFINED":
         max_loss = position.max_loss
         risk_type = "DEFINED"
     else:
@@ -24,13 +24,13 @@ def tasty_position_to_trade(position) -> Trade:
         risk_type = "UNDEFINED"
 
     return Trade(
-        trade_id=position.id,
+        trade_id=position.trade_id,
         symbol=position.symbol,
         strategy=strategy,
         risk_type=risk_type,
-        credit=position.credit_received,
+        credit=position.credit,
         max_loss=max_loss,
-        delta=position.net_delta,
+        delta=position.delta,
         dte=position.dte,
         sector=position.sector or "UNKNOWN"
     )
@@ -41,11 +41,11 @@ def model_undefined_risk(position) -> float:
     Can be replaced later with ATR / vol based model.
     """
 
-    if position.strategy_type == "CSP":
+    if position.strategy == "CSP":
         stop_price = position.strike - (1.5 * position.atr)
         return max(0, (position.strike - stop_price) * 100)
 
-    if position.strategy_type == "STRANGLE":
-        return position.credit_received * 4
+    if position.strategy == "STRANGLE":
+        return position.credit * 4
 
-    return position.credit_received * 3
+    return position.credit * 3

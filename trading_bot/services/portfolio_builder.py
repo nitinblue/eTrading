@@ -5,7 +5,7 @@ def build_portfolio(tasty_positions, realized_pnl=0.0, unrealized_pnl=0.0):
     trades = [
         tasty_position_to_trade(pos)
         for pos in tasty_positions
-        if pos.is_open
+        #if pos.is_open
     ]
 
     return PortfolioState(
