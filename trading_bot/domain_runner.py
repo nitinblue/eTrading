@@ -1,8 +1,12 @@
 import os
 import logging
-from trading_bot.config_folder.config_loader import load_yaml_with_env
+import time
 from trading_bot.brokers.tastytrade_broker import TastytradeBroker
-from trading_bot.agents.tech_orchestrator_dude import build_trading_graph
+from trading_bot.domain.state import TradingState
+from trading_bot.agents.portfolio_dude import portfolio_dude
+from trading_bot.agents.risk_dude import risk_dude
+from trading_bot.agents.trader_dude import trader_dude
+from trading_bot.config_folder.config_loader import load_yaml_with_env
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,38 +25,25 @@ def main():
 
     broker = TastytradeBroker(broker_cfg)
 
+    account_id = broker.get_account(broker_cfg)
+
     logger.info(f"Connected to Tastytrade | Accounts: {broker.get_accounts()}")
+    
   # -------------------------------------------------
     # INITIAL SHARED STATE
     # -------------------------------------------------
-    state = {
-        "broker": broker,
-        "config": broker_cfg,
-        "risk_usage": {},
-        "trade_ideas": [],
-        "ranked_trades": [],
-        "adjustments": [],
-        "news_summary": None,
-    }
+   # Create orchestrator (graph)
+   
+    state = TradingState(
+    broker_name="TASTYTRADE",
+    account_id=account_id
+    )
 
-    # -------------------------------------------------
-    # ORCHESTRATION
-    # -------------------------------------------------
-    graph = build_trading_graph()
-    final_state = graph.invoke(state)
+    state = portfolio_dude(state, broker)
+    state = risk_dude(state)
+    state = trader_dude(state)
 
-    # -------------------------------------------------
-    # OUTPUT (TEMPORARY)
-    # -------------------------------------------------
-    logger.info("==== FINAL TRADE PLAN ====")
-    #for trade in final_state.get("ranked_trades", []):
-        #logger.info(trade)
-
-    #logger.info("==== ADJUSTMENT SUGGESTIONS ====")
-    #for adj in final_state.get("adjustments", []):
-        #logger.info(adj)
-
-    logger.info("🏁 Trading Bot finished successfully")
+    print("\n✅ Graph cycle completed cleanly")
 
 if __name__ == "__main__":
     main()

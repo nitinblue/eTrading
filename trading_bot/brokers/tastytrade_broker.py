@@ -49,6 +49,13 @@ class TastytradeBroker:
     # ------------------------------------------------------------------
     # SAFE ACCESSORS (never throw)
     # ------------------------------------------------------------------
+    def get_default_account(self) -> str:
+        if not self.accounts:
+            raise RuntimeError("No Tastytrade accounts loaded")
+
+        return next(iter(self.accounts.keys()))
+
+
     def get_accounts(self):
         """
         Returns list of account IDs.

@@ -1,31 +1,21 @@
-def init_state():
-    return {
-        # Global
-        "broker": None,
-        "accounts": [],
-        "config": {},
+from dataclasses import dataclass, field
+from typing import Dict, Any, List
+from trading_bot.domain.positions import Position
 
-        # Market context
-        "market_regime": None,
-        "news_summary": None,
 
-        # Portfolio
-        "portfolio_snapshot": {},
-        "portfolio_performance": {},
+@dataclass
+class TradingState:
+    broker_name: str
+    account_id: str
+    broker: Any
 
-        # Risk
-        "risk_limits": {},
-        "risk_usage": {},
-        "risk_report": {},
+    # 👇 owned & populated by portfolio_dude
+    portfolio_config: Dict[str, Any] = field(default_factory=dict)
+    portfolio_metrics: Dict[str, float] = field(default_factory=dict)
 
-        # Trades
-        "trade_ideas": [],
-        "validated_trades": [],
-        "executed_trades": [],
+    positions: List[Position] = field(default_factory=list)
 
-        # Adjustments
-        "adjustments": [],
+    # 👇 produced by risk_dude
+    risk_report: Dict[str, Any] = field(default_factory=dict)
 
-        # Control flags
-        "can_trade": True,
-    }
+    messages: List[str] = field(default_factory=list)

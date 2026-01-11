@@ -1,68 +1,61 @@
+import os
 import logging
-from trading_bot.domain.models import RiskType
-from trading_bot.agents.trader_dude import trader_dude
+from trading_bot.config_folder.config_loader import load_yaml_with_env
 
 logger = logging.getLogger(__name__)
 
 
-def portfolio_dude(state: dict):
+def portfolio_dude(state):
     """
-    Portfolio Manager Agent.
-    Decides if trading is allowed and delegates to traders.
+    Portfolio Manager:
+    - Loads portfolio / risk config
+    - Pulls positions from broker
+    - Computes portfolio-level metrics
     """
 
-    broker = state["broker"]
-    config = state["config"]
-
-    state.setdefault("risk_usage", {})
-
-    # hardcoded for now, revisit later
-    defined_pct = 0.8 #config["risk"]["defined_capital_pct"]
-    undefined_pct = 0.2 #config["risk"]["undefined_capital_pct"]
-
-    for account_id in broker.get_accounts():
-
-        net_liq = broker.get_net_liquidation(account_id)
-        buying_power = broker.get_buying_power(account_id)
-
-        defined_limit = net_liq * defined_pct
-        undefined_limit = net_liq * undefined_pct
-
-        used_defined = state["risk_usage"].get(
-            (account_id, RiskType.DEFINED), 0
-        )
-        used_undefined = state["risk_usage"].get(
-            (account_id, RiskType.UNDEFINED), 0
+    # -----------------------------
+    # Load portfolio config ONCE
+    # -----------------------------
+    if not state.portfolio_config:
+        base_dir = os.path.dirname(
+            os.path.dirname(os.path.dirname(__file__))
         )
 
-        defined_left = max(0, defined_limit - used_defined)
-        undefined_left = max(0, undefined_limit - used_undefined)
-
-        logger.info(
-            f"[Portfolio] {account_id} | "
-            f"DefinedLeft={defined_left:.2f} | "
-            f"UndefinedLeft={undefined_left:.2f}"
+        cfg_path = os.path.join(
+            base_dir,
+            "trading_bot",
+            "config_folder",
+            "portfolio.yaml"  # 👈 use EXISTING file
         )
 
-        if defined_left > 0:
-            trader_dude(
-                state,
-                broker,
-                account_id,
-                RiskType.DEFINED,
-                defined_left,
-            )
+        state.portfolio_config = load_yaml_with_env(cfg_path)
+        logger.info("📘 Portfolio config loaded")
 
-        if undefined_left > 0:
-            trader_dude(
-                state,
-                broker,
-                account_id,
-                RiskType.UNDEFINED,
-                undefined_left,
-            )
+    broker = state.broker
+    account_id = state.account_id
+
+    # -----------------------------
+    # Pull live positions
+    # -----------------------------
+    positions = broker.get_positions(account_id)
+    state.positions = positions
+
+    # -----------------------------
+    # Basic portfolio metrics
+    # -----------------------------
+    net_liq = broker.get_net_liquidation(account_id)
+    buying_power = broker.get_buying_power(account_id)
+
+    state.portfolio_metrics = {
+        "net_liquidation": net_liq,
+        "buying_power": buying_power,
+        "num_positions": len(positions),
+    }
+
+    logger.info(
+        f"[Portfolio] NetLiq={net_liq:.2f}, "
+        f"BP={buying_power:.2f}, "
+        f"Positions={len(positions)}"
+    )
 
     return state
-
-
-print("✅ portfolio_dude module loaded")

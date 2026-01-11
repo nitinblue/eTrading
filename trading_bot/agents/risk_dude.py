@@ -1,42 +1,28 @@
-def trade_defined_risk(state):
-    
-    # hardcoded for testing revisit later
-    remaining = 1000.0 
-    #remaining = state["defined_risk_limit"] - state["defined_risk_used"]
+import logging
+from trading_bot.domain.state import TradingState
 
-    if remaining <= 0:
-        return state
+logger = logging.getLogger(__name__)
 
-    trade = {
-        "strategy": "IRON_CONDOR",
-        "symbol": "SPY",
-        "max_loss": 1500,
-        "prob_profit": 0.68
+
+def risk_dude(state: TradingState):
+    logger.info("⚠️ RiskDude: Assessing portfolio risk")
+
+    total_delta = sum(p.delta or 0 for p in state.positions)
+    total_pnl = sum(p.unrealized_pnl for p in state.positions)
+
+    state.portfolio_metrics = {
+        "total_delta": total_delta,
+        "unrealized_pnl": total_pnl
     }
 
-    if trade["max_loss"] <= remaining:
-        state["defined_risk_trades"].append(trade)
-        state["defined_risk_used"] += trade["max_loss"]
-
-    return state
-
-def trade_undefined_risk(state):
-    # hardcoded for testing revisit later
-    remaining = 1000.0 
-    #remaining = state["undefined_risk_limit"] - state["undefined_risk_used"]
-
-    if remaining <= 0:
-        return state
-
-    trade = {
-        "strategy": "CASH_SECURED_PUT",
-        "symbol": "AAPL",
-        "notional": 25_000,
-        "delta": 0.20
+    state.risk_report = {
+        "delta_risk": "HIGH" if abs(total_delta) > 500 else "OK",
+        "pnl_status": "LOSS" if total_pnl < 0 else "PROFIT"
     }
 
-    if trade["notional"] <= remaining:
-        state["undefined_risk_trades"].append(trade)
-        state["undefined_risk_used"] += trade["notional"]
+    print("\n=== RISK REPORT ===")
+    for k, v in state.risk_report.items():
+        print(f"{k}: {v}")
 
+    state.messages.append("Risk evaluated")
     return state
