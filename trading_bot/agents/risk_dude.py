@@ -1,5 +1,8 @@
-def trade_defined_risk_dude(state):
-    remaining = state.defined_risk_limit - state.defined_risk_used
+def trade_defined_risk(state):
+    
+    # hardcoded for testing revisit later
+    remaining = 1000.0 
+    #remaining = state["defined_risk_limit"] - state["defined_risk_used"]
 
     if remaining <= 0:
         return state
@@ -12,13 +15,15 @@ def trade_defined_risk_dude(state):
     }
 
     if trade["max_loss"] <= remaining:
-        state.defined_risk_trades.append(trade)
-        state.defined_risk_used += trade["max_loss"]
+        state["defined_risk_trades"].append(trade)
+        state["defined_risk_used"] += trade["max_loss"]
 
     return state
 
-def trade_undefined_risk_dude(state):
-    remaining = state.undefined_risk_limit - state.undefined_risk_used
+def trade_undefined_risk(state):
+    # hardcoded for testing revisit later
+    remaining = 1000.0 
+    #remaining = state["undefined_risk_limit"] - state["undefined_risk_used"]
 
     if remaining <= 0:
         return state
@@ -31,7 +36,7 @@ def trade_undefined_risk_dude(state):
     }
 
     if trade["notional"] <= remaining:
-        state.undefined_risk_trades.append(trade)
-        state.undefined_risk_used += trade["notional"]
+        state["undefined_risk_trades"].append(trade)
+        state["undefined_risk_used"] += trade["notional"]
 
     return state

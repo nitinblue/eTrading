@@ -1,31 +1,55 @@
-from decimal import Decimal
+from trading_bot.domain.models import TradeIdea, TradeStatus
+from trading_bot.engines.risk_engine import validate_trade
+from trading_bot.engines.what_if_engine import simulate_trade
+from trading_bot.engines.trade_ranking import rank_trades
+import logging
 
-def trader_dude(state: dict) -> dict:
+logger = logging.getLogger(__name__)
+
+
+def trader_dude(state, broker, account_id, risk_type, available_risk):
     """
-    Finds ONE opportunity per invocation.
+    Trader decides WHAT to trade.
     """
 
-    bucket = state.get("active_risk_bucket")
+    logger.info(
+        f"[Trader] Looking for {risk_type.value} risk trades "
+        f"(capacity={available_risk:.2f})"
+    )
 
-    if not bucket:
-        state["proposed_trade"] = None
-        return state
+    # ---- MOCKED TRADE GENERATION ----
+    trade_ideas = [
+        TradeIdea(
+            symbol="SPY",
+            strategy="IRON_CONDOR",
+            risk_type=risk_type,
+            max_loss=1500,
+            prob_profit=0.68,
+            metadata={}
+        )
+    ]
 
-    # MOCKED trade – replace with real scanners
-    if bucket == "defined":
-        trade = {
-            "strategy": "IRON_CONDOR",
-            "symbol": "SPY",
-            "max_loss": Decimal("500"),
-            "defined_risk": True,
-        }
-    else:
-        trade = {
-            "strategy": "CASH_SECURED_PUT",
-            "symbol": "AAPL",
-            "margin_required": Decimal("3000"),
-            "defined_risk": False,
-        }
+    validated = []
 
-    state["proposed_trade"] = trade
-    return state
+    for trade in trade_ideas:
+        ok, reason = validate_trade(trade, available_risk)
+
+        if not ok:
+            trade.status = TradeStatus.REJECTED
+            logger.info(f"[Trader] Rejected {trade.strategy}: {reason}")
+            continue
+
+        trade.status = TradeStatus.VALIDATED
+        trade.metadata["what_if"] = simulate_trade(trade, state)
+        validated.append(trade)
+
+    if not validated:
+        return
+
+    ranked = rank_trades(validated)
+    best = ranked[0]
+
+    logger.info(f"[Trader] SELECTED TRADE → {best}")
+
+    # 🔴 NO EXECUTION YET
+    logger.info("[Trader] WOULD EXECUTE (paper/live later)")

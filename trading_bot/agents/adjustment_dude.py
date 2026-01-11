@@ -3,5 +3,5 @@ def adjustment_dude(state: dict) -> dict:
     Placeholder for rolling / closing logic.
     """
 
-    state["output"] = "Run completed with no adjustments"
+    #state["output"] = 0
     return state

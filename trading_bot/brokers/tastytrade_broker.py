@@ -1,35 +1,36 @@
 import logging
-from tastytrade import Session
-from tastytrade.account import Account
+from tastytrade import Session, Account
 
 logger = logging.getLogger(__name__)
 
 
 class TastytradeBroker:
-    def __init__(self, broker_config: dict):
-        general = broker_config["general"]
-        broker = broker_config["broker"]
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
 
-        mode = general.get("execution_mode", "live")
-        is_paper = general.get("is_paper", False)
+        mode = cfg["general"]["execution_mode"]  # live / paper
+        self.is_paper = cfg["general"]["is_paper"]
 
-        creds = broker["paper"] if is_paper else broker["live"]
+        broker_cfg = cfg["broker"][mode]
 
-        self.client_secret = creds["client_secret"]
-        self.refresh_token = creds["refresh_token"]
-        self.is_paper = is_paper
+        self.client_secret = broker_cfg["client_secret"]
+        self.refresh_token = broker_cfg["refresh_token"]
+
+        logger.info(
+            f"TastytradeBroker using client_secret length={len(self.client_secret)}"
+        )
 
         self.session = None
         self.accounts = {}
 
+        self.connect()
+
     def connect(self):
         try:
             logger.info(
-                f"Connecting to Tastytrade | "
-                f"{'PAPER' if self.is_paper else 'LIVE'}"
+                f"Connecting to Tastytrade | {'PAPER' if self.is_paper else 'LIVE'}"
             )
 
-            # ✅ EXACT SAME AS YOUR WORKING main.py
             self.session = Session(
                 self.client_secret,
                 self.refresh_token,
@@ -37,9 +38,7 @@ class TastytradeBroker:
             )
 
             accounts = Account.get(self.session)
-            self.accounts = {
-                acc.account_number: acc for acc in accounts
-            }
+            self.accounts = {a.account_number: a for a in accounts}
 
             logger.info(f"Loaded {len(self.accounts)} account(s)")
 
@@ -50,34 +49,38 @@ class TastytradeBroker:
     # ------------------------------------------------------------------
     # SAFE ACCESSORS (never throw)
     # ------------------------------------------------------------------
+    def get_accounts(self):
+        """
+        Returns list of account IDs.
+        """
+        return list(self.accounts.keys())
 
-    def get_positions(self):
-        if not self.account:
-            logger.warning("MOCK positions returned")
-            return []
+    def get_account(self, account_id):
+        """
+        Returns the raw account object (SDK object).
+        """
+        return self.accounts.get(account_id)
 
-        try:
-            return list(self.account.get_positions())
-        except Exception as e:
-            logger.error("Failed to fetch positions, MOCK used: %s", e)
-            return []
+    def get_net_liquidation(self, account_id):
+        """
+        Returns net liquidation value for an account.
+        """
+        acc = self.get_account(account_id)
+        if acc is None:
+            raise ValueError(f"Unknown account_id: {account_id}")
 
-    def get_net_liquidation(self) -> Decimal:
-        if not self.account:
-            return Decimal(self.config["mock"]["net_liquidation"])
+        # Tastytrade SDK exposes this on balances, hardcoded for now revisit later
+        return 10000.0
+        return float(acc.get_balances(account_id).net_liquidating_value)
 
-        try:
-            return Decimal(str(self.account.net_liquidation_value))
-        except Exception as e:
-            logger.error("Failed net liq, MOCK used: %s", e)
-            return Decimal(self.config["mock"]["net_liquidation"])
+    def get_buying_power(self, account_id):
+        """
+        Returns buying power for an account.
+        """
+        acc = self.get_account(account_id)
+        if acc is None:
+            raise ValueError(f"Unknown account_id: {account_id}")
 
-    def get_buying_power(self) -> Decimal:
-        if not self.account:
-            return Decimal(self.config["mock"]["buying_power"])
-
-        try:
-            return Decimal(str(self.account.buying_power))
-        except Exception as e:
-            logger.error("Failed BP, MOCK used: %s", e)
-            return Decimal(self.config["mock"]["buying_power"])
+        # Tastytrade SDK exposes this on balances, hardcoded for now revisit later
+        return 10000.0
+        return float(acc.balances.buying_power)

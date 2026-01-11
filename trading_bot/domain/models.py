@@ -1,28 +1,44 @@
-# domain/models.py
 from dataclasses import dataclass
-from typing import Literal
+from enum import Enum
+from typing import Optional, List
 
-StrategyType = Literal[
-    "IRON_CONDOR",
-    "VERTICAL",
-    "CSP",
-    "COVERED_CALL",
-    "STRANGLE"
-]
 
-RiskType = Literal["DEFINED", "UNDEFINED"]
+class RiskType(str, Enum):
+    DEFINED = "defined"
+    UNDEFINED = "undefined"
 
-@dataclass(frozen=True)
-class Trade:
-    trade_id: str
+
+class TradeStatus(str, Enum):
+    IDEA = "idea"
+    VALIDATED = "validated"
+    REJECTED = "rejected"
+    EXECUTED = "executed"
+
+
+@dataclass
+class TradeIdea:
     symbol: str
-    strategy: StrategyType
+    strategy: str
     risk_type: RiskType
+    max_loss: float
+    prob_profit: float
+    metadata: dict
+    status: TradeStatus = TradeStatus.IDEA
 
-    credit: float
-    max_loss: float           # defined OR modeled
-    delta: float
-    dte: int
-    sector: str
-    strike: float = 0.0    # optional, used for modeling
-    atr: float = 0.0      # optional, used for modeling
+
+@dataclass
+class Order:
+    symbol: str
+    quantity: int
+    order_type: str   # MARKET / LIMIT
+    price: Optional[float]
+    broker_payload: dict
+
+
+@dataclass
+class Position:
+    symbol: str
+    quantity: int
+    avg_price: float
+    unrealized_pnl: float
+    broker_position_id: str

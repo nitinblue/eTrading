@@ -1,45 +1,30 @@
-# trading_bot/abstract_broker.py
-"""Abstract base class for brokers (agnostic interface)."""
-
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict
+from typing import List
+from trading_bot.domain.models import Order, Position
 
-from trading_bot.order_model import UniversalOrder  # Absolute import (from package root)
 
-class Broker(ABC):
-    """Abstract base for broker implementations."""
-    @abstractmethod
-    def connect(self) -> None:
-        """Connect to the broker API."""
-        pass
+class AbstractBroker(ABC):
 
     @abstractmethod
-    def get_positions(self) -> List[Dict]:
-        """Get current positions."""
-        pass
-
-    def response_mapper(self, raw_response: Dict) -> Dict:
-        """Map broker-specific response to standardized format (override in implementations)."""
-        return raw_response
-    
-    
-    '''
-     @abstractmethod
-    def get_positions(self, account_id: Optional[str] = None) -> List[Dict]:
-        """Get current positions."""
+    def connect(self):
         pass
 
     @abstractmethod
-    def get_account_balance(self, account_id: Optional[str] = None) -> Dict:
-        """Get account balance."""
+    def get_accounts(self) -> list:
         pass
 
     @abstractmethod
-    def execute_order(self, order: UniversalOrder, account_id: Optional[str] = None) -> Dict:
-        """Execute an order."""
+    def get_positions(self, account_id) -> List[Position]:
         pass
 
-    def response_mapper(self, raw_response: Dict) -> Dict:
-        """Map broker-specific response to standardized format (override in implementations)."""
-        return raw_response
-    '''
+    @abstractmethod
+    def get_net_liquidation(self, account_id) -> float:
+        pass
+
+    @abstractmethod
+    def get_buying_power(self, account_id) -> float:
+        pass
+
+    @abstractmethod
+    def place_order(self, account_id, order: Order):
+        pass

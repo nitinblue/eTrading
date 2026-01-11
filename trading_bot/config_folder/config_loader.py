@@ -1,47 +1,24 @@
 import os
 import yaml
+import re
 from dotenv import load_dotenv
-from pathlib import Path
+
+_ENV_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
 
-def get_project_root() -> Path:
-    """
-    Assumes:
-    project_root/
-      ├── trading_bot/
-      │     └── config_folder/
-      │           └── config_loader.py  <-- this file
-    """
-    return Path(__file__).resolve().parents[2]
+def load_yaml_with_env(path: str) -> dict:
+    # Load .env ONCE, globally
+    load_dotenv(override=True)
 
+    with open(path, "r") as f:
+        raw = f.read()
 
-def load_yaml_with_env(relative_path: str) -> dict:
-    project_root = get_project_root()
+    def repl(match):
+        key = match.group(1)
+        val = os.getenv(key)
+        if val is None:
+            raise RuntimeError(f"Missing environment variable: {key}")
+        return val
 
-    # 1️⃣ Load .env from root
-    load_dotenv(project_root / ".env")
-
-    # 2️⃣ Build absolute config path
-    config_path = project_root / relative_path
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config not found: {config_path}")
-
-    # 3️⃣ Load YAML
-    with open(config_path, "r") as f:
-        raw = yaml.safe_load(f)
-
-    # 4️⃣ Resolve ${ENV_VAR}
-    def resolve(value):
-        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-            env_key = value[2:-1]
-            resolved = os.getenv(env_key)
-            if resolved is None:
-                raise ValueError(f"Missing env var: {env_key}")
-            return resolved
-        elif isinstance(value, dict):
-            return {k: resolve(v) for k, v in value.items()}
-        elif isinstance(value, list):
-            return [resolve(v) for v in value]
-        return value
-
-    return resolve(raw)
+    resolved = _ENV_PATTERN.sub(repl, raw)
+    return yaml.safe_load(resolved)
