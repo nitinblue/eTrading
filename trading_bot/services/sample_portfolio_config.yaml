@@ -1,0 +1,10 @@
+portfolio_config:
+  total_account_capital: 100000.00
+  max_portfolio_risk_pct: 10.0  # Max 10% of capital at risk ($10,000)
+  
+  # Target Greeks for the entire portfolio
+  targets:
+    delta: 0.0      # Aim for delta neutral
+    theta: 250.0    # Aim for $250/day in decay
+    vega: 0.0       # Neutralize volatility exposure
+    gamma: 0.0      # Minimize convexity risk
