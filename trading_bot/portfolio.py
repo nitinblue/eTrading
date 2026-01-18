@@ -1,7 +1,7 @@
 # trading_bot/portfolio.py
 from typing import Dict, List
-from .positions import PositionsManager, Position
-from .risk import RiskManager
+from trading_bot.positions import PositionsManager, Position
+from trading_bot.risk_main import RiskManager
 import logging
 
 logger = logging.getLogger(__name__)

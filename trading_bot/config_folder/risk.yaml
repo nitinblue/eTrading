@@ -1,0 +1,5 @@
+defined_capital_pct: 0.80
+undefined_capital_pct: 0.20
+
+max_defined_trade_loss: 2000
+max_undefined_margin: 10000

@@ -106,14 +106,13 @@ class ORB0DTEStrategy:
             'long_strike': long_opt.strike_price,
             'direction': direction
         }
-
+    
     def run(self):
         """Main strategy execution."""
         if not self.config.get('enabled', False):
             logger.info("0DTE ORB strategy disabled")
             return
-
-
+        
         analyzer = TechnicalAnalyzer(self.session, self.underlying)
         if not analyzer.get_positive_signal(self.underlying, 'bullish'):  # For bullish entry
             logger.info("No positive signal — skipping")

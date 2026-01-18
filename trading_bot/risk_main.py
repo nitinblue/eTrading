@@ -1,7 +1,7 @@
 # trading_bot/risk.py
 from decimal import Decimal
 from typing import List, Dict
-from .positions import Position
+from trading_bot.positions import Position
 import logging
 
 logger = logging.getLogger(__name__)
