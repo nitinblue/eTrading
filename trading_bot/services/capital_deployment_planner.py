@@ -51,16 +51,22 @@ class DeploymentPlanner:
         
     def display_risk_profile(self):
         """Display current risk tolerance settings."""
+        from tabulate import tabulate
+        
         print("\n" + "=" * 80)
         print(f"RISK PROFILE: {self.risk_tolerance.upper()}")
         print("=" * 80)
-        print(f"\n💰 Total Capital: ${self.total_capital:,.2f}")
-        print(f"📊 Risk Tolerance Settings:")
-        print(f"   • Max Portfolio VaR: {self.profile['max_var_pct']*100:.0f}% (${self.total_capital * self.profile['max_var_pct']:,.2f})")
-        print(f"   • Max Position Size: {self.profile['max_position_size']*100:.0f}% (${self.total_capital * self.profile['max_position_size']:,.2f})")
-        print(f"   • Max Monthly Deployment: {self.profile['max_deployment_per_month']*100:.0f}% (${self.total_capital * self.profile['max_deployment_per_month']:,.2f})")
-        print(f"   • Max Delta Exposure: ±{self.profile['max_delta_exposure']}")
-        print(f"   • Min Theta Requirement: ${self.profile['min_theta']:+.2f}/day")
+        
+        profile_data = [
+            ["Total Capital", f"${self.total_capital:,.2f}", "Available for deployment"],
+            ["Max Portfolio VaR", f"{self.profile['max_var_pct']*100:.0f}%", f"${self.total_capital * self.profile['max_var_pct']:,.2f}"],
+            ["Max Position Size", f"{self.profile['max_position_size']*100:.0f}%", f"${self.total_capital * self.profile['max_position_size']:,.2f}"],
+            ["Max Monthly Deploy", f"{self.profile['max_deployment_per_month']*100:.0f}%", f"${self.total_capital * self.profile['max_deployment_per_month']:,.2f}"],
+            ["Max Delta Exposure", f"±{self.profile['max_delta_exposure']}", "Directional limit"],
+            ["Min Theta Required", f"${self.profile['min_theta']:+.2f}/day", "Time decay income"]
+        ]
+        
+        print(tabulate(profile_data, headers=["Setting", "Limit", "Dollar Amount"], tablefmt="fancy_grid"))
         
     def check_position_approval(self, position_details):
         """
@@ -77,6 +83,8 @@ class DeploymentPlanner:
         Returns:
             dict: approval status and reasons
         """
+        from tabulate import tabulate
+        
         capital_req = position_details['capital_required']
         max_loss = abs(position_details['max_loss'])
         delta = position_details['delta']
@@ -88,41 +96,44 @@ class DeploymentPlanner:
             'blockers': []
         }
         
+        check_results = []
+        
         # Check 1: Position size
         position_size_pct = capital_req / self.total_capital
         max_allowed_pct = self.profile['max_position_size']
         
         if position_size_pct > max_allowed_pct:
             checks['approved'] = False
-            checks['blockers'].append(
-                f"Position too large: {position_size_pct*100:.1f}% vs {max_allowed_pct*100:.0f}% limit"
-            )
+            checks['blockers'].append(f"Position too large: {position_size_pct*100:.1f}% vs {max_allowed_pct*100:.0f}% limit")
+            check_results.append(["Position Size", f"{position_size_pct*100:.1f}%", f"{max_allowed_pct*100:.0f}%", "❌ FAIL"])
         elif position_size_pct > max_allowed_pct * 0.8:
-            checks['warnings'].append(
-                f"Position near size limit: {position_size_pct*100:.1f}%"
-            )
+            checks['warnings'].append(f"Position near limit: {position_size_pct*100:.1f}%")
+            check_results.append(["Position Size", f"{position_size_pct*100:.1f}%", f"{max_allowed_pct*100:.0f}%", "⚠️ WARNING"])
+        else:
+            check_results.append(["Position Size", f"{position_size_pct*100:.1f}%", f"{max_allowed_pct*100:.0f}%", "✅ PASS"])
         
-        # Check 2: Max loss relative to capital
+        # Check 2: Max loss
         max_loss_pct = max_loss / self.total_capital
         if max_loss_pct > self.profile['max_position_size'] * 2:
             checks['approved'] = False
-            checks['blockers'].append(
-                f"Max loss too high: ${max_loss:,.2f} ({max_loss_pct*100:.1f}% of capital)"
-            )
+            checks['blockers'].append(f"Max loss too high: ${max_loss:,.2f} ({max_loss_pct*100:.1f}%)")
+            check_results.append(["Max Loss", f"${max_loss:,.2f}", f"{self.profile['max_position_size']*2*100:.0f}%", "❌ FAIL"])
+        else:
+            check_results.append(["Max Loss", f"${max_loss:,.2f}", f"{self.profile['max_position_size']*2*100:.0f}%", "✅ PASS"])
         
-        # Check 3: Delta exposure (after adding position)
+        # Check 3: Delta exposure
         current_delta = sum(p.get('delta', 0) for p in self.positions)
         new_total_delta = current_delta + delta
         
         if abs(new_total_delta) > self.profile['max_delta_exposure']:
             checks['approved'] = False
-            checks['blockers'].append(
-                f"Delta exceeds limit: {new_total_delta:+.2f} vs ±{self.profile['max_delta_exposure']} limit"
-            )
+            checks['blockers'].append(f"Delta exceeds limit: {new_total_delta:+.2f} vs ±{self.profile['max_delta_exposure']}")
+            check_results.append(["Portfolio Delta", f"{new_total_delta:+.2f}", f"±{self.profile['max_delta_exposure']}", "❌ FAIL"])
         elif abs(new_total_delta) > self.profile['max_delta_exposure'] * 0.8:
-            checks['warnings'].append(
-                f"Delta approaching limit: {new_total_delta:+.2f}"
-            )
+            checks['warnings'].append(f"Delta approaching limit: {new_total_delta:+.2f}")
+            check_results.append(["Portfolio Delta", f"{new_total_delta:+.2f}", f"±{self.profile['max_delta_exposure']}", "⚠️ WARNING"])
+        else:
+            check_results.append(["Portfolio Delta", f"{new_total_delta:+.2f}", f"±{self.profile['max_delta_exposure']}", "✅ PASS"])
         
         # Check 4: Theta requirement
         current_theta = sum(p.get('theta', 0) for p in self.positions)
@@ -130,18 +141,26 @@ class DeploymentPlanner:
         
         if new_total_theta < self.profile['min_theta']:
             checks['approved'] = False
-            checks['blockers'].append(
-                f"Theta below minimum: ${new_total_theta:+.2f} vs ${self.profile['min_theta']:+.2f} requirement"
-            )
+            checks['blockers'].append(f"Theta below minimum: ${new_total_theta:+.2f} vs ${self.profile['min_theta']:+.2f}")
+            check_results.append(["Portfolio Theta", f"${new_total_theta:+.2f}", f"${self.profile['min_theta']:+.2f}", "❌ FAIL"])
+        else:
+            check_results.append(["Portfolio Theta", f"${new_total_theta:+.2f}", f"${self.profile['min_theta']:+.2f}", "✅ PASS"])
         
-        # Check 5: Deployment pace
+        # Check 5: Capital availability
         deployed_pct = (self.deployed_capital + capital_req) / self.total_capital
         if deployed_pct > 1.0:
             checks['approved'] = False
-            checks['blockers'].append(
-                f"Insufficient capital: Need ${capital_req:,.2f}, only ${self.total_capital - self.deployed_capital:,.2f} available"
-            )
+            checks['blockers'].append(f"Insufficient capital")
+            check_results.append(["Capital Available", f"${self.total_capital - self.deployed_capital:,.2f}", f"${capital_req:,.2f}", "❌ FAIL"])
+        else:
+            check_results.append(["Capital Available", f"${self.total_capital - self.deployed_capital:,.2f}", f"${capital_req:,.2f}", "✅ PASS"])
         
+        print("\n" + "─" * 80)
+        print(f"🔍 Risk Checks for: {position_details.get('strategy', 'New Position')}")
+        print("─" * 80)
+        print(tabulate(check_results, headers=["Check", "Current/New", "Limit", "Status"], tablefmt="fancy_grid"))
+        
+        checks['check_results'] = check_results
         return checks
     
     def add_position(self, position_details):
