@@ -57,12 +57,14 @@ def load_and_format_trades(filename="sample_trade.json"):
     return flattened
 
 def aggregate_portfolio_greeks(trades):
-    port_greeks = {'delta': 0, 'theta': 0, 'vega': 0}
+    port_greeks = {'delta': 0, 'theta': 0, 'vega': 0, 'gamma': 0}
     for leg in trades:
         curr = leg.get('current_greeks', {})
         port_greeks['delta'] += curr.get('delta', 0) * 100
         port_greeks['theta'] += curr.get('theta', 0) * 100
         port_greeks['vega'] += curr.get('vega', 0) * 100
+        # review formula for gamma aggregation
+        port_greeks['gamma'] += curr.get('gamma', 0) * 1
     return port_greeks
 
 def print_comprehensive_portfolio(trades, total_cap):
@@ -186,10 +188,10 @@ def main():
     print_comprehensive_portfolio(trades, total_cap) # Use this when fully ready
 
 
-    # 5. HEDGE SUGGESTIONS
+    # 5. HEDGE SUGGESTIONS / pass new trades that you think you need to do hedging for. 
     candidate_hedges = [
-        {"name": "SPY_Put_Hedge", "delta": -0.5, "theta": -0.2, "vega": 0.4, "max_loss_per_unit": -400},
-        {"name": "Income_Condor", "delta": 0.0, "theta": 0.4, "vega": -0.5, "max_loss_per_unit": -1200}
+        {"name": "SPY_Put_Hedge", "delta": -0.5, "theta": -0.2, "vega": 0.4, "gamma": 0.4, "max_loss_per_unit": -400},
+        {"name": "Income_Condor", "delta": 0.0, "theta": 0.4, "vega": -0.5, "gamma": 0.2, "max_loss_per_unit": -1200}
     ]
     
     # Correct call ensuring target_config is passed

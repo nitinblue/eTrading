@@ -11,3 +11,4 @@ portfolio_config:
     delta: 0.0
     theta: 200.0
     vega: -25.0
+    gamma: 0.0

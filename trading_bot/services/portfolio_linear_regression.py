@@ -10,13 +10,14 @@ def ensure_float(val):
 def calculate_enhanced_hedge(portfolio_greeks, target_config, candidate_trades, total_capital, current_regime):
     """Regression-based hedge weights with target_config gap calculation."""
     # 1. Prepare X: Matrix of Candidate Greeks [Delta, Theta, Vega]
-    X = np.array([[t['delta'] * 100, t['theta'] * 100, t['vega'] * 100] for t in candidate_trades])
+    X = np.array([[t['delta'] * 100, t['theta'] * 100, t['vega'] * 100, t['gamma']] for t in candidate_trades])
     
     # 2. Prepare y: The Greek Gaps (fixes 'int' and 'list' subtraction error)
     y = np.array([
         ensure_float(target_config['delta']) - ensure_float(portfolio_greeks['delta']),
         ensure_float(target_config['theta']) - ensure_float(portfolio_greeks['theta']),
-        ensure_float(target_config['vega']) - ensure_float(portfolio_greeks['vega'])
+        ensure_float(target_config['vega']) - ensure_float(portfolio_greeks['vega']),
+        ensure_float(target_config['gamma']) - ensure_float(portfolio_greeks['gamma'])
     ])
     
     # 3. Regression Logic
@@ -33,8 +34,16 @@ def calculate_enhanced_hedge(portfolio_greeks, target_config, candidate_trades, 
         est_risk = trade.get('max_loss_per_unit', -500) * abs(qty)
         
         results.append({
-            "Action": action_desc,
             "Asset": trade['name'],
+            "Current Delta": portfolio_greeks['delta'],
+            "Current Theta": portfolio_greeks['theta'],
+            "Current Vega": portfolio_greeks['vega'],
+            "Current Gamma": portfolio_greeks.get('gamma', 0),
+            "Target Delta": target_config['delta'],
+            "Target Theta": target_config['theta'],
+            "Target Vega": target_config['vega'],
+            "Target Gamma": target_config.get('gamma', 0),
+            "Action": action_desc,
             "Est Risk [STATIC]": f"${est_risk:,.2f}",
             "Risk Impact %": f"{(abs(est_risk)/total_capital)*100:.2f}%",
             "Commentary": f"[HARDCODED] {trade.get('commentary', '')}"
