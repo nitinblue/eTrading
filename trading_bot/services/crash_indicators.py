@@ -3,6 +3,7 @@ from tabulate import tabulate
 import pandas as pd
 import os
 
+# google Gemini, not that great.
 def get_crash_prewarning_indicators():
     """Senses market stress for 2026 via plumbing metrics with .iloc indexing."""
     # 1. LIVE: VIX Spike (Fear Gauge)
