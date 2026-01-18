@@ -95,7 +95,10 @@ class RiskManager:
         #     for greek in net:
         #         net[greek] += Decimal(p.greeks.get(greek, 0.0)) * Decimal(p.quantity)
         # return net
+        logger.info(f"Aggregating net Greeks...{positions}")
         net = {g: 0.0 for g in ['delta', 'gamma', 'theta', 'vega', 'rho']}
+        if(len(positions) == 0 or not positions):
+            return net
     
         for p in positions:
          qty = float(p.quantity)

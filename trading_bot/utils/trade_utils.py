@@ -17,6 +17,7 @@ def print_option_chain(underlying: str, broker_session):
     # Get chain + underlying price
     chain = get_option_chain(broker_session, underlying)
     equity = get_market_data_by_type(broker_session, equities=underlying)
+    logger.info(f"Equity data: {equity}")
     underlying_price = float(equity[0].last) if equity else 420.0
     
     # Pick expiry closest to 14 DTE
