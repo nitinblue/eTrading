@@ -8,27 +8,13 @@ from tastytrade import Session  # Latest SDK uses Session directly
 from tastytrade.account import Account
 from tastytrade.instruments import Option
 from tastytrade.order import NewOrder, OrderAction, OrderTimeInForce, OrderType, PriceEffect
-
+from tastytrade.instruments import get_option_chain
+from trading_bot.detailed_position import DetailedPosition
 from trading_bot.order_model import UniversalOrder, OrderLeg
 from trading_bot.brokers.abstract_broker import Broker  # If you have abstract_broker.py
 import logging
 
 logger = logging.getLogger(__name__)
-
-# trading_bot/brokers/tastytrade_broker.py
-"""
-Tastytrade broker using OAuth2 (JWT) tokens — latest SDK compatible.
-"""
-from tastytrade import Session
-from tastytrade.account import Account
-from tastytrade.instruments import Option
-from tastytrade.order import NewOrder, OrderAction, OrderTimeInForce, OrderType, PriceEffect
-from decimal import Decimal
-from typing import Optional, Dict, List
-import logging
-
-logger = logging.getLogger(__name__)
-
 class TastytradeBroker:
     def __init__(self, client_secret: str, refresh_token: str, is_paper: bool = True):
         self.client_secret = client_secret
@@ -36,14 +22,9 @@ class TastytradeBroker:
         self.is_paper = is_paper
         self.session: Optional[Session] = None
         self.accounts: Dict[str, Account] = {}
-        logging.info(f"Initializing in is_paper: {is_paper} mode")
-        # Connect immediately on creation
-        self.connect()
 
     def connect(self):
         try:
-            logger.info(f"Just before connecting self.client_secret: {self.client_secret} self.refresh_token: {self.refresh_token} {'PAPER' if self.is_paper else 'LIVE'} via OAuth2")
-
             # Latest SDK: positional arguments
             self.session = Session(self.client_secret, self.refresh_token, is_test=self.is_paper)
             logger.info(f"Connected to Tastytrade {'PAPER' if self.is_paper else 'LIVE'} via OAuth2")
@@ -54,28 +35,15 @@ class TastytradeBroker:
         except Exception as e:
             logger.error(f"Tastytrade OAuth2 connection failed: {e}")
             raise
-        
-    def get_default_account(self) -> Optional[Account]:
-            """Get default or first account."""
-            if not self.accounts:
-                logger.warning("No accounts loaded")
-                return None
-            return list(self.accounts.values())[0]
-        
-    def _get_account_old(self, account_id: Optional[str]) -> Account:
+
+    def _get_account(self, account_id: Optional[str]) -> Account:
         if not account_id:
             account_id = next(iter(self.accounts))
         if account_id not in self.accounts:
             raise ValueError(f"Account {account_id} not found.")
         return self.accounts[account_id]
-    
-    def _get_account(self, account_number: str = None) -> Optional[Account]:
-        """Get account object (default to first one)."""
-        if account_number:
-            return self.accounts.get(account_number)
-        return self.get_default_account() if self.accounts else None
 
-    def get_positions(self, account_id: Optional[str] = None) -> List[Dict]:
+    def get_positions_without_greeks(self, account_id: Optional[str] = None) -> List[Dict]:
         if not self.session:
             raise RuntimeError("Broker not connected.")
         account = self._get_account(account_id)
@@ -101,70 +69,7 @@ class TastytradeBroker:
             "equity_buying_power": float(balances.equity_buying_power or 0),
             "margin_equity": float(balances.margin_equity or 0)
         }
-        
-    def get_realized_pnl(self, period: str = 'day',  account_id: Optional[str] = None) -> float:
-        """
-        Get realized PNL for a specific period.
-        - period: 'day', 'month', 'ytd', 'total' (or any supported key)
-        - Returns float
-        """
-        account = self._get_account(account_id)
-        if not account:
-            return 0.0
 
-        try:
-            balances = account.get_balances(self.session)
-            if not balances:
-                logger.warning("No balance data available")
-                return 0.0
-
-            key_mapping = {
-                'day': 'realized_day_pnl',
-                'month': 'realized_month_pnl',
-                'ytd': 'realized_ytd_pnl',
-                'total': 'realized_total_pnl'  # May not exist — check docs
-            }
-
-            key = key_mapping.get(period.lower(), 'realized_day_pnl')
-            realized = float(balances.get(key, 0.0))
-
-            logger.info(f"Realized PNL ({period}) for {account.account_number}: ${realized:.2f}")
-            return realized
-
-        except Exception as e:
-            logger.error(f"Failed to get realized PNL ({period}): {e}")
-            return 0.0
-        
-    def get_unrealized_pnl(self, account_id: Optional[str] = None) -> float:
-        """
-        Get total unrealized PNL from all open positions.
-        - Returns float (positive = profit, negative = loss)
-        - Use account_number to specify; defaults to first account
-        """
-        account = self._get_account(account_id)
-        if not account:
-            logger.warning("No account available for unrealized PNL")
-            return 0.0
-
-        try:
-            positions = account.get_positions(self.session)
-            if not positions or 'items' not in positions:
-                logger.info("No open positions found")
-                return 0.0
-
-            total_unrealized = 0.0
-            for pos in positions['items']:
-                # Unrealized PNL is usually in 'unrealized_pnl' or 'mark_to_market'
-                unrealized = float(pos.get('unrealized_pnl', 0.0))
-                total_unrealized += unrealized
-
-            logger.info(f"Unrealized PNL for {account.account_number}: ${total_unrealized:.2f}")
-            return total_unrealized
-
-        except Exception as e:
-            logger.error(f"Failed to get unrealized PNL: {e}")
-            return 0.0
-    
     def execute_order(self, order: UniversalOrder, account_id: Optional[str] = None) -> Dict:
         if not self.session:
             raise RuntimeError("Broker not connected.")
@@ -229,3 +134,135 @@ class TastytradeBroker:
             }
             for order in orders
         ]
+    
+    async def stream_greeks(self, underlying="QQQ"):
+    # 1) Get option chain and choose an expiry
+     chain = get_option_chain(self.session, underlying)
+     exp = get_tasty_monthly()  # or pick your own expiry date
+     options = chain[exp]
+
+    # 2) Pick one option and get its streamer symbol
+     opt = options[0]
+     symbol = opt.streamer_symbol  # e.g. ".QQQ260106C620"
+     print("Subscribing Greeks for:", symbol)
+
+    # 3) Subscribe to Greeks stream
+     async with DXLinkStreamer(self.session) as streamer:
+        await streamer.subscribe(Greeks, [symbol])
+
+        # Fetch one Greeks snapshot
+        greeks = await streamer.get_event(Greeks)
+        print(greeks)
+
+        # Access fields
+        print("Delta:", greeks.delta)
+        print("Gamma:", greeks.gamma)
+        print("Theta:", greeks.theta)
+        print("Vega:", greeks.vega)
+        print("Rho:", greeks.rho)
+        print("IV:", greeks.volatility)
+    
+    async def get_positions(self, account_id: Optional[str] = None) -> List[Dict]:
+        """REST positions + async Greeks enrichment."""
+        if not self.session:
+            raise RuntimeError("Broker not connected.")
+        
+        account = self._get_account(account_id)
+        positions = account.get_positions(self.session)
+        
+        if not positions:
+            return []
+        
+      # Build streamer map from chain
+        streamer_map = {}
+        for underlying in set(p.underlying_symbol for p in positions):
+            chain = get_option_chain(self.session, underlying)
+            for exp, opts in chain.items():
+                for opt in opts:
+                    streamer_map[opt.symbol.strip()] = opt.streamer_symbol
+        
+        # Build positions + streamers
+        position_list = []
+        streamer_symbols = []
+        for pos in positions:
+            symbol = pos.symbol.strip()
+            streamer = streamer_map.get(symbol)
+            if streamer:
+                streamer_symbols.append(streamer)
+                position_list.append({
+                    "symbol": symbol,
+                    "streamer_symbol": streamer,
+                    "quantity": float(pos.quantity),
+                    "entry_price": float(pos.average_open_price or 0),
+                    "current_price": float(pos.mark_price or 0),
+                    "greeks": {}
+                })
+        
+        logger.info(f"Streaming {len(streamer_symbols)} symbols")
+    
+        # Greeks
+        greeks_map = {}
+        if streamer_symbols:
+            async with DXLinkStreamer(self.session) as streamer:
+                await streamer.subscribe(Greeks, streamer_symbols)
+                for i, expected_sym in enumerate(streamer_symbols):
+                    try:
+                        g = await asyncio.wait_for(streamer.get_event(Greeks), timeout=5.0)
+                        greeks_map[g.event_symbol] = g
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Timeout {i}/{len(streamer_symbols)}")
+                        break
+        
+        # Attach
+        for pos in position_list:
+            g = greeks_map.get(pos["streamer_symbol"])
+            if g:
+               pos["greeks"] = {
+    "delta": round(float(g.delta), 2),
+    "gamma": round(float(g.gamma), 4),   # often very small, use 4 if you prefer
+    "theta": round(float(g.theta), 2),
+    "vega":  round(float(g.vega), 2),
+    "rho":   round(float(g.rho), 2),
+    "iv":    round(float(g.volatility), 2),
+}
+    
+        logger.info(f"Positions with Greeks: {sum(1 for p in position_list if p['greeks'])}/{len(position_list)}")
+        return position_list
+       
+
+async def enrich_positions_for_detailed_sheet(broker, positions):
+    """Convert tastytrade positions → DetailedPosition objects."""
+    detailed = []
+    
+    for i, pos in enumerate(positions):
+        # Parse symbol
+        sym = pos["symbol"].strip()
+        underlying = sym[:3]  # QQQ, AAPL, etc.
+        option_type = "Call" if "C" in sym else "Put"
+        
+        # Extract strike from symbol (e.g., QQQ260106C00620000 → 620.00)
+        strike = float(sym[-8:]) / 1000
+        
+        # Extract expiry (YYMMDD → 2026-01-06)
+        from datetime import datetime
+        expiry_str = sym[3:9]  # "260106"
+        expiry = datetime.strptime(expiry_str, "%y%m%d").date()
+        
+        d_pos = DetailedPosition(
+            symbol=sym,
+            underlying=underlying,
+            option_type=option_type,
+            strike=strike,
+            expiry_date=expiry,
+            quantity=pos["quantity"],
+            entry_premium=pos["entry_price"],
+            entry_greeks=pos["greeks"],
+            trade_id="Trade001",  # Set from your order tracking
+            leg_id=f"Leg{i+1}"
+        )
+        
+        # Update with current Greeks
+        d_pos.update_current_price(pos["current_price"], pos["greeks"])
+        detailed.append(d_pos)
+    
+    return detailed

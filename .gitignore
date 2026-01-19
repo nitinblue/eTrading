@@ -20,3 +20,5 @@ service_account.json
 /trading_bot/strategies/__pycache__
 /trading_bot/utils/__pycache__/
 /trading_bot/utils/__pycache__
+
+/trading_claude/__pycache__
