@@ -428,6 +428,7 @@ def main():
     # Example: Russell
     print(classify_regime("^RUT"))
     
+    # python objects for trade, leg..populate data objects with fields that are specific to tastytrade api...for legs use domain.legs.py.. trade.py
     sync_google_sheets(data_broker)  # Uncomment to sync Sheets
     logger.info("Bot run complete.")
 
