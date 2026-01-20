@@ -13,8 +13,8 @@ class Portfolio:
         self.broker = positions_manager.broker  # ← Add this line to access broker
         self.total_value: float = 0.0
 
-    def update(self):
-        self.positions_manager.refresh()
+    async def update(self):
+        await self.positions_manager.refresh()
         balance = self.broker.get_account_balance()  # Now works
         capital = balance.get('equity', 100000.0)
         

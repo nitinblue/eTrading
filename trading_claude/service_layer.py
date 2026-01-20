@@ -7,10 +7,12 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
 
-from data_access import PortfolioRepository, TradeRepository, PositionRepository, OrderRepository
+from trading_bot.domain import portfolio
+from trading_claude.data_access import PortfolioRepository, TradeRepository, PositionRepository, OrderRepository
 #from trading_claude.broker_adapters import BrokerAdapter, BrokerFactory
-from broker_adapters import TastytradeAdapter, BrokerAdapter
-import data_model as dm
+from trading_claude.broker_adapters import TastytradeAdapter, BrokerAdapter
+import trading_claude.data_model as dm
+
 
 # Assume imports from previous artifacts
 # from core_models import *
@@ -23,7 +25,7 @@ logger = logging.getLogger(__name__)
 class PortfolioService:
     """Main service for portfolio management"""
     
-    def __init__(self, session: Session, broker_adapter: BrokerAdapter):
+    def __init__(self, session, broker_adapter: BrokerAdapter):
         self.session = session
         self.broker = broker_adapter
         
@@ -33,7 +35,7 @@ class PortfolioService:
         self.position_repo = PositionRepository(session)
         self.order_repo = OrderRepository(session)
     
-    def sync_from_broker(self, portfolio_id: str) -> dm.Portfolio:
+    async def sync_from_broker(self, portfolio_id: str) -> dm.Portfolio:
         """Sync portfolio data from broker"""
         logger.info(f"Syncing portfolio {portfolio_id} from broker")
         
@@ -49,7 +51,7 @@ class PortfolioService:
         
         # Sync positions
         broker_positions = self.broker.get_positions()
-        self._sync_positions(portfolio, broker_positions)
+        await self._sync_positions(portfolio, broker_positions)
         
         # Sync orders
         broker_orders = self.broker.get_orders()
@@ -65,13 +67,13 @@ class PortfolioService:
         logger.info(f"Portfolio sync complete. {len(broker_positions)} positions, {len(broker_orders)} orders")
         return portfolio
     
-    def create_portfolio_from_broker(self, broker_name: str, account_id: str, name: str) -> dm.Portfolio:
+    async def create_portfolio_from_broker(self, broker_name: str, account_id: str, name: str) -> dm.Portfolio:
         """Create a new portfolio and sync from broker"""
         # Check if portfolio already exists
         existing = self.portfolio_repo.get_by_account(broker_name, account_id)
         if existing:
             logger.info(f"Portfolio already exists for {broker_name} {account_id}")
-            return self.sync_from_broker(existing.id)
+            return await self.sync_from_broker(existing.id)
         
         # Create new portfolio
         portfolio = dm.Portfolio(
@@ -86,7 +88,84 @@ class PortfolioService:
         # Initial sync
         return self.sync_from_broker(portfolio.id)
     
-    def _sync_positions(self, portfolio: dm.Portfolio, broker_positions: List[dm.Position]):
+    async def _sync_positions(self, portfolio: dm.Portfolio, broker_positions: List[dm.Position]):   
+     """Sync positions from broker + merge DXLink greeks"""
+        # -----------------------------
+        # 1. Fetch existing positions
+        # -----------------------------
+     existing_positions = self.position_repo.get_by_portfolio(portfolio.id)
+     existing_map = {
+            p.broker_position_id: p
+            for p in existing_positions
+            if p.broker_position_id
+        }
+        # -----------------------------
+        # 2. Fetch greeks ONCE
+        # -----------------------------
+     option_symbols = [
+        p.symbol.get_streamer_symbol()
+        for p in broker_positions
+        if p.symbol.asset_type == dm.AssetType.OPTION
+        ]
+
+     greeks_map = {}
+     if option_symbols:
+        greeks_map = await self.broker.get_option_greeks(option_symbols)      
+     synced_ids = set() 
+    # -----------------------------
+    # 3. Merge + upsert positions
+    # -----------------------------
+     for broker_pos in broker_positions:
+        broker_id = broker_pos.broker_position_id
+
+        # ---- Merge greeks (if option) ----
+        if broker_pos.symbol.asset_type == dm.AssetType.OPTION:
+            opt_symbol = broker_pos.symbol.get_streamer_symbol()          
+            greeks = greeks_map.get(opt_symbol)
+
+            if greeks:
+                broker_pos.delta = round(float(greeks["delta"]), 2)
+                broker_pos.gamma = round(float(greeks["gamma"]), 2)
+                broker_pos.theta = round(float(greeks["theta"]), 2)
+                broker_pos.vega = round(float(greeks["vega"]), 2)
+            else:
+                # Safe defaults if no data
+                broker_pos.delta = dm.Decimal("0")
+                broker_pos.gamma = dm.Decimal("0")
+                broker_pos.theta = dm.Decimal("0")
+                broker_pos.vega = dm.Decimal("0")
+
+        # ---- Update or Create ----
+        if broker_id in existing_map:
+            existing = existing_map[broker_id]
+            existing.quantity = broker_pos.quantity
+            existing.average_price = broker_pos.average_price
+            existing.current_price = broker_pos.current_price
+            existing.market_value = broker_pos.market_value
+            existing.total_cost = broker_pos.total_cost
+
+            existing.delta = broker_pos.delta
+            existing.gamma = broker_pos.gamma
+            existing.theta = broker_pos.theta
+            existing.vega = broker_pos.vega
+
+            self.position_repo.update(existing)
+            synced_ids.add(broker_id)
+
+        else:
+            self.position_repo.create(broker_pos, portfolio.id)
+            if broker_id:
+                synced_ids.add(broker_id)
+
+        # -----------------------------
+        # 4. Remove stale positions
+        # -----------------------------
+     for pos in existing_positions:
+        if pos.broker_position_id and pos.broker_position_id not in synced_ids:
+            logger.info(f"Removing position {pos.id} - no longer at broker")
+            self.position_repo.delete(pos.id)
+
+    def _sync_positions_old(self, portfolio: dm.Portfolio, broker_positions: List[dm.Position]):
         """Sync positions from broker"""
         # Get existing positions
         existing_positions = self.position_repo.get_by_portfolio(portfolio.id)
@@ -279,7 +358,7 @@ class PortfolioService:
 class RiskAnalysisService:
     """Service for risk analysis and management"""
     
-    def __init__(self, session: Session):
+    def __init__(self, session):
         self.session = session
         self.position_repo = PositionRepository(session)
         self.trade_repo = TradeRepository(session)
@@ -456,41 +535,6 @@ class StrategyBuilder:
         return trade
 
 
-# Example usage
-if __name__ == "__main__":
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    
-    # Setup
-    engine = create_engine("sqlite:///portfolio.db")
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    
-    # Create broker adapter (you'd use real credentials)
-    
-    config = load_tastytrade_config()
-    adapter = create_tastytrade_from_config(config)
-    adapter.authenticate()
-    print(f"Connected to account: {adapter.account_id}")
+
     
     
-    from broker_adapters import TastytradeAdapter
-    broker = TastytradeAdapter("account123", "username", "password")
-    broker.authenticate()
-    
-    # Create service
-    service = PortfolioService(session, broker)
-    
-    # Create and sync portfolio
-    portfolio = service.create_portfolio_from_broker(
-        broker_name="tastytrade",
-        account_id="account123",
-        name="My Trading Portfolio"
-    )
-    
-    # Get summary
-    summary = service.get_portfolio_summary(portfolio.id)
-    print(f"Portfolio: {summary['name']}")
-    print(f"Total Equity: ${summary['total_equity']:,.2f}")
-    print(f"Total P&L: ${summary['total_pnl']:,.2f}")
-    print(f"Positions: {summary['positions_count']}")

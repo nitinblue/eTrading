@@ -3,14 +3,15 @@
 # ============================================================================
 
 from abc import ABC, abstractmethod
+import asyncio
 from typing import List, Dict, Optional, Any
 from decimal import Decimal
 from datetime import datetime
 import logging
 import os
 
-import data_model as dm
-from config_loader import load_yaml_with_env
+import trading_claude.data_model as dm
+from trading_claude.config_loader import load_yaml_with_env
 
 # Import from core models (previous artifact)
 # from core_models import Portfolio, Trade, Position, Order, Symbol, Leg, AssetType, OptionType, OrderSide, OrderStatus, OrderType
@@ -92,9 +93,10 @@ class BrokerAdapter(ABC):
 # TASTYTRADE ADAPTER IMPLEMENTATION
 # ============================================================================
 
-from tastytrade import Session, Account
+from tastytrade import DXLinkStreamer, Session, Account
 #from tastytrade.dxfeed import EventType
 from tastytrade.instruments import Equity, Option, Future, Cryptocurrency
+from tastytrade.dxfeed import Greeks
 import uuid
 
 
@@ -120,6 +122,7 @@ class TastytradeAdapter(BrokerAdapter):
         self.account = None
         self.accounts = {}
         self._account_number = account_number
+        self._dxlink_streamer = None
 
     def authenticate(self) -> bool:
         """Authenticate with Tastytrade API using refresh token"""
@@ -161,7 +164,7 @@ class TastytradeAdapter(BrokerAdapter):
             logger.error(f"Authentication failed: {e}")
             logger.exception("Full error:")
             return False
-    
+   
     def get_account_balance(self) -> Dict[str, Decimal]:
         """Get account balances"""
         try:
@@ -191,11 +194,11 @@ class TastytradeAdapter(BrokerAdapter):
                 raise ValueError("Not authenticated - call authenticate() first")
             
             # Get positions from API
-            positions_data = self.account.get_positions(self.session)
+            positions_data = self.account.get_positions(self.session,include_marks=True)
             positions = []
             
-            for pos_data in positions_data:
-                try:
+            for pos_data in positions_data:              
+                try:                  
                     # Parse symbol
                     symbol = self._parse_symbol_from_position(pos_data)
                     
@@ -207,15 +210,15 @@ class TastytradeAdapter(BrokerAdapter):
                         current_price=Decimal(str(pos_data.close_price or 0)),
                         market_value=Decimal(str(pos_data.mark_price or 0)),
                         total_cost=Decimal(str(pos_data.average_open_price or 0)) * abs(int(pos_data.quantity or 0)) * symbol.multiplier,
-                        broker_position_id=str(pos_data.id) if hasattr(pos_data, 'id') else None,
+                        broker_position_id=self._build_position_key(symbol)
                     )
                     
-                    # Add Greeks if available (for options)
-                    if hasattr(pos_data, 'greeks') and pos_data.greeks:
-                        position.delta = Decimal(str(pos_data.greeks.delta or 0))
-                        position.gamma = Decimal(str(pos_data.greeks.gamma or 0))
-                        position.theta = Decimal(str(pos_data.greeks.theta or 0))
-                        position.vega = Decimal(str(pos_data.greeks.vega or 0))
+                    # # Add Greeks if available (for options)
+                    # if hasattr(pos_data, 'greeks') and pos_data.greeks:
+                    #     position.delta = Decimal(str(pos_data.greeks.delta or 0))
+                    #     position.gamma = Decimal(str(pos_data.greeks.gamma or 0))
+                    #     position.theta = Decimal(str(pos_data.greeks.theta or 0))
+                    #     position.vega = Decimal(str(pos_data.greeks.vega or 0))
                     
                     positions.append(position)
                     
@@ -230,6 +233,33 @@ class TastytradeAdapter(BrokerAdapter):
             logger.error(f"Failed to get positions: {e}")
             logger.exception("Full error:")
             return []
+        
+    async def get_option_greeks(self, symbols: list[str]) -> dict:
+      """Fetch greeks from DXLinkStreamer (fresh streamer each time)."""
+      if not symbols:
+        return {}
+    
+      greeks_map = {}
+        # Fresh streamer EVERY TIME
+      async with DXLinkStreamer(self.session) as streamer:
+        print(f"Subscribing to {len(symbols)} symbols: {symbols[:2]}...")
+        await streamer.subscribe(Greeks, symbols)
+        
+        for symbol in symbols:
+            try:
+                # Wait for event (timeout)
+                data = await asyncio.wait_for(streamer.get_event(Greeks), timeout=10.0)
+                greeks_map[symbol] = {
+                    "delta": Decimal(str(data.delta)),
+                    "gamma": Decimal(str(data.gamma)),
+                    "theta": Decimal(str(data.theta)),
+                    "vega": Decimal(str(data.vega)),
+                }                
+                print(f"Got Greeks for {symbol}: {greeks_map[symbol]['delta']}")
+            except asyncio.TimeoutError:
+                logger.warning(f"Greeks timeout for {symbol}")
+                continue
+        return greeks_map    
     
     def get_orders(self, status: Optional[str] = None) -> List[dm.Order]:
         """Fetch orders from Tastytrade"""
@@ -286,7 +316,7 @@ class TastytradeAdapter(BrokerAdapter):
             logger.exception("Full error:")
             return []
     
-    def submit_order(self, order: Order) -> str:
+    def submit_order(self, order: dm.Order) -> str:
         """Submit order to Tastytrade"""
         try:
             if not self.account:
@@ -468,7 +498,16 @@ class TastytradeAdapter(BrokerAdapter):
     # -------------------------------------------------------------------------
     # Helper Methods
     # -------------------------------------------------------------------------
-    
+    def _build_position_key(self, symbol: dm.Symbol) -> str:
+        if symbol.asset_type == dm.AssetType.OPTION:
+            return (
+                f"{symbol.ticker}|"
+                f"{symbol.expiration.strftime('%Y%m%d')}|"
+                f"{symbol.option_type.value}|"
+                f"{symbol.strike}"
+            )
+        else:
+            return symbol.ticker
     def _parse_symbol_from_position(self, pos_data) -> dm.Symbol:
         """Parse symbol from position data"""
         try:

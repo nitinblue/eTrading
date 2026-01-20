@@ -5,6 +5,7 @@ Each functionality is in its own def — comment out calls in main() to skip.
 Covers account listing, balances, option chain, trade booking, position reading, risk display, and Sheets sync.
 """
 
+import asyncio
 from cmath import exp
 from datetime import datetime
 import logging
@@ -111,7 +112,7 @@ def get_account_balances(broker):
     except Exception as e:
         logger.error(f"Failed to get balances: {e}")
 
-def fetch_sample_option_chain(broker, underlying: str = "MSFT"):
+def fetch_sample_option_chain(broker, underlying: str = "QQQ"):
     """Fetch and print option chain (skip in mock mode)."""
     if not hasattr(broker, 'session') or broker.session is None:
         logger.info("Skipping option chain fetch (mock mode)")
@@ -124,7 +125,7 @@ def book_sample_option_position(broker):
     if not hasattr(broker, 'session') or broker.session is None:
         logger.info("Skipping butterfly booking (mock mode)")
         return
-def test_butterfly_full(data_broker, execution_broker):
+async def test_butterfly_full(data_broker, execution_broker):
     # print_option_chain("MSFT",data_broker.session)
     
     # From table output
@@ -140,7 +141,7 @@ def test_butterfly_full(data_broker, execution_broker):
         print("✅ Ready for paper trade!{result}")
         
         # Check positions
-        positions = execution_broker.get_positions()
+        positions = await execution_broker.get_positions()
         print(f"Current positions: {len([p for p in positions if 'MSFT' in p.instrument])}")
 
 def place_butterfly_preview(session, underlying, exp, strikes, quantity=1):
@@ -249,7 +250,7 @@ def display_portfolio_risk(broker):
     logger.info(f"Total Undefined Risk: {total_undefined:.2%}")
     logger.info(f"Available Margin: ${available_margin:.2f}")
 
-def sync_google_sheets(broker):
+async def sync_google_sheets(broker):
     """Sync to Google Sheets (if configured)."""
     sheets = OptionsSheetsSync(config)
     balance = broker.get_account_balance()
@@ -259,7 +260,7 @@ def sync_google_sheets(broker):
     portfolio.update()
     capital = balance.get('equity', 100000.0)
     position_risks = risk_manager.list_positions_api(positions_manager.positions, capital)
-    sheets.sync_all(broker, portfolio, position_risks)
+    await sheets.sync_all(broker, portfolio, position_risks)
 
 def run_strategy_screener(broker):
     screener = StrategyScreener(config, broker.session)
@@ -375,7 +376,7 @@ def test_agentic_system(broker, config):
     print(classify_regime("^RUT"))
     
     
-def main():
+async def main():
     print("Starting trading bot...")
     global config
     config = Config.load('config.yaml')
@@ -428,12 +429,11 @@ def main():
     # Example: Russell
     print(classify_regime("^RUT"))
     
-    # python objects for trade, leg..populate data objects with fields that are specific to tastytrade api...for legs use domain.legs.py.. trade.py
-    sync_google_sheets(data_broker)  # Uncomment to sync Sheets
+    await sync_google_sheets(data_broker)  # Uncomment to sync Sheets
     logger.info("Bot run complete.")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
     
     
     
