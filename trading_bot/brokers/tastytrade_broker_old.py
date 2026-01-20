@@ -19,7 +19,6 @@ from tastytrade.dxfeed import Greeks
 from tastytrade.instruments import get_option_chain
 from tastytrade.utils import get_tasty_monthly
 
-<<<<<<< HEAD
 
 from tastytrade import DXLinkStreamer
 from tastytrade.dxfeed import Greeks
@@ -28,9 +27,6 @@ from tastytrade.utils import get_tasty_monthly
 
 
 logger = logging.getLogger(_name_)
-=======
-logger = logging.getLogger(__name__)
->>>>>>> 5f1b02f0268e3d9b5fbd69b7cfb93bbe2fbe1c58
 class TastytradeBroker:
     def _init_(self, client_secret: str, refresh_token: str, is_paper: bool = True):
         self.client_secret = client_secret
@@ -282,7 +278,6 @@ async def enrich_positions_for_detailed_sheet(broker, positions):
         detailed.append(d_pos)
     
     return detailed
-<<<<<<< HEAD
 # trading_bot/brokers/tastytrade_broker.py
 """Tastytrade broker implementation using the latest tastytrade SDK (tastyware/tastytrade)."""
 
@@ -551,5 +546,3 @@ async def enrich_positions_for_detailed_sheet(broker, positions):
         detailed.append(d_pos)
     
     return detailed
-=======
->>>>>>> 5f1b02f0268e3d9b5fbd69b7cfb93bbe2fbe1c58

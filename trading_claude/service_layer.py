@@ -8,9 +8,9 @@ from decimal import Decimal
 import logging
 import asyncio
 
-import data_model as dm
-from broker_adapters import BrokerAdapter
-import data_access as da
+import trading_claude.data_model as dm
+from trading_claude.broker_adapters import BrokerAdapter
+import trading_claude.data_access as da
 # Assume imports from previous artifacts
 # from core_models import *
 # from broker_adapters import BrokerAdapter
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class PortfolioService:
     """Main service for portfolio management"""
     
-    def __init__(self, session: Session, broker_adapter: BrokerAdapter):
+    def __init__(self, session, broker_adapter: BrokerAdapter):
         self.session = session
         self.broker = broker_adapter
         
@@ -287,7 +287,7 @@ class PortfolioService:
 class RiskAnalysisService:
     """Service for risk analysis and management"""
     
-    def __init__(self, session: Session):
+    def __init__(self, session):
         self.session = session
         self.position_repo = da.PositionRepository(session)
         self.trade_repo = da.TradeRepository(session)
