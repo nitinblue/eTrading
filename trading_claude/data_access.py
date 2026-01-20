@@ -2,11 +2,12 @@
 # REPOSITORY LAYER - Data Access Objects
 # ============================================================================
 
+from decimal import Decimal
 from typing import List, Optional, Dict
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc
-import data_model as dm
+import trading_claude.data_model as dm
 # Assume imports from previous artifacts
 # from core_models import *
 # from database_models import *
@@ -39,12 +40,12 @@ class PortfolioRepository(BaseRepository):
     
     def get_by_id(self, portfolio_id: str) -> Optional[dm.Portfolio]:
         """Get portfolio by ID"""
-        portfolio_orm = self.session.query(PortfolioORM).filter_by(id=portfolio_id).first()
+        portfolio_orm = self.session.query(dm.PortfolioORM).filter_by(id=portfolio_id).first()
         return self._to_model(portfolio_orm) if portfolio_orm else None
     
     def get_by_account(self, broker: str, account_id: str) -> Optional[dm.Portfolio]:
         """Get portfolio by broker and account ID"""
-        portfolio_orm = self.session.query(PortfolioORM).filter_by(
+        portfolio_orm = self.session.query(dm.PortfolioORM).filter_by(
             broker=broker, 
             account_id=account_id
         ).first()

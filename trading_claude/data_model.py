@@ -94,6 +94,18 @@ class Symbol:
         opt_type = "C" if self.option_type == OptionType.CALL else "P"
         strike_str = f"{int(self.strike * 1000):08d}"
         return f"{self.ticker:<6}{exp_str}{opt_type}{strike_str}"
+    
+    def get_streamer_symbol(self) -> str:
+        """Generate OCC option symbol format"""
+        if self.asset_type != AssetType.OPTION:
+            return self.ticker
+        
+        exp_str = self.expiration.strftime("%y%m%d")
+        opt_type = "C" if self.option_type == OptionType.CALL else "P"
+        strike10 = f"{int(self.strike)}"
+        # Ticker uppercase, no spaces
+        ticker = self.ticker.replace(" ", "").upper()    
+        return f".{ticker}{exp_str}{opt_type}{strike10}"
 
 
 @dataclass
@@ -408,8 +420,7 @@ class PositionORM(Base):
     
     id = Column(String(36), primary_key=True)
     portfolio_id = Column(String(36), ForeignKey('portfolios.id'))
-    symbol_id = Column(String(36), ForeignKey('symbols.id'))
-    
+    symbol_id = Column(String(36), ForeignKey('symbols.id'))   
     quantity = Column(Integer, nullable=False)
     average_price = Column(Numeric(10, 4), nullable=False)
     total_cost = Column(Numeric(10, 2), nullable=False)

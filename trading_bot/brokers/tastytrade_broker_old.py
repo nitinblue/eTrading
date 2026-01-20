@@ -13,6 +13,11 @@ from trading_bot.detailed_position import DetailedPosition
 from trading_bot.order_model import UniversalOrder, OrderLeg
 from trading_bot.brokers.abstract_broker import Broker  # If you have abstract_broker.py
 import logging
+import asyncio
+from tastytrade import DXLinkStreamer
+from tastytrade.dxfeed import Greeks
+from tastytrade.instruments import get_option_chain
+from tastytrade.utils import get_tasty_monthly
 
 logger = logging.getLogger(__name__)
 class TastytradeBroker:
