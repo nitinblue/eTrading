@@ -187,38 +187,50 @@ class TastytradeAdapter(BrokerAdapter):
             logger.exception("Full error:")
             return {}
     
-    def get_positions(self) -> List[dm.Position]:
+    def get_positions(self) -> List['dm.Position']:
+        
         """Fetch current positions from Tastytrade"""
         try:
             if not self.account:
                 raise ValueError("Not authenticated - call authenticate() first")
             
             # Get positions from API
-            positions_data = self.account.get_positions(self.session,include_marks=True)
+            positions_data = self.account.get_positions(self.session)
             positions = []
             
-            for pos_data in positions_data:              
-                try:                  
+            for pos_data in positions_data:
+                try:
                     # Parse symbol
                     symbol = self._parse_symbol_from_position(pos_data)
+                    
+                    # IMPORTANT: Tastytrade uses signed quantity
+                    # Positive = Long, Negative = Short
+                    raw_quantity = int(pos_data.quantity or 0)
+                    
+                    # Also check quantity_direction if available
+                    if hasattr(pos_data, 'quantity_direction'):
+                        if pos_data.quantity_direction == 'Short':
+                            raw_quantity = -abs(raw_quantity)
+                        else:
+                            raw_quantity = abs(raw_quantity)
                     
                     # Create position
                     position = dm.Position(
                         symbol=symbol,
-                        quantity=int(pos_data.quantity or 0),
+                        quantity=raw_quantity,  # Keep the sign!
                         average_price=Decimal(str(pos_data.average_open_price or 0)),
                         current_price=Decimal(str(pos_data.close_price or 0)),
                         market_value=Decimal(str(pos_data.mark_price or 0)),
-                        total_cost=Decimal(str(pos_data.average_open_price or 0)) * abs(int(pos_data.quantity or 0)) * symbol.multiplier,
-                        broker_position_id=self._build_position_key(symbol)
+                        total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(raw_quantity) * symbol.multiplier,
+                        broker_position_id=str(pos_data.id) if hasattr(pos_data, 'id') else None,
                     )
                     
-                    # # Add Greeks if available (for options)
-                    # if hasattr(pos_data, 'greeks') and pos_data.greeks:
-                    #     position.delta = Decimal(str(pos_data.greeks.delta or 0))
-                    #     position.gamma = Decimal(str(pos_data.greeks.gamma or 0))
-                    #     position.theta = Decimal(str(pos_data.greeks.theta or 0))
-                    #     position.vega = Decimal(str(pos_data.greeks.vega or 0))
+                    # Add Greeks if available (for options)
+                    if hasattr(pos_data, 'greeks') and pos_data.greeks:
+                        position.delta = Decimal(str(pos_data.greeks.delta or 0))
+                        position.gamma = Decimal(str(pos_data.greeks.gamma or 0))
+                        position.theta = Decimal(str(pos_data.greeks.theta or 0))
+                        position.vega = Decimal(str(pos_data.greeks.vega or 0))
                     
                     positions.append(position)
                     
@@ -228,38 +240,39 @@ class TastytradeAdapter(BrokerAdapter):
             
             logger.info(f"Fetched {len(positions)} positions")
             return positions
-            
+        
         except Exception as e:
             logger.error(f"Failed to get positions: {e}")
             logger.exception("Full error:")
             return []
         
     async def get_option_greeks(self, symbols: list[str]) -> dict:
-      """Fetch greeks from DXLinkStreamer (fresh streamer each time)."""
-      if not symbols:
-        return {}
     
-      greeks_map = {}
+        """Fetch greeks from DXLinkStreamer (fresh streamer each time)."""
+        if not symbols:
+            return {}
+    
+        greeks_map = {}
         # Fresh streamer EVERY TIME
-      async with DXLinkStreamer(self.session) as streamer:
-        print(f"Subscribing to {len(symbols)} symbols: {symbols[:2]}...")
-        await streamer.subscribe(Greeks, symbols)
-        
-        for symbol in symbols:
-            try:
-                # Wait for event (timeout)
-                data = await asyncio.wait_for(streamer.get_event(Greeks), timeout=10.0)
-                greeks_map[symbol] = {
-                    "delta": Decimal(str(data.delta)),
-                    "gamma": Decimal(str(data.gamma)),
-                    "theta": Decimal(str(data.theta)),
-                    "vega": Decimal(str(data.vega)),
-                }                
-                print(f"Got Greeks for {symbol}: {greeks_map[symbol]['delta']}")
-            except asyncio.TimeoutError:
-                logger.warning(f"Greeks timeout for {symbol}")
-                continue
-        return greeks_map    
+        async with DXLinkStreamer(self.session) as streamer:
+            print(f"Subscribing to {len(symbols)} symbols: {symbols[:2]}...")
+            await streamer.subscribe(Greeks, symbols)
+            
+            for symbol in symbols:
+                try:
+                    # Wait for event (timeout)
+                    data = await asyncio.wait_for(streamer.get_event(Greeks), timeout=10.0)
+                    greeks_map[symbol] = {
+                        "delta": Decimal(str(data.delta)),
+                        "gamma": Decimal(str(data.gamma)),
+                        "theta": Decimal(str(data.theta)),
+                        "vega": Decimal(str(data.vega)),
+                    }                
+                    print(f"Got Greeks for {symbol}: {greeks_map[symbol]['delta']}")
+                except asyncio.TimeoutError:
+                    logger.warning(f"Greeks timeout for {symbol}")
+                    continue
+            return greeks_map    
     
     def get_orders(self, status: Optional[str] = None) -> List[dm.Order]:
         """Fetch orders from Tastytrade"""
