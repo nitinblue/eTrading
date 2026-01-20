@@ -659,7 +659,7 @@ class TastytradeAdapter(BrokerAdapter):
                 
                 for txn in txns:
                     symbol_str = getattr(txn, 'symbol', '')
-                    symbol = self._parse_occ_symbol(symbol_str) if ' ' in symbol_str else Symbol(
+                    symbol = self._parse_occ_symbol(symbol_str) if ' ' in symbol_str else dm.Symbol(
                         ticker=symbol_str,
                         asset_type=dm.AssetType.EQUITY,
                         multiplier=1
@@ -671,7 +671,7 @@ class TastytradeAdapter(BrokerAdapter):
                     leg = Leg(
                         symbol=symbol,
                         quantity=quantity if 'Buy' in str(action) else -quantity,
-                        side=OrderSide.BUY if 'Buy' in str(action) else OrderSide.SELL,
+                        side=dm.OrderSide.BUY if 'Buy' in str(action) else dm.OrderSide.SELL,
                         entry_price=Decimal(str(getattr(txn, 'price', 0))),
                         entry_time=getattr(txn, 'executed_at', datetime.utcnow()),
                         fees=Decimal(str(getattr(txn, 'regulatory_fees', 0) or 0)) + 
@@ -680,7 +680,7 @@ class TastytradeAdapter(BrokerAdapter):
                     legs.append(leg)
                 
                 if legs:
-                    trade = Trade(
+                    trade = dm.Trade(
                         legs=legs,
                         underlying_symbol=txns[0].underlying_symbol if hasattr(txns[0], 'underlying_symbol') else '',
                         opened_at=txns[0].executed_at if hasattr(txns[0], 'executed_at') else datetime.utcnow()
