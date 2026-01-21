@@ -1,0 +1,18 @@
+general:
+  execution_mode: live  # or # "mock", "paper", "live"
+  is_paper: false  # true for paper trading, false for live trading
+
+broker:
+  data:  # Always live for market data
+    client_secret: ${TASTYTRADE_CLIENT_SECRET_LIVE}
+    refresh_token: ${TASTYTRADE_REFRESH_TOKEN_LIVE}
+  paper:
+    client_secret: ${TASTYTRADE_CLIENT_SECRET_PAPER}
+    refresh_token: ${TASTYTRADE_REFRESH_TOKEN_PAPER}
+  live:
+    client_secret: ${TASTYTRADE_CLIENT_SECRET_LIVE}
+    refresh_token: ${TASTYTRADE_REFRESH_TOKEN_LIVE} 
+
+mock:
+  net_liquidation: 100000
+  buying_power: 50000

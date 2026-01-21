@@ -1,0 +1,677 @@
+2026-01-20 22:39:06,654 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 22:39:06,830 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 22:39:06,830 - core.database.session - ERROR - Session rollback due to error: Textual SQL expression 'SELECT 1' should be explicitly declared as text('SELECT 1')
+2026-01-20 22:39:06,831 - core.database.session - ERROR - Database health check failed: Textual SQL expression 'SELECT 1' should be explicitly declared as text('SELECT 1')
+2026-01-20 22:39:06,832 - core.database.session - INFO - Creating database tables...
+2026-01-20 22:39:06,979 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: index idx_underlying already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\scripts\setup_database.py", line 74, in main
+    db.create_all_tables()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\core\database\session.py", line 77, in create_all_tables
+    Base.metadata.create_all(bind=self.engine)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\schema.py", line 5928, in create_all
+    bind._run_ddl_visitor(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        ddl.SchemaGenerator, self, checkfirst=checkfirst, tables=tables
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3260, in _run_ddl_visitor
+    conn._run_ddl_visitor(visitorcallable, element, **kwargs)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2467, in _run_ddl_visitor
+    ).traverse_single(element)
+      ~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 984, in visit_metadata
+    self.traverse_single(
+    ~~~~~~~~~~~~~~~~~~~~^
+        table,
+        ^^^^^^
+    ...<2 lines>...
+        _is_metadata_operation=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1026, in visit_table
+    self.traverse_single(index, create_ok=True)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1063, in visit_index
+    CreateIndex(index)._invoke_with(self.connection)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 321, in _invoke_with
+    return bind.execute(self)
+           ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 187, in _execute_on_connection
+    return connection._execute_ddl(
+           ~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1530, in _execute_ddl
+    ret = self._execute_context(
+        dialect,
+    ...<4 lines>...
+        compiled,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) index idx_underlying already exists
+[SQL: CREATE INDEX idx_underlying ON trade_events (underlying_symbol)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-01-20 22:40:02,420 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 22:40:02,438 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 22:40:02,439 - core.database.session - ERROR - Session rollback due to error: Textual SQL expression 'SELECT 1' should be explicitly declared as text('SELECT 1')
+2026-01-20 22:40:02,439 - core.database.session - ERROR - Database health check failed: Textual SQL expression 'SELECT 1' should be explicitly declared as text('SELECT 1')
+2026-01-20 22:40:02,439 - core.database.session - INFO - Creating database tables...
+2026-01-20 22:48:42,606 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 22:48:42,636 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 22:49:11,911 - core.database.session - WARNING - Dropping all database tables...
+2026-01-20 22:49:11,978 - core.database.session - WARNING - ✓ All tables dropped
+2026-01-20 22:49:11,979 - core.database.session - INFO - Creating database tables...
+2026-01-20 22:49:12,118 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: index idx_underlying already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\scripts\setup_database.py", line 74, in main
+    db.create_all_tables()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\core\database\session.py", line 78, in create_all_tables
+    Base.metadata.create_all(bind=self.engine)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\schema.py", line 5928, in create_all
+    bind._run_ddl_visitor(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        ddl.SchemaGenerator, self, checkfirst=checkfirst, tables=tables
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3260, in _run_ddl_visitor
+    conn._run_ddl_visitor(visitorcallable, element, **kwargs)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2467, in _run_ddl_visitor
+    ).traverse_single(element)
+      ~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 984, in visit_metadata
+    self.traverse_single(
+    ~~~~~~~~~~~~~~~~~~~~^
+        table,
+        ^^^^^^
+    ...<2 lines>...
+        _is_metadata_operation=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1026, in visit_table
+    self.traverse_single(index, create_ok=True)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1063, in visit_index
+    CreateIndex(index)._invoke_with(self.connection)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 321, in _invoke_with
+    return bind.execute(self)
+           ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 187, in _execute_on_connection
+    return connection._execute_ddl(
+           ~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1530, in _execute_ddl
+    ret = self._execute_context(
+        dialect,
+    ...<4 lines>...
+        compiled,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) index idx_underlying already exists
+[SQL: CREATE INDEX idx_underlying ON trade_events (underlying_symbol)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-01-20 22:51:07,527 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 22:51:07,549 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 22:51:19,311 - core.database.session - WARNING - Dropping all database tables...
+2026-01-20 22:51:19,429 - core.database.session - WARNING - All tables dropped successfully
+2026-01-20 22:51:19,429 - core.database.session - INFO - Creating database tables...
+2026-01-20 22:51:19,550 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: index idx_underlying already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\scripts\setup_database.py", line 74, in main
+    db.create_all_tables()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\core\database\session.py", line 78, in create_all_tables
+    Base.metadata.create_all(bind=self.engine)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\schema.py", line 5928, in create_all
+    bind._run_ddl_visitor(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        ddl.SchemaGenerator, self, checkfirst=checkfirst, tables=tables
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3260, in _run_ddl_visitor
+    conn._run_ddl_visitor(visitorcallable, element, **kwargs)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2467, in _run_ddl_visitor
+    ).traverse_single(element)
+      ~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 984, in visit_metadata
+    self.traverse_single(
+    ~~~~~~~~~~~~~~~~~~~~^
+        table,
+        ^^^^^^
+    ...<2 lines>...
+        _is_metadata_operation=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1026, in visit_table
+    self.traverse_single(index, create_ok=True)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1063, in visit_index
+    CreateIndex(index)._invoke_with(self.connection)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 321, in _invoke_with
+    return bind.execute(self)
+           ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 187, in _execute_on_connection
+    return connection._execute_ddl(
+           ~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1530, in _execute_ddl
+    ret = self._execute_context(
+        dialect,
+    ...<4 lines>...
+        compiled,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) index idx_underlying already exists
+[SQL: CREATE INDEX idx_underlying ON trade_events (underlying_symbol)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-01-20 23:00:13,168 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:00:13,240 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:00:17,403 - core.database.session - WARNING - Dropping all database tables...
+2026-01-20 23:00:17,501 - core.database.session - WARNING - All tables dropped successfully
+2026-01-20 23:00:17,501 - core.database.session - INFO - Creating database tables...
+2026-01-20 23:00:17,654 - core.database.session - INFO - ✓ All tables created
+2026-01-20 23:00:36,023 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:00:36,045 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:08:57,286 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:08:57,305 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:08:57,307 - adapters.tastytrade - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:08:57,307 - adapters.tastytrade - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:08:57,312 - adapters.tastytrade - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:08:57,313 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 80, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 114, in _load_credentials
+    self.client_secret = self._resolve_credential(creds[mode]['client_secret'])
+                                                  ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:13:51,997 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:13:52,028 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:13:52,030 - adapters.tastytrade - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:13:52,030 - adapters.tastytrade - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:13:52,032 - adapters.tastytrade - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:13:52,033 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 80, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 114, in _load_credentials
+    mode_secret = creds[mode]['client_secret']
+                  ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:14:42,521 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:14:42,538 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:14:42,540 - adapters.tastytrade - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:14:42,540 - adapters.tastytrade - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:14:42,542 - adapters.tastytrade - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:14:42,543 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 80, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 114, in _load_credentials
+    mode_secret = creds[mode]['client_secret']
+                  ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:23:34,101 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:23:34,126 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:23:34,128 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:23:34,128 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:23:34,130 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:23:34,131 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 81, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 115, in _load_credentials
+    mode_secret = creds[mode]['client_secret']
+                  ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:30:24,178 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:30:24,203 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:30:24,205 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:30:24,205 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:30:24,208 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Failed to load credentials: cannot use 'dict' as a set element (unhashable type: 'dict')
+2026-01-20 23:30:24,209 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 81, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 112, in _load_credentials
+    logger.info("creds value", {creds})
+                               ^^^^^^^
+TypeError: cannot use 'dict' as a set element (unhashable type: 'dict')
+2026-01-20 23:40:50,010 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:40:50,036 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:40:50,037 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:40:50,038 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:40:50,041 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: '{creds}'
+2026-01-20 23:40:50,042 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:40:50,043 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 81, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 116, in _load_credentials
+    mode_secret = creds[mode]['client_secret']
+                  ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:42:23,939 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:42:23,964 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:42:23,966 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:42:23,966 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:42:23,969 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-20 23:42:23,969 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:42:23,969 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 81, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 117, in _load_credentials
+    mode_token = creds[mode]['refresh_token']
+                 ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:42:39,654 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:42:39,677 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:42:39,679 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:42:39,679 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:42:39,681 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-20 23:42:39,681 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-20 23:42:39,681 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-20 23:42:40,537 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-20 23:42:40,571 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-20 23:42:40,603 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-20 23:42:40,605 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-20 23:42:40,605 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-20 23:42:40,605 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-20 23:42:40,693 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-20 23:42:40,727 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-20 23:42:40,731 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-20 23:42:40,731 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,732 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,734 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,734 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,736 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,736 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,737 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,737 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,739 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,739 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,740 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,740 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,742 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,742 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,744 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 0 positions with Greeks
+2026-01-20 23:42:40,746 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:42:40,747 - services.position_sync - INFO - Received 0 positions from broker
+2026-01-20 23:42:40,747 - services.position_sync - INFO - Valid positions: 0, Invalid: 0
+2026-01-20 23:42:40,754 - repositories.position - INFO - Deleted 0 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:42:40,754 - services.position_sync - INFO - Deleted 0 existing positions
+2026-01-20 23:42:40,755 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-20 23:42:40,759 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-20 23:42:40,760 - services.position_sync - INFO -   Deleted: 0
+2026-01-20 23:42:40,761 - services.position_sync - INFO -   Created: 0
+2026-01-20 23:42:40,761 - services.position_sync - INFO -   Failed: 0
+2026-01-20 23:42:40,762 - services.position_sync - INFO -   Final count: 0
+2026-01-20 23:43:21,518 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:43:21,542 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:43:21,543 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:43:21,544 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:43:21,545 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-20 23:43:21,545 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-20 23:43:21,546 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-20 23:43:22,387 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-20 23:43:22,419 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-20 23:43:22,450 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-20 23:43:22,451 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-20 23:43:22,452 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-20 23:43:22,452 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-20 23:43:22,548 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-20 23:43:22,584 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-20 23:43:22,586 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-20 23:43:22,588 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-20 23:43:22,590 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:43:22,591 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-20 23:43:22,592 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,593 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,593 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,593 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,593 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,594 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,594 - services.position_sync - INFO - Valid positions: 1, Invalid: 6
+2026-01-20 23:43:22,597 - repositories.position - INFO - Deleted 0 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:43:22,597 - services.position_sync - INFO - Deleted 0 existing positions
+2026-01-20 23:43:22,612 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-20 23:43:22,617 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-20 23:43:22,617 - services.position_sync - INFO -   Deleted: 0
+2026-01-20 23:43:22,618 - services.position_sync - INFO -   Created: 1
+2026-01-20 23:43:22,618 - services.position_sync - INFO -   Failed: 0
+2026-01-20 23:43:22,618 - services.position_sync - INFO -   Final count: 1
+2026-01-20 23:44:07,915 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:44:07,935 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:44:07,937 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:44:07,937 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:44:07,939 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-20 23:44:07,940 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-20 23:44:07,940 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-20 23:44:08,858 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-20 23:44:08,893 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-20 23:44:08,924 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-20 23:44:08,925 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-20 23:44:08,926 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-20 23:44:08,926 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-20 23:44:09,010 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-20 23:44:09,043 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-20 23:44:09,044 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-20 23:44:09,046 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-20 23:44:09,047 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:44:09,047 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-20 23:44:09,047 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,047 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,048 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,048 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,048 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,048 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,048 - services.position_sync - INFO - Valid positions: 1, Invalid: 6
+2026-01-20 23:44:09,053 - repositories.position - INFO - Deleted 1 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:44:09,053 - services.position_sync - INFO - Deleted 1 existing positions
+2026-01-20 23:44:09,065 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-20 23:44:09,072 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-20 23:44:09,073 - services.position_sync - INFO -   Deleted: 1
+2026-01-20 23:44:09,073 - services.position_sync - INFO -   Created: 1
+2026-01-20 23:44:09,073 - services.position_sync - INFO -   Failed: 0
+2026-01-20 23:44:09,073 - services.position_sync - INFO -   Final count: 1
