@@ -8,9 +8,9 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 import logging
 
-from repositories.base import BaseRepository, DuplicateEntityError
-from core.database.schema import PositionORM, SymbolORM
-import core.models.domain as dm
+from trading_cotrader.repositories.base import BaseRepository, DuplicateEntityError
+from trading_cotrader.core.database.schema import PositionORM, SymbolORM
+import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
 

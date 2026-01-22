@@ -8,13 +8,14 @@ from datetime import datetime
 import logging
 import yaml
 from pathlib import Path
+from collections import defaultdict
 
 from tastytrade import Session, Account
 from tastytrade.instruments import Equity, Option
 import os
 import re
 #from adapters.base import BrokerAdapter
-import core.models.domain as dm
+import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
 
@@ -216,84 +217,92 @@ class TastytradeAdapter(BrokerAdapter):
     
     def get_positions(self) -> List[dm.Position]:
         """
-        Fetch positions from Tastytrade with proper Greeks
+        Fetch positions from Tastytrade WITH Greeks from option chain
         
-        CRITICAL FIXES:
-        1. Quantity is SIGNED (positive = long, negative = short)
-        2. Greeks are PER CONTRACT, need to multiply by quantity
-        3. Broker position ID for uniqueness
+        CORRECT APPROACH:
+        1. Get positions with include_marks=True (for underlying price)
+        2. Group options by underlying
+        3. Fetch option chain for each underlying (has Greeks)
+        4. Match positions to chain data
         """
         try:
             if not self.account:
                 raise ValueError("Not authenticated")
             
-            positions_data = self.account.get_positions(self.session)
-            positions = []
+            # Step 1: Get positions with underlying marks
+            positions_data = self.account.get_positions(
+                self.session,
+                include_marks=True  # ← CORRECT FLAG (for underlying price)
+            )
             
-            logger.info(f"Fetching positions from Tastytrade...")
+            if not positions_data:
+                logger.info("No positions found")
+                return []
+            
+            logger.info(f"Fetching {len(positions_data)} positions from Tastytrade...")
+            
+            # Step 2: Group option positions by underlying
+            option_positions_by_underlying = defaultdict(list)
+            positions = []
             
             for pos_data in positions_data:
                 try:
                     # Parse symbol
                     symbol = self._parse_symbol_from_position(pos_data)
                     
-                    # CRITICAL: Quantity is signed!
-                    # Positive = Long, Negative = Short
+                    # Get quantity (signed)
                     raw_quantity = int(pos_data.quantity or 0)
-                    
-                    # Additional check with quantity_direction if available
                     if hasattr(pos_data, 'quantity_direction'):
                         if pos_data.quantity_direction == 'Short':
                             raw_quantity = -abs(raw_quantity)
                         else:
                             raw_quantity = abs(raw_quantity)
                     
-                    # Skip zero quantity
                     if raw_quantity == 0:
-                        logger.debug(f"Skipping {symbol.ticker} - zero quantity")
                         continue
                     
-                    # Get broker position ID (critical for preventing duplicates)
+                    # Get broker position ID
                     broker_pos_id = str(pos_data.id) if hasattr(pos_data, 'id') else None
                     if not broker_pos_id:
-                        # Fallback: generate from symbol
                         broker_pos_id = f"{self.account_id}_{symbol.get_option_symbol() if symbol.asset_type == dm.AssetType.OPTION else symbol.ticker}"
                     
-                    # Create position
+                    # Get current price
+                    current_price = Decimal('0')
+                    if hasattr(pos_data, 'mark_price') and pos_data.mark_price:
+                        current_price = Decimal(str(pos_data.mark_price))
+                    elif hasattr(pos_data, 'close_price') and pos_data.close_price:
+                        current_price = Decimal(str(pos_data.close_price))
+                    
+                    # Calculate market value
+                    market_value = current_price * abs(raw_quantity) * symbol.multiplier
+                    
+                    # Create position (without Greeks for now)
                     position = dm.Position(
                         symbol=symbol,
-                        quantity=raw_quantity,  # Keep the sign!
+                        quantity=raw_quantity,
                         average_price=Decimal(str(pos_data.average_open_price or 0)),
-                        current_price=Decimal(str(pos_data.close_price or 0)),
-                        market_value=Decimal(str(pos_data.mark_price or 0)),
+                        current_price=current_price,
+                        market_value=market_value,
                         total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(raw_quantity) * symbol.multiplier,
                         broker_position_id=broker_pos_id,
                     )
                     
-                    # CRITICAL: Get Greeks from Tastytrade
-                    if hasattr(pos_data, 'greeks') and pos_data.greeks:
-                        greeks = pos_data.greeks
-                        
-                        # Tastytrade Greeks are PER CONTRACT
-                        # Need to multiply by quantity for POSITION-LEVEL Greeks
+                    # Handle Greeks differently by asset type
+                    if symbol.asset_type == dm.AssetType.EQUITY:
+                        # Stock: delta = quantity (no chain needed)
                         position.greeks = dm.Greeks(
-                            delta=Decimal(str(greeks.delta or 0)) * abs(raw_quantity),
-                            gamma=Decimal(str(greeks.gamma or 0)) * abs(raw_quantity),
-                            theta=Decimal(str(greeks.theta or 0)) * abs(raw_quantity),
-                            vega=Decimal(str(greeks.vega or 0)) * abs(raw_quantity),
-                            rho=Decimal(str(greeks.rho or 0)) * abs(raw_quantity) if hasattr(greeks, 'rho') else Decimal('0'),
+                            delta=Decimal(str(raw_quantity)),
+                            gamma=Decimal('0'),
+                            theta=Decimal('0'),
+                            vega=Decimal('0'),
+                            rho=Decimal('0'),
                             timestamp=datetime.utcnow()
                         )
+                        logger.debug(f"✓ Equity: {symbol.ticker} Δ={raw_quantity}")
                         
-                        logger.debug(f"Position {symbol.ticker}: qty={raw_quantity}, Δ={position.greeks.delta:.2f}")
-                    else:
-                        # No Greeks available (equity positions)
-                        if symbol.asset_type == dm.AssetType.EQUITY:
-                            # Stock delta = 1 per share
-                            position.greeks = dm.Greeks(
-                                delta=Decimal(str(raw_quantity)),
-                                timestamp=datetime.utcnow()
-                            )
+                    elif symbol.asset_type == dm.AssetType.OPTION:
+                        # Option: need to fetch from chain
+                        option_positions_by_underlying[symbol.ticker].append(position)
                     
                     positions.append(position)
                     
@@ -302,6 +311,10 @@ class TastytradeAdapter(BrokerAdapter):
                     logger.exception("Position parse error:")
                     continue
             
+            # Step 3: Fetch option chains and populate Greeks
+            if option_positions_by_underlying:
+                self._populate_greeks_from_chains(option_positions_by_underlying)
+            
             logger.info(f"✓ Fetched {len(positions)} positions with Greeks")
             return positions
             
@@ -309,6 +322,153 @@ class TastytradeAdapter(BrokerAdapter):
             logger.error(f"Failed to get positions: {e}")
             logger.exception("Full error:")
             return []
+
+
+    def _populate_greeks_from_chains(self, option_positions_by_underlying: Dict[str, List[dm.Position]]):
+        
+        """
+        Fetch option chains and populate Greeks for option positions
+        
+        Args:
+            option_positions_by_underlying: Dict mapping underlying -> list of option positions
+        """
+        
+        from tastytrade import get_option_chain
+        
+        for underlying, positions in option_positions_by_underlying.items():
+            try:
+                logger.info(f"Fetching option chain for {underlying}...")
+                
+                # Fetch option chain with Greeks
+                chain = get_option_chain(
+                    self.session,
+                    underlying
+                )
+                
+                if not chain:
+                    logger.warning(f"No option chain data for {underlying}")
+                    continue
+                
+                # Build lookup dict: (strike, expiration, option_type) -> greeks
+                chain_lookup = {}
+                for option in chain:
+                    if hasattr(option, 'greeks') and option.greeks:
+                        key = (
+                            float(option.strike),
+                            option.expiration_date,
+                            option.option_type  # 'C' or 'P'
+                        )
+                        chain_lookup[key] = option.greeks
+                
+                logger.info(f"  Chain has {len(chain_lookup)} options with Greeks")
+                
+                # Match positions to chain
+                for position in positions:
+                    try:
+                        key = (
+                            float(position.symbol.strike),
+                            position.symbol.expiration.date(),
+                            'C' if position.symbol.option_type == dm.OptionType.CALL else 'P'
+                        )
+                        
+                        greeks = chain_lookup.get(key)
+                        
+                        if greeks:
+                            # Greeks from chain are PER CONTRACT
+                            # Multiply by quantity for POSITION-LEVEL Greeks
+                            position.greeks = dm.Greeks(
+                                delta=Decimal(str(greeks.delta or 0)) * abs(position.quantity),
+                                gamma=Decimal(str(greeks.gamma or 0)) * abs(position.quantity),
+                                theta=Decimal(str(greeks.theta or 0)) * abs(position.quantity),
+                                vega=Decimal(str(greeks.vega or 0)) * abs(position.quantity),
+                                rho=Decimal(str(greeks.rho or 0)) * abs(position.quantity) if hasattr(greeks, 'rho') else Decimal('0'),
+                                timestamp=datetime.utcnow()
+                            )
+                            
+                            logger.debug(f"✓ Greeks: {position.symbol.ticker} ${position.symbol.strike} Δ={position.greeks.delta:.2f}")
+                        else:
+                            logger.warning(f"⚠️  No Greeks in chain for {position.symbol.ticker} ${position.symbol.strike}")
+                    
+                    except Exception as e:
+                        logger.error(f"Error matching position to chain: {e}")
+                        continue
+            
+            except Exception as e:
+                logger.error(f"Failed to fetch option chain for {underlying}: {e}")
+                logger.exception("Chain fetch error:")
+                continue
+
+
+    # ============================================================================
+    # ALTERNATIVE: If get_option_chain doesn't work, use streaming quotes
+    # ============================================================================
+
+    def _populate_greeks_from_quotes(self, option_positions: List[dm.Position]):
+        """
+        Alternative: Fetch Greeks using DXLink streaming quotes
+        
+        This is slower but more reliable for individual options
+        """
+        
+        from tastytrade import DXLinkStreamer
+        import asyncio
+        
+        async def fetch_greeks():
+            # Build symbol list
+            option_symbols = []
+            symbol_to_position = {}
+            
+            for pos in option_positions:
+                occ_symbol = pos.symbol.get_option_symbol()
+                option_symbols.append(occ_symbol)
+                symbol_to_position[occ_symbol] = pos
+            
+            logger.info(f"Fetching Greeks for {len(option_symbols)} options via streaming...")
+            
+            async with DXLinkStreamer(self.session) as streamer:
+                # Subscribe to Greeks
+                await streamer.subscribe_greeks(option_symbols)
+                
+                # Collect Greeks
+                greeks_received = {}
+                timeout = 30  # 30 second timeout
+                start_time = asyncio.get_event_loop().time()
+                
+                async for event in streamer.listen():
+                    if event.eventType == 'Greeks':
+                        symbol = event.eventSymbol
+                        greeks_received[symbol] = event
+                        
+                        # Break if we have all Greeks or timeout
+                        if len(greeks_received) >= len(option_symbols):
+                            break
+                        
+                        if asyncio.get_event_loop().time() - start_time > timeout:
+                            logger.warning(f"Timeout: Got {len(greeks_received)}/{len(option_symbols)} Greeks")
+                            break
+                
+                # Apply Greeks to positions
+                for symbol, event in greeks_received.items():
+                    position = symbol_to_position[symbol]
+                    
+                    position.greeks = dm.Greeks(
+                        delta=Decimal(str(event.delta or 0)) * abs(position.quantity),
+                        gamma=Decimal(str(event.gamma or 0)) * abs(position.quantity),
+                        theta=Decimal(str(event.theta or 0)) * abs(position.quantity),
+                        vega=Decimal(str(event.vega or 0)) * abs(position.quantity),
+                        rho=Decimal(str(event.rho or 0)) * abs(position.quantity) if hasattr(event, 'rho') else Decimal('0'),
+                        timestamp=datetime.now(datetime.UTC)
+                    )
+                    
+                    logger.debug(f"✓ Greeks via stream: {symbol} Δ={position.greeks.delta:.2f}")
+                
+                logger.info(f"✓ Got Greeks for {len(greeks_received)}/{len(option_symbols)} options")
+        
+        try:
+            asyncio.run(fetch_greeks())
+        except Exception as e:
+            logger.error(f"Failed to fetch Greeks via streaming: {e}")
+            logger.exception("Full error:")
     
     def get_orders(self, status: Optional[str] = None) -> List[dm.Order]:
         """Fetch orders from Tastytrade"""
@@ -482,4 +642,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    adapter = TastytradeAdapter()
+    adapter.authenticate()
+
+    positions = adapter.get_positions()
+    if positions:
+        pos = positions[0]
+        print(f"Position: {pos.symbol.ticker}")
+        print(f"Has Greeks: {pos.greeks is not None}")
+        if pos.greeks:
+            print(f"Delta: {pos.greeks.delta}")

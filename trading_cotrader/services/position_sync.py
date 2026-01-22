@@ -112,13 +112,15 @@ class PositionSyncService:
         }
     
     def _validate_position(self, position: dm.Position) -> tuple[bool, List[str]]:
+        
         """
-        Validate position data
+        Validate position data - RELAXED GREEKS REQUIREMENT
         
         Returns:
             (is_valid, list_of_errors)
         """
         errors = []
+        warnings = []
         
         # Check quantity
         if position.quantity == 0:
@@ -135,16 +137,17 @@ class PositionSyncService:
             if not position.symbol.option_type:
                 errors.append("Option missing type")
         
-        # Check Greeks for options
+        # Check Greeks for options - CHANGED TO WARNING INSTEAD OF ERROR
         if position.symbol.asset_type == dm.AssetType.OPTION:
             if not position.greeks or (position.greeks.delta == 0 and position.greeks.gamma == 0):
-                errors.append("Option has zero Greeks - likely not fetched from broker")
-            
-            # Delta sanity check
-            if position.greeks:
-                expected_max_delta = abs(position.quantity) * 1.1  # Allow 10% margin
+                # CHANGED: This is now just a warning, not an error
+                warnings.append("Option has zero Greeks - will calculate later")
+                logger.info(f"Position {position.symbol.ticker} accepted without Greeks - will calculate separately")
+            else:
+                # Delta sanity check (only if we have Greeks)
+                expected_max_delta = abs(position.quantity) * 1.1
                 if abs(position.greeks.delta) > expected_max_delta:
-                    errors.append(f"Delta {position.greeks.delta:.2f} seems too high for qty {position.quantity}")
+                    warnings.append(f"Delta {position.greeks.delta:.2f} seems high for qty {position.quantity}")
         
         # Check prices
         if position.current_price and position.current_price < 0:
@@ -152,8 +155,13 @@ class PositionSyncService:
         
         # Check broker position ID
         if not position.broker_position_id:
-            errors.append("Missing broker_position_id (will cause issues on re-sync)")
+            warnings.append("Missing broker_position_id")
         
+        # Log warnings
+        if warnings:
+            logger.debug(f"Warnings for {position.symbol.ticker}: {warnings}")
+        
+        # Only fail on actual errors, not missing Greeks
         return (len(errors) == 0, errors)
     
     def get_sync_summary(self, portfolio_id: str) -> Dict:
