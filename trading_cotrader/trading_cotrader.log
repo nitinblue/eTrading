@@ -1149,3 +1149,66 @@ KeyError: 'needs_greeks'
 2026-01-21 20:22:01,282 - services.position_sync - INFO -   Created: 7
 2026-01-21 20:22:01,283 - services.position_sync - INFO -   Failed: 0
 2026-01-21 20:22:01,283 - services.position_sync - INFO -   Final count: 7
+2026-01-22 21:17:29,488 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-22 21:17:29,627 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-22 21:17:29,630 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 21:17:29,630 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 21:17:29,632 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-22 21:17:29,633 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-22 21:17:30,465 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-22 21:17:30,537 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-22 21:17:30,616 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-22 21:17:30,617 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-22 21:17:30,618 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-22 21:17:30,618 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-22 21:17:30,758 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-22 21:17:30,809 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-22 21:17:30,811 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 6 option positions...
+2026-01-22 21:17:31,451 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 6 options
+2026-01-22 21:17:31,456 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-22 21:17:31,459 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 21:17:31,460 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-22 21:17:31,461 - services.position_sync - INFO - Valid positions: 7, Invalid: 0
+2026-01-22 21:17:31,472 - repositories.position - INFO - Deleted 7 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 21:17:31,473 - services.position_sync - INFO - Deleted 7 existing positions
+2026-01-22 21:17:31,508 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-22 21:17:31,519 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-22 21:17:31,519 - services.position_sync - INFO -   Deleted: 7
+2026-01-22 21:17:31,520 - services.position_sync - INFO -   Created: 7
+2026-01-22 21:17:31,520 - services.position_sync - INFO -   Failed: 0
+2026-01-22 21:17:31,520 - services.position_sync - INFO -   Final count: 7
+2026-01-22 21:39:15,449 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-22 21:39:15,479 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-22 21:39:15,481 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 21:39:15,481 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 21:39:15,483 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-22 21:39:15,484 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-22 21:39:16,383 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-22 21:39:16,455 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-22 21:39:16,530 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-22 21:39:16,531 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-22 21:39:16,532 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-22 21:39:16,532 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-22 21:39:16,662 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-22 21:39:16,716 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-22 21:39:16,718 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 6 option positions...
+2026-01-22 21:39:17,140 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 6 options
+2026-01-22 21:39:17,145 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-22 21:39:17,147 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 21:39:17,148 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-22 21:39:17,150 - services.position_sync - INFO - Valid positions: 7, Invalid: 0
+2026-01-22 21:39:17,159 - repositories.position - INFO - Deleted 7 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 21:39:17,160 - services.position_sync - INFO - Deleted 7 existing positions
+2026-01-22 21:39:17,191 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-22 21:39:17,202 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-22 21:39:17,203 - services.position_sync - INFO -   Deleted: 7
+2026-01-22 21:39:17,203 - services.position_sync - INFO -   Created: 7
+2026-01-22 21:39:17,203 - services.position_sync - INFO -   Failed: 0
+2026-01-22 21:39:17,204 - services.position_sync - INFO -   Final count: 7
+2026-01-22 21:39:17,259 - services.snapshot_service - INFO - Capturing daily snapshot for 2026-01-23
+2026-01-22 21:39:17,279 - services.snapshot_service - INFO - ✓ Snapshot captured:
+2026-01-22 21:39:17,279 - services.snapshot_service - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-22 21:39:17,279 - services.snapshot_service - INFO -   Positions: 7
+2026-01-22 21:39:17,280 - services.snapshot_service - INFO -   Greeks history: 7 positions
+2026-01-22 21:39:17,281 - services.snapshot_service - INFO -   Total Equity: $30,539.53
+2026-01-22 21:39:17,281 - services.snapshot_service - INFO -   Delta: 101.10

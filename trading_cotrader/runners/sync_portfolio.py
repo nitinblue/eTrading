@@ -19,8 +19,10 @@ from core.database.session import get_db_manager, session_scope
 from trading_cotrader.adapters.tastytrade_adapter import TastytradeAdapter
 from repositories.portfolio import PortfolioRepository
 from repositories.position import PositionRepository
+from repositories.trade import TradeRepository
 from services.position_sync import PositionSyncService
 import core.models.domain as dm
+from services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +67,10 @@ class PortfolioSyncRunner:
         if not await self._update_portfolio_greeks():
             return False
         
-        # Step 6: Display summary
+        # Step 6: Capture daily snapshot (NEW!)
+        await self._capture_snapshot()
+        
+        # Step 7: Display summary
         self._display_summary()
         
         print("\n✅ Portfolio sync complete!")
@@ -274,6 +279,47 @@ class PortfolioSyncRunner:
             print(f"  Θ = {self.portfolio.portfolio_greeks.theta:.2f}")
             print(f"  V = {self.portfolio.portfolio_greeks.vega:.2f}")
 
+    async def _capture_snapshot(self) -> bool:
+        """Capture daily snapshot for analytics"""
+        print("\n📸 Capturing daily snapshot...")
+        
+        try:
+            with session_scope() as session:
+                position_repo = PositionRepository(session)
+                trade_repo = TradeRepository(session)
+                
+                # Get current positions and trades
+                positions = position_repo.get_by_portfolio(self.portfolio.id)
+                trades = trade_repo.get_by_portfolio(self.portfolio.id, open_only=True)
+                
+                # Capture snapshot
+                snapshot_service = SnapshotService(session)
+                success = snapshot_service.capture_daily_snapshot(
+                    self.portfolio,
+                    positions,
+                    trades
+                )
+                
+                if success:
+                    print("✓ Daily snapshot captured")
+                    
+                    # Show quick stats
+                    stats = snapshot_service.get_summary_stats(self.portfolio.id, days=7)
+                    if stats and stats['days_tracked'] > 1:
+                        print(f"\n📊 Last 7 days:")
+                        print(f"  Days tracked: {stats['days_tracked']}")
+                        print(f"  Total P&L: ${stats['total_pnl']:,.2f}")
+                        print(f"  Win rate: {stats.get('win_rate', 0):.1f}%")
+                    
+                    return True
+                else:
+                    print("⚠️  Snapshot failed")
+                    return False
+            
+        except Exception as e:
+            print(f"❌ Snapshot capture failed: {e}")
+            logger.exception("Full error:")
+            return False
 
 async def main():
     """Main entry point"""
