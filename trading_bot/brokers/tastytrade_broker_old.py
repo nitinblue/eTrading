@@ -20,12 +20,6 @@ from tastytrade.instruments import get_option_chain
 from tastytrade.utils import get_tasty_monthly
 
 
-from tastytrade import DXLinkStreamer
-from tastytrade.dxfeed import Greeks
-from tastytrade.instruments import get_option_chain
-from tastytrade.utils import get_tasty_monthly
-
-
 logger = logging.getLogger(_name_)
 class TastytradeBroker:
     def _init_(self, client_secret: str, refresh_token: str, is_paper: bool = True):
