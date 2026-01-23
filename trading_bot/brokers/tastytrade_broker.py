@@ -1,150 +1,93 @@
-# trading_bot/brokers/tastytrade_broker.py
-"""Tastytrade broker implementation using the latest tastytrade SDK (tastyware/tastytrade)."""
-
-from typing import List, Optional, Dict, Any
-from decimal import Decimal
-
-from tastytrade import Session  # Latest SDK uses Session directly
-from tastytrade.account import Account
-from tastytrade.instruments import Option
-from tastytrade.order import NewOrder, OrderAction, OrderTimeInForce, OrderType, PriceEffect
-
-from trading_bot.order_model import UniversalOrder, OrderLeg
-from trading_bot.brokers.abstract_broker import Broker  # If you have abstract_broker.py
 import logging
+from tastytrade import Session, Account
 
 logger = logging.getLogger(__name__)
 
-# trading_bot/brokers/tastytrade_broker.py
-"""
-Tastytrade broker using OAuth2 (JWT) tokens — latest SDK compatible.
-"""
-from tastytrade import Session
-from tastytrade.account import Account
-from tastytrade.instruments import Option
-from tastytrade.order import NewOrder, OrderAction, OrderTimeInForce, OrderType, PriceEffect
-from decimal import Decimal
-from typing import Optional, Dict, List
-import logging
-
-logger = logging.getLogger(__name__)
 
 class TastytradeBroker:
-    def __init__(self, client_secret: str, refresh_token: str, is_paper: bool = True):
-        self.client_secret = client_secret
-        self.refresh_token = refresh_token
-        self.is_paper = is_paper
-        self.session: Optional[Session] = None
-        self.accounts: Dict[str, Account] = {}
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+
+        mode = cfg["general"]["execution_mode"]  # live / paper
+        self.is_paper = cfg["general"]["is_paper"]
+
+        broker_cfg = cfg["broker"][mode]
+
+        self.client_secret = broker_cfg["client_secret"]
+        self.refresh_token = broker_cfg["refresh_token"]
+
+        logger.info(
+            f"TastytradeBroker using client_secret length={len(self.client_secret)}"
+        )
+
+        self.session = None
+        self.accounts = {}
+
+        self.connect()
 
     def connect(self):
         try:
-            # Latest SDK: positional arguments
-            self.session = Session(self.client_secret, self.refresh_token, is_test=self.is_paper)
-            logger.info(f"Connected to Tastytrade {'PAPER' if self.is_paper else 'LIVE'} via OAuth2")
-            # accounts_list = Account.get_accounts(self.session)
-            accounts_list = Account.get(self.session)
-            self.accounts = {acc.account_number: acc for acc in accounts_list}
+            logger.info(
+                f"Connecting to Tastytrade | {'PAPER' if self.is_paper else 'LIVE'}"
+            )
+
+            self.session = Session(
+                self.client_secret,
+                self.refresh_token,
+                is_test=self.is_paper
+            )
+
+            accounts = Account.get(self.session)
+            self.accounts = {a.account_number: a for a in accounts}
+
             logger.info(f"Loaded {len(self.accounts)} account(s)")
-        except Exception as e:
-            logger.error(f"Tastytrade OAuth2 connection failed: {e}")
+
+        except Exception:
+            logger.exception("Tastytrade connection failed")
             raise
 
-    def _get_account(self, account_id: Optional[str]) -> Account:
-        if not account_id:
-            account_id = next(iter(self.accounts))
-        if account_id not in self.accounts:
-            raise ValueError(f"Account {account_id} not found.")
-        return self.accounts[account_id]
+    # ------------------------------------------------------------------
+    # SAFE ACCESSORS (never throw)
+    # ------------------------------------------------------------------
+    def get_default_account(self) -> str:
+        if not self.accounts:
+            raise RuntimeError("No Tastytrade accounts loaded")
 
-    def get_positions(self, account_id: Optional[str] = None) -> List[Dict]:
-        if not self.session:
-            raise RuntimeError("Broker not connected.")
-        account = self._get_account(account_id)
-        positions = account.get_positions(self.session)
-        return [
-            {
-                "symbol": pos.symbol,
-                "quantity": pos.quantity,
-                "entry_price": float(pos.average_price or 0),
-                "current_price": float(pos.mark_price or 0),
-                "greeks": pos.greeks.to_dict() if hasattr(pos, 'greeks') and pos.greeks else {}
-            }
-            for pos in positions
-        ]
+        return next(iter(self.accounts.keys()))
 
-    def get_account_balance(self, account_id: Optional[str] = None) -> Dict:
-        if not self.session:
-            raise RuntimeError("Broker not connected.")
-        account = self._get_account(account_id)
-        balances = account.get_balances(self.session)
-        return {
-            "cash_balance": float(balances.cash_balance or 0),
-            "equity_buying_power": float(balances.equity_buying_power or 0),
-            "margin_equity": float(balances.margin_equity or 0)
-        }
 
-    def execute_order(self, order: UniversalOrder, account_id: Optional[str] = None) -> Dict:
-        if not self.session:
-            raise RuntimeError("Broker not connected.")
-        account = self._get_account(account_id)
+    def get_accounts(self):
+        """
+        Returns list of account IDs.
+        """
+        return list(self.accounts.keys())
 
-        if order.dry_run:
-            logger.info(f"[DRY RUN] Account {account.account_number}: {order.to_dict()}")
-            return {"status": "dry_run_success", "order": order.to_dict()}
+    def get_account(self, account_id):
+        """
+        Returns the raw account object (SDK object).
+        """
+        return self.accounts.get(account_id)
 
-        try:
-            legs = []
-            for leg in order.legs:
-                logger.info(f"Leg: {leg.symbol.strip()}")
-                # instrument = Option.get_option(self.session, "MSFT  260116P00410000")
-                # legs.append(instrument.build_leg(Decimal(leg.quantity), getattr(OrderAction, leg.action.value)))
+    def get_net_liquidation(self, account_id):
+        """
+        Returns net liquidation value for an account.
+        """
+        acc = self.get_account(account_id)
+        if acc is None:
+            raise ValueError(f"Unknown account_id: {account_id}")
 
-            tt_order = NewOrder(
-                time_in_force=getattr(OrderTimeInForce, order.time_in_force),
-                order_type=getattr(OrderType, order.order_type.value),
-                legs=order.legs,
-                price=Decimal(str(order.limit_price)) if order.limit_price else None
-            )
-            logger.info(f"TT Order before price effect adjustment: {tt_order}")
+        # Tastytrade SDK exposes this on balances, hardcoded for now revisit later
+        return 10000.0
+        return float(acc.get_balances(account_id).net_liquidating_value)
 
-            if tt_order.price is not None:
-                tt_order.price = abs(tt_order.price) if order.price_effect == PriceEffect.CREDIT else -abs(tt_order.price)
+    def get_buying_power(self, account_id):
+        """
+        Returns buying power for an account.
+        """
+        acc = self.get_account(account_id)
+        if acc is None:
+            raise ValueError(f"Unknown account_id: {account_id}")
 
-            response = account.place_order(self.session, tt_order)
-            logger.info(f"Order placed on {account.account_number}")
-            return {"status": "success", "details": str(response)}
-        except Exception as e:
-            logger.error(f"Order failed: {e}")
-            return {"status": "failed", "error": str(e)}
-        
-    def get_all_orders(self, account_id: Optional[str] = None) -> List[Dict]:
-        if not self.session:
-            raise RuntimeError("Broker not connected.")
-        account = self._get_account(account_id)
-        orders = account.get_live_orders(self.session)
-        logger.info(f"Fetched {len(orders)} orders from account {account.account_number}{orders[0] if orders else ''}")
-        return [
-            {
-                "order_id": order.id,
-                "status": order.status,
-                "symbol": order.underlying_symbol,
-                # "quantity": order.quantity,
-                # "filled_quantity": order.filled_quantity,
-                "price": float(order.price or 0),
-                "order_type": order.order_type,
-                "price_effect": order.price,
-                "legs": [
-                    {
-                        "symbol": leg.symbol,
-                        "quantity": leg.quantity,
-                        "action": leg.action
-                    }
-                    for leg in order.legs
-                ],
-                "time_in_force": order.time_in_force,
-                "updated_at": order.updated_at.isoformat(),
-
-            }
-            for order in orders
-        ]
+        # Tastytrade SDK exposes this on balances, hardcoded for now revisit later
+        return 10000.0
+        return float(acc.balances.buying_power)

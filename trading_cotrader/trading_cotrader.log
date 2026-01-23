@@ -1,0 +1,1276 @@
+2026-01-20 22:39:06,654 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 22:39:06,830 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 22:39:06,830 - core.database.session - ERROR - Session rollback due to error: Textual SQL expression 'SELECT 1' should be explicitly declared as text('SELECT 1')
+2026-01-20 22:39:06,831 - core.database.session - ERROR - Database health check failed: Textual SQL expression 'SELECT 1' should be explicitly declared as text('SELECT 1')
+2026-01-20 22:39:06,832 - core.database.session - INFO - Creating database tables...
+2026-01-20 22:39:06,979 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: index idx_underlying already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\scripts\setup_database.py", line 74, in main
+    db.create_all_tables()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\core\database\session.py", line 77, in create_all_tables
+    Base.metadata.create_all(bind=self.engine)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\schema.py", line 5928, in create_all
+    bind._run_ddl_visitor(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        ddl.SchemaGenerator, self, checkfirst=checkfirst, tables=tables
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3260, in _run_ddl_visitor
+    conn._run_ddl_visitor(visitorcallable, element, **kwargs)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2467, in _run_ddl_visitor
+    ).traverse_single(element)
+      ~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 984, in visit_metadata
+    self.traverse_single(
+    ~~~~~~~~~~~~~~~~~~~~^
+        table,
+        ^^^^^^
+    ...<2 lines>...
+        _is_metadata_operation=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1026, in visit_table
+    self.traverse_single(index, create_ok=True)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1063, in visit_index
+    CreateIndex(index)._invoke_with(self.connection)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 321, in _invoke_with
+    return bind.execute(self)
+           ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 187, in _execute_on_connection
+    return connection._execute_ddl(
+           ~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1530, in _execute_ddl
+    ret = self._execute_context(
+        dialect,
+    ...<4 lines>...
+        compiled,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) index idx_underlying already exists
+[SQL: CREATE INDEX idx_underlying ON trade_events (underlying_symbol)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-01-20 22:40:02,420 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 22:40:02,438 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 22:40:02,439 - core.database.session - ERROR - Session rollback due to error: Textual SQL expression 'SELECT 1' should be explicitly declared as text('SELECT 1')
+2026-01-20 22:40:02,439 - core.database.session - ERROR - Database health check failed: Textual SQL expression 'SELECT 1' should be explicitly declared as text('SELECT 1')
+2026-01-20 22:40:02,439 - core.database.session - INFO - Creating database tables...
+2026-01-20 22:48:42,606 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 22:48:42,636 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 22:49:11,911 - core.database.session - WARNING - Dropping all database tables...
+2026-01-20 22:49:11,978 - core.database.session - WARNING - ✓ All tables dropped
+2026-01-20 22:49:11,979 - core.database.session - INFO - Creating database tables...
+2026-01-20 22:49:12,118 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: index idx_underlying already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\scripts\setup_database.py", line 74, in main
+    db.create_all_tables()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\core\database\session.py", line 78, in create_all_tables
+    Base.metadata.create_all(bind=self.engine)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\schema.py", line 5928, in create_all
+    bind._run_ddl_visitor(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        ddl.SchemaGenerator, self, checkfirst=checkfirst, tables=tables
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3260, in _run_ddl_visitor
+    conn._run_ddl_visitor(visitorcallable, element, **kwargs)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2467, in _run_ddl_visitor
+    ).traverse_single(element)
+      ~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 984, in visit_metadata
+    self.traverse_single(
+    ~~~~~~~~~~~~~~~~~~~~^
+        table,
+        ^^^^^^
+    ...<2 lines>...
+        _is_metadata_operation=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1026, in visit_table
+    self.traverse_single(index, create_ok=True)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1063, in visit_index
+    CreateIndex(index)._invoke_with(self.connection)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 321, in _invoke_with
+    return bind.execute(self)
+           ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 187, in _execute_on_connection
+    return connection._execute_ddl(
+           ~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1530, in _execute_ddl
+    ret = self._execute_context(
+        dialect,
+    ...<4 lines>...
+        compiled,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) index idx_underlying already exists
+[SQL: CREATE INDEX idx_underlying ON trade_events (underlying_symbol)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-01-20 22:51:07,527 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 22:51:07,549 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 22:51:19,311 - core.database.session - WARNING - Dropping all database tables...
+2026-01-20 22:51:19,429 - core.database.session - WARNING - All tables dropped successfully
+2026-01-20 22:51:19,429 - core.database.session - INFO - Creating database tables...
+2026-01-20 22:51:19,550 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: index idx_underlying already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\scripts\setup_database.py", line 74, in main
+    db.create_all_tables()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\core\database\session.py", line 78, in create_all_tables
+    Base.metadata.create_all(bind=self.engine)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\schema.py", line 5928, in create_all
+    bind._run_ddl_visitor(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        ddl.SchemaGenerator, self, checkfirst=checkfirst, tables=tables
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3260, in _run_ddl_visitor
+    conn._run_ddl_visitor(visitorcallable, element, **kwargs)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2467, in _run_ddl_visitor
+    ).traverse_single(element)
+      ~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 984, in visit_metadata
+    self.traverse_single(
+    ~~~~~~~~~~~~~~~~~~~~^
+        table,
+        ^^^^^^
+    ...<2 lines>...
+        _is_metadata_operation=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1026, in visit_table
+    self.traverse_single(index, create_ok=True)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 1063, in visit_index
+    CreateIndex(index)._invoke_with(self.connection)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 321, in _invoke_with
+    return bind.execute(self)
+           ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\sql\ddl.py", line 187, in _execute_on_connection
+    return connection._execute_ddl(
+           ~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1530, in _execute_ddl
+    ret = self._execute_context(
+        dialect,
+    ...<4 lines>...
+        compiled,
+    )
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) index idx_underlying already exists
+[SQL: CREATE INDEX idx_underlying ON trade_events (underlying_symbol)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-01-20 23:00:13,168 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:00:13,240 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:00:17,403 - core.database.session - WARNING - Dropping all database tables...
+2026-01-20 23:00:17,501 - core.database.session - WARNING - All tables dropped successfully
+2026-01-20 23:00:17,501 - core.database.session - INFO - Creating database tables...
+2026-01-20 23:00:17,654 - core.database.session - INFO - ✓ All tables created
+2026-01-20 23:00:36,023 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:00:36,045 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:08:57,286 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:08:57,305 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:08:57,307 - adapters.tastytrade - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:08:57,307 - adapters.tastytrade - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:08:57,312 - adapters.tastytrade - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:08:57,313 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 80, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 114, in _load_credentials
+    self.client_secret = self._resolve_credential(creds[mode]['client_secret'])
+                                                  ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:13:51,997 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:13:52,028 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:13:52,030 - adapters.tastytrade - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:13:52,030 - adapters.tastytrade - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:13:52,032 - adapters.tastytrade - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:13:52,033 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 80, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 114, in _load_credentials
+    mode_secret = creds[mode]['client_secret']
+                  ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:14:42,521 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:14:42,538 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:14:42,540 - adapters.tastytrade - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:14:42,540 - adapters.tastytrade - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:14:42,542 - adapters.tastytrade - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:14:42,543 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 80, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade.py", line 114, in _load_credentials
+    mode_secret = creds[mode]['client_secret']
+                  ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:23:34,101 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:23:34,126 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:23:34,128 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:23:34,128 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:23:34,130 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:23:34,131 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 81, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 115, in _load_credentials
+    mode_secret = creds[mode]['client_secret']
+                  ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:30:24,178 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:30:24,203 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:30:24,205 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:30:24,205 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:30:24,208 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Failed to load credentials: cannot use 'dict' as a set element (unhashable type: 'dict')
+2026-01-20 23:30:24,209 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 81, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 112, in _load_credentials
+    logger.info("creds value", {creds})
+                               ^^^^^^^
+TypeError: cannot use 'dict' as a set element (unhashable type: 'dict')
+2026-01-20 23:40:50,010 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:40:50,036 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:40:50,037 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:40:50,038 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:40:50,041 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: '{creds}'
+2026-01-20 23:40:50,042 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:40:50,043 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 81, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 116, in _load_credentials
+    mode_secret = creds[mode]['client_secret']
+                  ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:42:23,939 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:42:23,964 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:42:23,966 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:42:23,966 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:42:23,969 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-20 23:42:23,969 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Failed to load credentials: 'live'
+2026-01-20 23:42:23,969 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_portfolio.py", line 81, in _connect_broker
+    self.broker = TastytradeAdapter(
+                  ~~~~~~~~~~~~~~~~~^
+        account_number=self.settings.tastytrade_account_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        is_paper=self.settings.is_paper_trading
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 81, in __init__
+    self._load_credentials()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 117, in _load_credentials
+    mode_token = creds[mode]['refresh_token']
+                 ~~~~~^^^^^^
+KeyError: 'live'
+2026-01-20 23:42:39,654 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:42:39,677 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:42:39,679 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:42:39,679 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:42:39,681 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-20 23:42:39,681 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-20 23:42:39,681 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-20 23:42:40,537 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-20 23:42:40,571 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-20 23:42:40,603 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-20 23:42:40,605 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-20 23:42:40,605 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-20 23:42:40,605 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-20 23:42:40,693 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-20 23:42:40,727 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-20 23:42:40,731 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-20 23:42:40,731 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,732 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,734 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,734 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,736 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,736 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,737 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,737 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,739 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,739 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,740 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,740 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,742 - trading_cotrader.adapters.tastytrade_adapter - WARNING - Skipping position due to error: 'CurrentPosition' object has no attribute 'market_value'
+2026-01-20 23:42:40,742 - trading_cotrader.adapters.tastytrade_adapter - ERROR - Position parse error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_adapter.py", line 268, in get_positions
+    market_value=Decimal(str(pos_data.market_value or 0)),
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\.venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CurrentPosition' object has no attribute 'market_value'. Did you mean: '_get_value'?
+2026-01-20 23:42:40,744 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 0 positions with Greeks
+2026-01-20 23:42:40,746 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:42:40,747 - services.position_sync - INFO - Received 0 positions from broker
+2026-01-20 23:42:40,747 - services.position_sync - INFO - Valid positions: 0, Invalid: 0
+2026-01-20 23:42:40,754 - repositories.position - INFO - Deleted 0 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:42:40,754 - services.position_sync - INFO - Deleted 0 existing positions
+2026-01-20 23:42:40,755 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-20 23:42:40,759 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-20 23:42:40,760 - services.position_sync - INFO -   Deleted: 0
+2026-01-20 23:42:40,761 - services.position_sync - INFO -   Created: 0
+2026-01-20 23:42:40,761 - services.position_sync - INFO -   Failed: 0
+2026-01-20 23:42:40,762 - services.position_sync - INFO -   Final count: 0
+2026-01-20 23:43:21,518 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:43:21,542 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:43:21,543 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:43:21,544 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:43:21,545 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-20 23:43:21,545 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-20 23:43:21,546 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-20 23:43:22,387 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-20 23:43:22,419 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-20 23:43:22,450 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-20 23:43:22,451 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-20 23:43:22,452 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-20 23:43:22,452 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-20 23:43:22,548 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-20 23:43:22,584 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-20 23:43:22,586 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-20 23:43:22,588 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-20 23:43:22,590 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:43:22,591 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-20 23:43:22,592 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,593 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,593 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,593 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,593 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,594 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:43:22,594 - services.position_sync - INFO - Valid positions: 1, Invalid: 6
+2026-01-20 23:43:22,597 - repositories.position - INFO - Deleted 0 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:43:22,597 - services.position_sync - INFO - Deleted 0 existing positions
+2026-01-20 23:43:22,612 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-20 23:43:22,617 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-20 23:43:22,617 - services.position_sync - INFO -   Deleted: 0
+2026-01-20 23:43:22,618 - services.position_sync - INFO -   Created: 1
+2026-01-20 23:43:22,618 - services.position_sync - INFO -   Failed: 0
+2026-01-20 23:43:22,618 - services.position_sync - INFO -   Final count: 1
+2026-01-20 23:44:07,915 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-20 23:44:07,935 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-20 23:44:07,937 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:44:07,937 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-20 23:44:07,939 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-20 23:44:07,940 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-20 23:44:07,940 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-20 23:44:08,858 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-20 23:44:08,893 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-20 23:44:08,924 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-20 23:44:08,925 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-20 23:44:08,926 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-20 23:44:08,926 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-20 23:44:09,010 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-20 23:44:09,043 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-20 23:44:09,044 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-20 23:44:09,046 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-20 23:44:09,047 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:44:09,047 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-20 23:44:09,047 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,047 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,048 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,048 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,048 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,048 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-20 23:44:09,048 - services.position_sync - INFO - Valid positions: 1, Invalid: 6
+2026-01-20 23:44:09,053 - repositories.position - INFO - Deleted 1 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-20 23:44:09,053 - services.position_sync - INFO - Deleted 1 existing positions
+2026-01-20 23:44:09,065 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-20 23:44:09,072 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-20 23:44:09,073 - services.position_sync - INFO -   Deleted: 1
+2026-01-20 23:44:09,073 - services.position_sync - INFO -   Created: 1
+2026-01-20 23:44:09,073 - services.position_sync - INFO -   Failed: 0
+2026-01-20 23:44:09,073 - services.position_sync - INFO -   Final count: 1
+2026-01-21 18:52:49,420 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-21 18:52:49,574 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-21 18:52:49,577 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 18:52:49,577 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 18:52:49,598 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-21 18:52:49,598 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-21 18:52:49,599 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-21 18:52:50,815 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-21 18:52:50,906 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-21 18:52:50,983 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-21 18:52:50,984 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-21 18:52:50,984 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-21 18:52:50,984 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-21 18:52:51,178 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-21 18:52:51,253 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-21 18:52:51,254 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-21 18:52:51,257 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-21 18:52:51,258 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 18:52:51,258 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-21 18:52:51,259 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 18:52:51,259 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 18:52:51,259 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 18:52:51,260 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 18:52:51,260 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 18:52:51,260 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 18:52:51,260 - services.position_sync - INFO - Valid positions: 1, Invalid: 6
+2026-01-21 18:52:51,266 - repositories.position - INFO - Deleted 1 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 18:52:51,266 - services.position_sync - INFO - Deleted 1 existing positions
+2026-01-21 18:52:51,277 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-21 18:52:51,282 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-21 18:52:51,283 - services.position_sync - INFO -   Deleted: 1
+2026-01-21 18:52:51,283 - services.position_sync - INFO -   Created: 1
+2026-01-21 18:52:51,283 - services.position_sync - INFO -   Failed: 0
+2026-01-21 18:52:51,284 - services.position_sync - INFO -   Final count: 1
+2026-01-21 19:29:12,335 - root - INFO - Logging configured: level=DEBUG, file=trading_cotrader.log
+2026-01-21 19:29:12,447 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-21 19:29:12,449 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 19:29:12,449 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 19:29:12,467 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-21 19:29:12,467 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-21 19:29:12,468 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-21 19:29:13,214 - httpcore.connection - DEBUG - connect_tcp.started host='api.tastyworks.com' port=443 local_address=None timeout=5.0 socket_options=None
+2026-01-21 19:29:13,305 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x0000023EBE990AD0>
+2026-01-21 19:29:13,305 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x0000023EBE82A060> server_hostname='api.tastyworks.com' timeout=5.0
+2026-01-21 19:29:13,322 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x0000023EBE90E210>
+2026-01-21 19:29:13,323 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>
+2026-01-21 19:29:13,324 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-01-21 19:29:13,324 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>
+2026-01-21 19:29:13,325 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-01-21 19:29:13,325 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>
+2026-01-21 19:29:13,411 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Thu, 22 Jan 2026 01:29:13 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET, POST, OPTIONS, PUT, PATCH, DELETE'), (b'Access-Control-Allow-Headers', b'Accept-Version,Authorization,Cache-Control,Content-Type,If-Modified-Since,Keep-Alive,User-Agent,X-Castle-Request-Token,X-Requested-With,X-Tastyworks-OTP,X-Tastyworks-Challenge-Token'), (b'Access-Control-Expose-Headers', b'X-Tastyworks-OTP,X-Tastyworks-Challenge-Token,X-Tastyworks-Login-Attempts-Remaining'), (b'X-Request-Id', b'b82b063b745e184bb82da24834a5132f'), (b'Content-Encoding', b'gzip')])
+2026-01-21 19:29:13,413 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-21 19:29:13,413 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'POST']>
+2026-01-21 19:29:13,414 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-01-21 19:29:13,415 - httpcore.http11 - DEBUG - response_closed.started
+2026-01-21 19:29:13,415 - httpcore.http11 - DEBUG - response_closed.complete
+2026-01-21 19:29:13,415 - tastytrade - DEBUG - Refreshed token, expires in 900ms
+2026-01-21 19:29:13,416 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-01-21 19:29:13,417 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-01-21 19:29:13,417 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-01-21 19:29:13,418 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-01-21 19:29:13,418 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-01-21 19:29:13,485 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Thu, 22 Jan 2026 01:29:13 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET, POST, OPTIONS, PUT, PATCH, DELETE'), (b'Access-Control-Allow-Headers', b'Accept-Version,Authorization,Cache-Control,Content-Type,If-Modified-Since,Keep-Alive,User-Agent,X-Castle-Request-Token,X-Requested-With,X-Tastyworks-OTP,X-Tastyworks-Challenge-Token'), (b'Access-Control-Expose-Headers', b'X-Tastyworks-OTP,X-Tastyworks-Challenge-Token,X-Tastyworks-Login-Attempts-Remaining'), (b'X-Request-Id', b'837df43c9d81f4cfec9e4489d07a2cc4'), (b'Content-Encoding', b'gzip')])
+2026-01-21 19:29:13,486 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-21 19:29:13,487 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-01-21 19:29:13,488 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-01-21 19:29:13,488 - httpcore.http11 - DEBUG - response_closed.started
+2026-01-21 19:29:13,489 - httpcore.http11 - DEBUG - response_closed.complete
+2026-01-21 19:29:13,490 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-01-21 19:29:13,491 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-01-21 19:29:13,491 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-01-21 19:29:13,492 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-01-21 19:29:13,492 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-01-21 19:29:13,565 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Thu, 22 Jan 2026 01:29:13 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET, POST, OPTIONS, PUT, PATCH, DELETE'), (b'Access-Control-Allow-Headers', b'Accept-Version,Authorization,Cache-Control,Content-Type,If-Modified-Since,Keep-Alive,User-Agent,X-Castle-Request-Token,X-Requested-With,X-Tastyworks-OTP,X-Tastyworks-Challenge-Token'), (b'Access-Control-Expose-Headers', b'X-Tastyworks-OTP,X-Tastyworks-Challenge-Token,X-Tastyworks-Login-Attempts-Remaining'), (b'X-Request-Id', b'd95c97a25e835bc81b9db2ae4a8f2821'), (b'Content-Encoding', b'gzip')])
+2026-01-21 19:29:13,566 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-21 19:29:13,567 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-01-21 19:29:13,568 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-01-21 19:29:13,569 - httpcore.http11 - DEBUG - response_closed.started
+2026-01-21 19:29:13,569 - httpcore.http11 - DEBUG - response_closed.complete
+2026-01-21 19:29:13,570 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-21 19:29:13,571 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-21 19:29:13,572 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-21 19:29:13,615 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:29:13,619 - sqlalchemy.engine.Engine - INFO - SELECT portfolios.id AS portfolios_id, portfolios.name AS portfolios_name, portfolios.broker AS portfolios_broker, portfolios.account_id AS portfolios_account_id, portfolios.cash_balance AS portfolios_cash_balance, portfolios.buying_power AS portfolios_buying_power, portfolios.portfolio_delta AS portfolios_portfolio_delta, portfolios.portfolio_gamma AS portfolios_portfolio_gamma, portfolios.portfolio_theta AS portfolios_portfolio_theta, portfolios.portfolio_vega AS portfolios_portfolio_vega, portfolios.portfolio_rho AS portfolios_portfolio_rho, portfolios.total_equity AS portfolios_total_equity, portfolios.total_pnl AS portfolios_total_pnl, portfolios.daily_pnl AS portfolios_daily_pnl, portfolios.created_at AS portfolios_created_at, portfolios.last_updated AS portfolios_last_updated 
+FROM portfolios 
+WHERE portfolios.broker = ? AND portfolios.account_id = ?
+ LIMIT ? OFFSET ?
+2026-01-21 19:29:13,620 - sqlalchemy.engine.Engine - INFO - [generated in 0.00084s] ('tastytrade', '5WZ78765', 1, 0)
+2026-01-21 19:29:13,622 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:29:13,673 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-01-21 19:29:13,674 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-01-21 19:29:13,675 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-01-21 19:29:13,675 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-01-21 19:29:13,676 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-01-21 19:29:13,748 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Thu, 22 Jan 2026 01:29:13 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET, POST, OPTIONS, PUT, PATCH, DELETE'), (b'Access-Control-Allow-Headers', b'Accept-Version,Authorization,Cache-Control,Content-Type,If-Modified-Since,Keep-Alive,User-Agent,X-Castle-Request-Token,X-Requested-With,X-Tastyworks-OTP,X-Tastyworks-Challenge-Token'), (b'Access-Control-Expose-Headers', b'X-Tastyworks-OTP,X-Tastyworks-Challenge-Token,X-Tastyworks-Login-Attempts-Remaining'), (b'X-Request-Id', b'c0a378d48882b223bf33e63d4fe1a02f'), (b'Content-Encoding', b'gzip')])
+2026-01-21 19:29:13,749 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-21 19:29:13,750 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-01-21 19:29:13,751 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-01-21 19:29:13,751 - httpcore.http11 - DEBUG - response_closed.started
+2026-01-21 19:29:13,752 - httpcore.http11 - DEBUG - response_closed.complete
+2026-01-21 19:29:13,754 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:29:13,757 - sqlalchemy.engine.Engine - INFO - SELECT portfolios.id AS portfolios_id, portfolios.name AS portfolios_name, portfolios.broker AS portfolios_broker, portfolios.account_id AS portfolios_account_id, portfolios.cash_balance AS portfolios_cash_balance, portfolios.buying_power AS portfolios_buying_power, portfolios.portfolio_delta AS portfolios_portfolio_delta, portfolios.portfolio_gamma AS portfolios_portfolio_gamma, portfolios.portfolio_theta AS portfolios_portfolio_theta, portfolios.portfolio_vega AS portfolios_portfolio_vega, portfolios.portfolio_rho AS portfolios_portfolio_rho, portfolios.total_equity AS portfolios_total_equity, portfolios.total_pnl AS portfolios_total_pnl, portfolios.daily_pnl AS portfolios_daily_pnl, portfolios.created_at AS portfolios_created_at, portfolios.last_updated AS portfolios_last_updated 
+FROM portfolios 
+WHERE portfolios.id = ?
+ LIMIT ? OFFSET ?
+2026-01-21 19:29:13,759 - sqlalchemy.engine.Engine - INFO - [generated in 0.00150s] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660', 1, 0)
+2026-01-21 19:29:13,763 - sqlalchemy.engine.Engine - INFO - UPDATE portfolios SET last_updated=? WHERE portfolios.id = ?
+2026-01-21 19:29:13,764 - sqlalchemy.engine.Engine - INFO - [generated in 0.00078s] ('2026-01-22 01:29:13.760996', 'b08f59f1-67ee-4ffe-a270-ce0e5f8a5660')
+2026-01-21 19:29:13,768 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:29:13,776 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-01-21 19:29:13,777 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-01-21 19:29:13,778 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-01-21 19:29:13,779 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-01-21 19:29:13,780 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-01-21 19:29:13,810 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Thu, 22 Jan 2026 01:29:13 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET, POST, OPTIONS, PUT, PATCH, DELETE'), (b'Access-Control-Allow-Headers', b'Accept-Version,Authorization,Cache-Control,Content-Type,If-Modified-Since,Keep-Alive,User-Agent,X-Castle-Request-Token,X-Requested-With,X-Tastyworks-OTP,X-Tastyworks-Challenge-Token'), (b'Access-Control-Expose-Headers', b'X-Tastyworks-OTP,X-Tastyworks-Challenge-Token,X-Tastyworks-Login-Attempts-Remaining'), (b'X-Request-Id', b'4bae415c24a05ff7eeff24e217debb25'), (b'Content-Encoding', b'gzip')])
+2026-01-21 19:29:13,812 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-21 19:29:13,812 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-01-21 19:29:13,813 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-01-21 19:29:13,813 - httpcore.http11 - DEBUG - response_closed.started
+2026-01-21 19:29:13,814 - httpcore.http11 - DEBUG - response_closed.complete
+2026-01-21 19:29:13,814 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-21 19:29:13,814 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:29:13,815 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:29:13,816 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:29:13,816 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:29:13,816 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY, has_greeks=False, greeks=NONE
+2026-01-21 19:29:13,817 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:29:13,817 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:29:13,817 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-21 19:29:13,818 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 19:29:13,818 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-21 19:29:13,818 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:29:13,818 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:29:13,819 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:29:13,819 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:29:13,819 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:29:13,819 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:29:13,819 - services.position_sync - INFO - Valid positions: 1, Invalid: 6
+2026-01-21 19:29:13,820 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:29:13,821 - sqlalchemy.engine.Engine - INFO - DELETE FROM positions WHERE positions.portfolio_id = ?
+2026-01-21 19:29:13,821 - sqlalchemy.engine.Engine - INFO - [generated in 0.00038s] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660',)
+2026-01-21 19:29:13,824 - repositories.position - INFO - Deleted 1 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 19:29:13,824 - services.position_sync - INFO - Deleted 1 existing positions
+2026-01-21 19:29:13,827 - sqlalchemy.engine.Engine - INFO - SELECT symbols.id AS symbols_id, symbols.ticker AS symbols_ticker, symbols.asset_type AS symbols_asset_type, symbols.option_type AS symbols_option_type, symbols.strike AS symbols_strike, symbols.expiration AS symbols_expiration, symbols.description AS symbols_description, symbols.multiplier AS symbols_multiplier, symbols.created_at AS symbols_created_at 
+FROM symbols 
+WHERE symbols.ticker = ? AND symbols.asset_type = ?
+ LIMIT ? OFFSET ?
+2026-01-21 19:29:13,828 - sqlalchemy.engine.Engine - INFO - [generated in 0.00115s] ('BAC', 'equity', 1, 0)
+2026-01-21 19:29:13,831 - sqlalchemy.engine.Engine - INFO - INSERT INTO positions (id, portfolio_id, symbol_id, quantity, average_price, total_cost, current_price, market_value, delta, gamma, theta, vega, rho, greeks_updated_at, broker_position_id, trade_ids, created_at, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+2026-01-21 19:29:13,832 - sqlalchemy.engine.Engine - INFO - [generated in 0.00073s] ('7edee3e7-b03b-4b01-9274-1a5271d91864', 'b08f59f1-67ee-4ffe-a270-ce0e5f8a5660', '5dd7a17d-4053-49e9-88d6-6b92f6faa079', 100, 54.5, 5450.0, 52.1, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0, '2026-01-22 01:29:13.817197', '5WZ78765_BAC', '[]', '2026-01-22 01:29:13.831378', '2026-01-22 01:29:13.831382')
+2026-01-21 19:29:13,832 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:29:13,836 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-21 19:29:13,837 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:29:13,840 - sqlalchemy.engine.Engine - INFO - SELECT positions.id AS positions_id, positions.portfolio_id AS positions_portfolio_id, positions.symbol_id AS positions_symbol_id, positions.quantity AS positions_quantity, positions.average_price AS positions_average_price, positions.total_cost AS positions_total_cost, positions.current_price AS positions_current_price, positions.market_value AS positions_market_value, positions.delta AS positions_delta, positions.gamma AS positions_gamma, positions.theta AS positions_theta, positions.vega AS positions_vega, positions.rho AS positions_rho, positions.greeks_updated_at AS positions_greeks_updated_at, positions.broker_position_id AS positions_broker_position_id, positions.trade_ids AS positions_trade_ids, positions.created_at AS positions_created_at, positions.last_updated AS positions_last_updated 
+FROM positions 
+WHERE positions.portfolio_id = ?
+2026-01-21 19:29:13,840 - sqlalchemy.engine.Engine - INFO - [generated in 0.00062s] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660',)
+2026-01-21 19:29:13,844 - sqlalchemy.engine.Engine - INFO - SELECT symbols.id AS symbols_id, symbols.ticker AS symbols_ticker, symbols.asset_type AS symbols_asset_type, symbols.option_type AS symbols_option_type, symbols.strike AS symbols_strike, symbols.expiration AS symbols_expiration, symbols.description AS symbols_description, symbols.multiplier AS symbols_multiplier, symbols.created_at AS symbols_created_at 
+FROM symbols 
+WHERE symbols.id = ?
+2026-01-21 19:29:13,845 - sqlalchemy.engine.Engine - INFO - [generated in 0.00190s] ('5dd7a17d-4053-49e9-88d6-6b92f6faa079',)
+2026-01-21 19:29:13,847 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-21 19:29:13,847 - services.position_sync - INFO -   Deleted: 1
+2026-01-21 19:29:13,847 - services.position_sync - INFO -   Created: 1
+2026-01-21 19:29:13,848 - services.position_sync - INFO -   Failed: 0
+2026-01-21 19:29:13,848 - services.position_sync - INFO -   Final count: 1
+2026-01-21 19:29:13,848 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:29:13,850 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:29:13,851 - sqlalchemy.engine.Engine - INFO - SELECT positions.id AS positions_id, positions.portfolio_id AS positions_portfolio_id, positions.symbol_id AS positions_symbol_id, positions.quantity AS positions_quantity, positions.average_price AS positions_average_price, positions.total_cost AS positions_total_cost, positions.current_price AS positions_current_price, positions.market_value AS positions_market_value, positions.delta AS positions_delta, positions.gamma AS positions_gamma, positions.theta AS positions_theta, positions.vega AS positions_vega, positions.rho AS positions_rho, positions.greeks_updated_at AS positions_greeks_updated_at, positions.broker_position_id AS positions_broker_position_id, positions.trade_ids AS positions_trade_ids, positions.created_at AS positions_created_at, positions.last_updated AS positions_last_updated 
+FROM positions 
+WHERE positions.portfolio_id = ?
+2026-01-21 19:29:13,851 - sqlalchemy.engine.Engine - INFO - [cached since 0.01157s ago] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660',)
+2026-01-21 19:29:13,852 - sqlalchemy.engine.Engine - INFO - SELECT symbols.id AS symbols_id, symbols.ticker AS symbols_ticker, symbols.asset_type AS symbols_asset_type, symbols.option_type AS symbols_option_type, symbols.strike AS symbols_strike, symbols.expiration AS symbols_expiration, symbols.description AS symbols_description, symbols.multiplier AS symbols_multiplier, symbols.created_at AS symbols_created_at 
+FROM symbols 
+WHERE symbols.id = ?
+2026-01-21 19:29:13,853 - sqlalchemy.engine.Engine - INFO - [cached since 0.00916s ago] ('5dd7a17d-4053-49e9-88d6-6b92f6faa079',)
+2026-01-21 19:29:13,854 - sqlalchemy.engine.Engine - INFO - SELECT portfolios.id AS portfolios_id, portfolios.name AS portfolios_name, portfolios.broker AS portfolios_broker, portfolios.account_id AS portfolios_account_id, portfolios.cash_balance AS portfolios_cash_balance, portfolios.buying_power AS portfolios_buying_power, portfolios.portfolio_delta AS portfolios_portfolio_delta, portfolios.portfolio_gamma AS portfolios_portfolio_gamma, portfolios.portfolio_theta AS portfolios_portfolio_theta, portfolios.portfolio_vega AS portfolios_portfolio_vega, portfolios.portfolio_rho AS portfolios_portfolio_rho, portfolios.total_equity AS portfolios_total_equity, portfolios.total_pnl AS portfolios_total_pnl, portfolios.daily_pnl AS portfolios_daily_pnl, portfolios.created_at AS portfolios_created_at, portfolios.last_updated AS portfolios_last_updated 
+FROM portfolios 
+WHERE portfolios.id = ?
+ LIMIT ? OFFSET ?
+2026-01-21 19:29:13,854 - sqlalchemy.engine.Engine - INFO - [cached since 0.09721s ago] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660', 1, 0)
+2026-01-21 19:29:13,856 - sqlalchemy.engine.Engine - INFO - UPDATE portfolios SET last_updated=? WHERE portfolios.id = ?
+2026-01-21 19:29:13,856 - sqlalchemy.engine.Engine - INFO - [cached since 0.09281s ago] ('2026-01-22 01:29:13.855639', 'b08f59f1-67ee-4ffe-a270-ce0e5f8a5660')
+2026-01-21 19:29:13,859 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:29:13,866 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:29:13,866 - sqlalchemy.engine.Engine - INFO - SELECT positions.id AS positions_id, positions.portfolio_id AS positions_portfolio_id, positions.symbol_id AS positions_symbol_id, positions.quantity AS positions_quantity, positions.average_price AS positions_average_price, positions.total_cost AS positions_total_cost, positions.current_price AS positions_current_price, positions.market_value AS positions_market_value, positions.delta AS positions_delta, positions.gamma AS positions_gamma, positions.theta AS positions_theta, positions.vega AS positions_vega, positions.rho AS positions_rho, positions.greeks_updated_at AS positions_greeks_updated_at, positions.broker_position_id AS positions_broker_position_id, positions.trade_ids AS positions_trade_ids, positions.created_at AS positions_created_at, positions.last_updated AS positions_last_updated 
+FROM positions 
+WHERE positions.portfolio_id = ?
+2026-01-21 19:29:13,867 - sqlalchemy.engine.Engine - INFO - [cached since 0.02711s ago] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660',)
+2026-01-21 19:29:13,868 - sqlalchemy.engine.Engine - INFO - SELECT symbols.id AS symbols_id, symbols.ticker AS symbols_ticker, symbols.asset_type AS symbols_asset_type, symbols.option_type AS symbols_option_type, symbols.strike AS symbols_strike, symbols.expiration AS symbols_expiration, symbols.description AS symbols_description, symbols.multiplier AS symbols_multiplier, symbols.created_at AS symbols_created_at 
+FROM symbols 
+WHERE symbols.id = ?
+2026-01-21 19:29:13,868 - sqlalchemy.engine.Engine - INFO - [cached since 0.02454s ago] ('5dd7a17d-4053-49e9-88d6-6b92f6faa079',)
+2026-01-21 19:29:13,869 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:30:36,803 - root - INFO - Logging configured: level=DEBUG, file=trading_cotrader.log
+2026-01-21 19:30:36,820 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-21 19:30:36,821 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 19:30:36,821 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 19:30:36,823 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-21 19:30:36,823 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-21 19:30:36,823 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-21 19:30:37,545 - httpcore.connection - DEBUG - connect_tcp.started host='api.tastyworks.com' port=443 local_address=None timeout=5.0 socket_options=None
+2026-01-21 19:30:37,579 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x0000020595A40AD0>
+2026-01-21 19:30:37,580 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x00000205958DA060> server_hostname='api.tastyworks.com' timeout=5.0
+2026-01-21 19:30:37,593 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x00000205959BE210>
+2026-01-21 19:30:37,594 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>
+2026-01-21 19:30:37,594 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-01-21 19:30:37,595 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>
+2026-01-21 19:30:37,595 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-01-21 19:30:37,596 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>
+2026-01-21 19:30:37,689 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Thu, 22 Jan 2026 01:30:37 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET, POST, OPTIONS, PUT, PATCH, DELETE'), (b'Access-Control-Allow-Headers', b'Accept-Version,Authorization,Cache-Control,Content-Type,If-Modified-Since,Keep-Alive,User-Agent,X-Castle-Request-Token,X-Requested-With,X-Tastyworks-OTP,X-Tastyworks-Challenge-Token'), (b'Access-Control-Expose-Headers', b'X-Tastyworks-OTP,X-Tastyworks-Challenge-Token,X-Tastyworks-Login-Attempts-Remaining'), (b'X-Request-Id', b'06704436c2e9668ef62e3926b3c037f6'), (b'Content-Encoding', b'gzip')])
+2026-01-21 19:30:37,694 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-21 19:30:37,699 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'POST']>
+2026-01-21 19:30:37,701 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-01-21 19:30:37,701 - httpcore.http11 - DEBUG - response_closed.started
+2026-01-21 19:30:37,702 - httpcore.http11 - DEBUG - response_closed.complete
+2026-01-21 19:30:37,702 - tastytrade - DEBUG - Refreshed token, expires in 900ms
+2026-01-21 19:30:37,703 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-01-21 19:30:37,704 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-01-21 19:30:37,704 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-01-21 19:30:37,705 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-01-21 19:30:37,706 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-01-21 19:30:37,773 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Thu, 22 Jan 2026 01:30:37 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET, POST, OPTIONS, PUT, PATCH, DELETE'), (b'Access-Control-Allow-Headers', b'Accept-Version,Authorization,Cache-Control,Content-Type,If-Modified-Since,Keep-Alive,User-Agent,X-Castle-Request-Token,X-Requested-With,X-Tastyworks-OTP,X-Tastyworks-Challenge-Token'), (b'Access-Control-Expose-Headers', b'X-Tastyworks-OTP,X-Tastyworks-Challenge-Token,X-Tastyworks-Login-Attempts-Remaining'), (b'X-Request-Id', b'f2d4a611b40824f9702500039c97ccab'), (b'Content-Encoding', b'gzip')])
+2026-01-21 19:30:37,774 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-21 19:30:37,774 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-01-21 19:30:37,775 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-01-21 19:30:37,775 - httpcore.http11 - DEBUG - response_closed.started
+2026-01-21 19:30:37,775 - httpcore.http11 - DEBUG - response_closed.complete
+2026-01-21 19:30:37,776 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-01-21 19:30:37,776 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-01-21 19:30:37,777 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-01-21 19:30:37,777 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-01-21 19:30:37,777 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-01-21 19:30:37,853 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Thu, 22 Jan 2026 01:30:37 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET, POST, OPTIONS, PUT, PATCH, DELETE'), (b'Access-Control-Allow-Headers', b'Accept-Version,Authorization,Cache-Control,Content-Type,If-Modified-Since,Keep-Alive,User-Agent,X-Castle-Request-Token,X-Requested-With,X-Tastyworks-OTP,X-Tastyworks-Challenge-Token'), (b'Access-Control-Expose-Headers', b'X-Tastyworks-OTP,X-Tastyworks-Challenge-Token,X-Tastyworks-Login-Attempts-Remaining'), (b'X-Request-Id', b'42059f18dd2247d56bc690f3afd7b5b4'), (b'Content-Encoding', b'gzip')])
+2026-01-21 19:30:37,854 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-21 19:30:37,856 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-01-21 19:30:37,857 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-01-21 19:30:37,858 - httpcore.http11 - DEBUG - response_closed.started
+2026-01-21 19:30:37,859 - httpcore.http11 - DEBUG - response_closed.complete
+2026-01-21 19:30:37,861 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-21 19:30:37,863 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-21 19:30:37,864 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-21 19:30:37,919 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:30:37,923 - sqlalchemy.engine.Engine - INFO - SELECT portfolios.id AS portfolios_id, portfolios.name AS portfolios_name, portfolios.broker AS portfolios_broker, portfolios.account_id AS portfolios_account_id, portfolios.cash_balance AS portfolios_cash_balance, portfolios.buying_power AS portfolios_buying_power, portfolios.portfolio_delta AS portfolios_portfolio_delta, portfolios.portfolio_gamma AS portfolios_portfolio_gamma, portfolios.portfolio_theta AS portfolios_portfolio_theta, portfolios.portfolio_vega AS portfolios_portfolio_vega, portfolios.portfolio_rho AS portfolios_portfolio_rho, portfolios.total_equity AS portfolios_total_equity, portfolios.total_pnl AS portfolios_total_pnl, portfolios.daily_pnl AS portfolios_daily_pnl, portfolios.created_at AS portfolios_created_at, portfolios.last_updated AS portfolios_last_updated 
+FROM portfolios 
+WHERE portfolios.broker = ? AND portfolios.account_id = ?
+ LIMIT ? OFFSET ?
+2026-01-21 19:30:37,924 - sqlalchemy.engine.Engine - INFO - [generated in 0.00090s] ('tastytrade', '5WZ78765', 1, 0)
+2026-01-21 19:30:37,927 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:30:37,938 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-01-21 19:30:37,939 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-01-21 19:30:37,939 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-01-21 19:30:37,939 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-01-21 19:30:37,940 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-01-21 19:30:38,011 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Thu, 22 Jan 2026 01:30:38 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET, POST, OPTIONS, PUT, PATCH, DELETE'), (b'Access-Control-Allow-Headers', b'Accept-Version,Authorization,Cache-Control,Content-Type,If-Modified-Since,Keep-Alive,User-Agent,X-Castle-Request-Token,X-Requested-With,X-Tastyworks-OTP,X-Tastyworks-Challenge-Token'), (b'Access-Control-Expose-Headers', b'X-Tastyworks-OTP,X-Tastyworks-Challenge-Token,X-Tastyworks-Login-Attempts-Remaining'), (b'X-Request-Id', b'f3ed6d5204e922ba0443018bc4bf0296'), (b'Content-Encoding', b'gzip')])
+2026-01-21 19:30:38,012 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-21 19:30:38,013 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-01-21 19:30:38,014 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-01-21 19:30:38,014 - httpcore.http11 - DEBUG - response_closed.started
+2026-01-21 19:30:38,015 - httpcore.http11 - DEBUG - response_closed.complete
+2026-01-21 19:30:38,017 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:30:38,019 - sqlalchemy.engine.Engine - INFO - SELECT portfolios.id AS portfolios_id, portfolios.name AS portfolios_name, portfolios.broker AS portfolios_broker, portfolios.account_id AS portfolios_account_id, portfolios.cash_balance AS portfolios_cash_balance, portfolios.buying_power AS portfolios_buying_power, portfolios.portfolio_delta AS portfolios_portfolio_delta, portfolios.portfolio_gamma AS portfolios_portfolio_gamma, portfolios.portfolio_theta AS portfolios_portfolio_theta, portfolios.portfolio_vega AS portfolios_portfolio_vega, portfolios.portfolio_rho AS portfolios_portfolio_rho, portfolios.total_equity AS portfolios_total_equity, portfolios.total_pnl AS portfolios_total_pnl, portfolios.daily_pnl AS portfolios_daily_pnl, portfolios.created_at AS portfolios_created_at, portfolios.last_updated AS portfolios_last_updated 
+FROM portfolios 
+WHERE portfolios.id = ?
+ LIMIT ? OFFSET ?
+2026-01-21 19:30:38,020 - sqlalchemy.engine.Engine - INFO - [generated in 0.00112s] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660', 1, 0)
+2026-01-21 19:30:38,024 - sqlalchemy.engine.Engine - INFO - UPDATE portfolios SET last_updated=? WHERE portfolios.id = ?
+2026-01-21 19:30:38,025 - sqlalchemy.engine.Engine - INFO - [generated in 0.00081s] ('2026-01-22 01:30:38.021928', 'b08f59f1-67ee-4ffe-a270-ce0e5f8a5660')
+2026-01-21 19:30:38,029 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:30:38,037 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2026-01-21 19:30:38,038 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-01-21 19:30:38,039 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2026-01-21 19:30:38,039 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-01-21 19:30:38,039 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2026-01-21 19:30:38,070 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Thu, 22 Jan 2026 01:30:38 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Methods', b'GET, POST, OPTIONS, PUT, PATCH, DELETE'), (b'Access-Control-Allow-Headers', b'Accept-Version,Authorization,Cache-Control,Content-Type,If-Modified-Since,Keep-Alive,User-Agent,X-Castle-Request-Token,X-Requested-With,X-Tastyworks-OTP,X-Tastyworks-Challenge-Token'), (b'Access-Control-Expose-Headers', b'X-Tastyworks-OTP,X-Tastyworks-Challenge-Token,X-Tastyworks-Login-Attempts-Remaining'), (b'X-Request-Id', b'181eac3f87d75923c9dd73311dba96e5'), (b'Content-Encoding', b'gzip')])
+2026-01-21 19:30:38,071 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-21 19:30:38,071 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2026-01-21 19:30:38,072 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-01-21 19:30:38,072 - httpcore.http11 - DEBUG - response_closed.started
+2026-01-21 19:30:38,072 - httpcore.http11 - DEBUG - response_closed.complete
+2026-01-21 19:30:38,073 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-21 19:30:38,073 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:30:38,074 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:30:38,075 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:30:38,075 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:30:38,075 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY, has_greeks=False, greeks=NONE
+2026-01-21 19:30:38,075 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:30:38,076 - trading_cotrader.adapters.tastytrade_adapter - DEBUG - Raw position data: instrument_type=InstrumentType.EQUITY_OPTION, has_greeks=False, greeks=NONE
+2026-01-21 19:30:38,077 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-21 19:30:38,077 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 19:30:38,078 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-21 19:30:38,078 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:30:38,078 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:30:38,078 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:30:38,078 - services.position_sync - WARNING - Invalid position IWM: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:30:38,078 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:30:38,079 - services.position_sync - WARNING - Invalid position HOOD: ['Option has zero Greeks - likely not fetched from broker']
+2026-01-21 19:30:38,079 - services.position_sync - INFO - Valid positions: 1, Invalid: 6
+2026-01-21 19:30:38,080 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:30:38,081 - sqlalchemy.engine.Engine - INFO - DELETE FROM positions WHERE positions.portfolio_id = ?
+2026-01-21 19:30:38,082 - sqlalchemy.engine.Engine - INFO - [generated in 0.00034s] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660',)
+2026-01-21 19:30:38,083 - repositories.position - INFO - Deleted 1 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 19:30:38,083 - services.position_sync - INFO - Deleted 1 existing positions
+2026-01-21 19:30:38,085 - sqlalchemy.engine.Engine - INFO - SELECT symbols.id AS symbols_id, symbols.ticker AS symbols_ticker, symbols.asset_type AS symbols_asset_type, symbols.option_type AS symbols_option_type, symbols.strike AS symbols_strike, symbols.expiration AS symbols_expiration, symbols.description AS symbols_description, symbols.multiplier AS symbols_multiplier, symbols.created_at AS symbols_created_at 
+FROM symbols 
+WHERE symbols.ticker = ? AND symbols.asset_type = ?
+ LIMIT ? OFFSET ?
+2026-01-21 19:30:38,086 - sqlalchemy.engine.Engine - INFO - [generated in 0.00102s] ('BAC', 'equity', 1, 0)
+2026-01-21 19:30:38,092 - sqlalchemy.engine.Engine - INFO - INSERT INTO positions (id, portfolio_id, symbol_id, quantity, average_price, total_cost, current_price, market_value, delta, gamma, theta, vega, rho, greeks_updated_at, broker_position_id, trade_ids, created_at, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+2026-01-21 19:30:38,092 - sqlalchemy.engine.Engine - INFO - [generated in 0.00085s] ('fef24043-d75e-41dd-a5ba-d7b3ab2eb49f', 'b08f59f1-67ee-4ffe-a270-ce0e5f8a5660', '5dd7a17d-4053-49e9-88d6-6b92f6faa079', 100, 54.5, 5450.0, 52.1, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0, '2026-01-22 01:30:38.075946', '5WZ78765_BAC', '[]', '2026-01-22 01:30:38.092151', '2026-01-22 01:30:38.092157')
+2026-01-21 19:30:38,094 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:30:38,098 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-21 19:30:38,099 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:30:38,101 - sqlalchemy.engine.Engine - INFO - SELECT positions.id AS positions_id, positions.portfolio_id AS positions_portfolio_id, positions.symbol_id AS positions_symbol_id, positions.quantity AS positions_quantity, positions.average_price AS positions_average_price, positions.total_cost AS positions_total_cost, positions.current_price AS positions_current_price, positions.market_value AS positions_market_value, positions.delta AS positions_delta, positions.gamma AS positions_gamma, positions.theta AS positions_theta, positions.vega AS positions_vega, positions.rho AS positions_rho, positions.greeks_updated_at AS positions_greeks_updated_at, positions.broker_position_id AS positions_broker_position_id, positions.trade_ids AS positions_trade_ids, positions.created_at AS positions_created_at, positions.last_updated AS positions_last_updated 
+FROM positions 
+WHERE positions.portfolio_id = ?
+2026-01-21 19:30:38,102 - sqlalchemy.engine.Engine - INFO - [generated in 0.00088s] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660',)
+2026-01-21 19:30:38,105 - sqlalchemy.engine.Engine - INFO - SELECT symbols.id AS symbols_id, symbols.ticker AS symbols_ticker, symbols.asset_type AS symbols_asset_type, symbols.option_type AS symbols_option_type, symbols.strike AS symbols_strike, symbols.expiration AS symbols_expiration, symbols.description AS symbols_description, symbols.multiplier AS symbols_multiplier, symbols.created_at AS symbols_created_at 
+FROM symbols 
+WHERE symbols.id = ?
+2026-01-21 19:30:38,105 - sqlalchemy.engine.Engine - INFO - [generated in 0.00055s] ('5dd7a17d-4053-49e9-88d6-6b92f6faa079',)
+2026-01-21 19:30:38,108 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-21 19:30:38,108 - services.position_sync - INFO -   Deleted: 1
+2026-01-21 19:30:38,109 - services.position_sync - INFO -   Created: 1
+2026-01-21 19:30:38,109 - services.position_sync - INFO -   Failed: 0
+2026-01-21 19:30:38,109 - services.position_sync - INFO -   Final count: 1
+2026-01-21 19:30:38,109 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:30:38,111 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:30:38,111 - sqlalchemy.engine.Engine - INFO - SELECT positions.id AS positions_id, positions.portfolio_id AS positions_portfolio_id, positions.symbol_id AS positions_symbol_id, positions.quantity AS positions_quantity, positions.average_price AS positions_average_price, positions.total_cost AS positions_total_cost, positions.current_price AS positions_current_price, positions.market_value AS positions_market_value, positions.delta AS positions_delta, positions.gamma AS positions_gamma, positions.theta AS positions_theta, positions.vega AS positions_vega, positions.rho AS positions_rho, positions.greeks_updated_at AS positions_greeks_updated_at, positions.broker_position_id AS positions_broker_position_id, positions.trade_ids AS positions_trade_ids, positions.created_at AS positions_created_at, positions.last_updated AS positions_last_updated 
+FROM positions 
+WHERE positions.portfolio_id = ?
+2026-01-21 19:30:38,112 - sqlalchemy.engine.Engine - INFO - [cached since 0.01126s ago] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660',)
+2026-01-21 19:30:38,113 - sqlalchemy.engine.Engine - INFO - SELECT symbols.id AS symbols_id, symbols.ticker AS symbols_ticker, symbols.asset_type AS symbols_asset_type, symbols.option_type AS symbols_option_type, symbols.strike AS symbols_strike, symbols.expiration AS symbols_expiration, symbols.description AS symbols_description, symbols.multiplier AS symbols_multiplier, symbols.created_at AS symbols_created_at 
+FROM symbols 
+WHERE symbols.id = ?
+2026-01-21 19:30:38,113 - sqlalchemy.engine.Engine - INFO - [cached since 0.00854s ago] ('5dd7a17d-4053-49e9-88d6-6b92f6faa079',)
+2026-01-21 19:30:38,114 - sqlalchemy.engine.Engine - INFO - SELECT portfolios.id AS portfolios_id, portfolios.name AS portfolios_name, portfolios.broker AS portfolios_broker, portfolios.account_id AS portfolios_account_id, portfolios.cash_balance AS portfolios_cash_balance, portfolios.buying_power AS portfolios_buying_power, portfolios.portfolio_delta AS portfolios_portfolio_delta, portfolios.portfolio_gamma AS portfolios_portfolio_gamma, portfolios.portfolio_theta AS portfolios_portfolio_theta, portfolios.portfolio_vega AS portfolios_portfolio_vega, portfolios.portfolio_rho AS portfolios_portfolio_rho, portfolios.total_equity AS portfolios_total_equity, portfolios.total_pnl AS portfolios_total_pnl, portfolios.daily_pnl AS portfolios_daily_pnl, portfolios.created_at AS portfolios_created_at, portfolios.last_updated AS portfolios_last_updated 
+FROM portfolios 
+WHERE portfolios.id = ?
+ LIMIT ? OFFSET ?
+2026-01-21 19:30:38,115 - sqlalchemy.engine.Engine - INFO - [cached since 0.09597s ago] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660', 1, 0)
+2026-01-21 19:30:38,116 - sqlalchemy.engine.Engine - INFO - UPDATE portfolios SET last_updated=? WHERE portfolios.id = ?
+2026-01-21 19:30:38,116 - sqlalchemy.engine.Engine - INFO - [cached since 0.09195s ago] ('2026-01-22 01:30:38.115716', 'b08f59f1-67ee-4ffe-a270-ce0e5f8a5660')
+2026-01-21 19:30:38,118 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:30:38,125 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
+2026-01-21 19:30:38,125 - sqlalchemy.engine.Engine - INFO - SELECT positions.id AS positions_id, positions.portfolio_id AS positions_portfolio_id, positions.symbol_id AS positions_symbol_id, positions.quantity AS positions_quantity, positions.average_price AS positions_average_price, positions.total_cost AS positions_total_cost, positions.current_price AS positions_current_price, positions.market_value AS positions_market_value, positions.delta AS positions_delta, positions.gamma AS positions_gamma, positions.theta AS positions_theta, positions.vega AS positions_vega, positions.rho AS positions_rho, positions.greeks_updated_at AS positions_greeks_updated_at, positions.broker_position_id AS positions_broker_position_id, positions.trade_ids AS positions_trade_ids, positions.created_at AS positions_created_at, positions.last_updated AS positions_last_updated 
+FROM positions 
+WHERE positions.portfolio_id = ?
+2026-01-21 19:30:38,126 - sqlalchemy.engine.Engine - INFO - [cached since 0.02498s ago] ('b08f59f1-67ee-4ffe-a270-ce0e5f8a5660',)
+2026-01-21 19:30:38,127 - sqlalchemy.engine.Engine - INFO - SELECT symbols.id AS symbols_id, symbols.ticker AS symbols_ticker, symbols.asset_type AS symbols_asset_type, symbols.option_type AS symbols_option_type, symbols.strike AS symbols_strike, symbols.expiration AS symbols_expiration, symbols.description AS symbols_description, symbols.multiplier AS symbols_multiplier, symbols.created_at AS symbols_created_at 
+FROM symbols 
+WHERE symbols.id = ?
+2026-01-21 19:30:38,127 - sqlalchemy.engine.Engine - INFO - [cached since 0.02257s ago] ('5dd7a17d-4053-49e9-88d6-6b92f6faa079',)
+2026-01-21 19:30:38,129 - sqlalchemy.engine.Engine - INFO - COMMIT
+2026-01-21 19:55:58,286 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-21 19:55:58,318 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-21 19:55:58,320 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 19:55:58,320 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 19:55:58,322 - trading_cotrader.adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-21 19:55:58,323 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-21 19:55:58,323 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-21 19:55:59,312 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-21 19:55:59,387 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-21 19:55:59,463 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-21 19:55:59,464 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-21 19:55:59,464 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-21 19:55:59,464 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-21 19:55:59,607 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-21 19:55:59,683 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-21 19:55:59,685 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-21 19:55:59,686 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-21 19:55:59,687 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 19:55:59,687 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-21 19:55:59,688 - services.position_sync - INFO - Position IWM accepted without Greeks - will calculate separately
+2026-01-21 19:55:59,688 - services.position_sync - INFO - Position IWM accepted without Greeks - will calculate separately
+2026-01-21 19:55:59,688 - services.position_sync - INFO - Position IWM accepted without Greeks - will calculate separately
+2026-01-21 19:55:59,689 - services.position_sync - INFO - Position IWM accepted without Greeks - will calculate separately
+2026-01-21 19:55:59,689 - services.position_sync - INFO - Position HOOD accepted without Greeks - will calculate separately
+2026-01-21 19:55:59,689 - services.position_sync - INFO - Position HOOD accepted without Greeks - will calculate separately
+2026-01-21 19:55:59,689 - services.position_sync - INFO - Valid positions: 7, Invalid: 0
+2026-01-21 19:55:59,709 - repositories.position - INFO - Deleted 1 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 19:55:59,710 - services.position_sync - INFO - Deleted 1 existing positions
+2026-01-21 19:55:59,740 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-21 19:55:59,751 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-21 19:55:59,752 - services.position_sync - INFO -   Deleted: 1
+2026-01-21 19:55:59,752 - services.position_sync - INFO -   Created: 7
+2026-01-21 19:55:59,752 - services.position_sync - INFO -   Failed: 0
+2026-01-21 19:55:59,753 - services.position_sync - INFO -   Final count: 7
+2026-01-21 20:17:01,415 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-21 20:17:01,430 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-21 20:17:01,431 - adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 20:17:01,432 - adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 20:17:01,433 - adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-21 20:17:01,434 - adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-21 20:17:01,434 - adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-21 20:17:02,421 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-21 20:17:02,499 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-21 20:17:02,573 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-21 20:17:02,574 - adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-21 20:17:02,575 - adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-21 20:17:02,575 - adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-21 20:17:02,723 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-21 20:17:02,789 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-21 20:17:02,791 - adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-21 20:17:02,792 - adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-21 20:17:02,793 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,794 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,794 - __main__ - WARNING - No market data for IWM
+2026-01-21 20:17:02,795 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,795 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,796 - __main__ - WARNING - No market data for IWM
+2026-01-21 20:17:02,797 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,797 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,798 - __main__ - WARNING - No market data for IWM
+2026-01-21 20:17:02,799 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,799 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,800 - __main__ - WARNING - No market data for IWM
+2026-01-21 20:17:02,800 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,801 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,801 - __main__ - WARNING - No market data for HOOD
+2026-01-21 20:17:02,802 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,803 - adapters.tastytrade_adapter - WARNING - get_quote not yet implemented
+2026-01-21 20:17:02,803 - __main__ - WARNING - No market data for HOOD
+2026-01-21 20:17:02,804 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 20:17:02,804 - services.position_sync - INFO - Received 1 positions from broker
+2026-01-21 20:17:02,804 - services.position_sync - INFO - Valid positions: 1, Invalid: 0
+2026-01-21 20:17:02,815 - repositories.position - INFO - Deleted 7 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 20:17:02,816 - services.position_sync - INFO - Deleted 7 existing positions
+2026-01-21 20:17:02,826 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-21 20:17:02,832 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-21 20:17:02,833 - services.position_sync - INFO -   Deleted: 7
+2026-01-21 20:17:02,833 - services.position_sync - INFO -   Created: 1
+2026-01-21 20:17:02,833 - services.position_sync - INFO -   Failed: 0
+2026-01-21 20:17:02,834 - services.position_sync - INFO -   Final count: 1
+2026-01-21 20:17:02,835 - __main__ - ERROR - Full error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\sync_with_greeks.py", line 233, in _sync_positions_with_greeks
+    if result['needs_greeks'] > 0:
+       ~~~~~~^^^^^^^^^^^^^^^^
+KeyError: 'needs_greeks'
+2026-01-21 20:21:59,895 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-21 20:21:59,919 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-21 20:21:59,920 - adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 20:21:59,920 - adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-21 20:21:59,922 - adapters.tastytrade_adapter - INFO - creds value: {creds['live']}
+2026-01-21 20:21:59,923 - adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-21 20:21:59,923 - adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-21 20:22:00,896 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-21 20:22:00,969 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-21 20:22:01,047 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-21 20:22:01,049 - adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-21 20:22:01,049 - adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-21 20:22:01,050 - adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-21 20:22:01,179 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-21 20:22:01,239 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-21 20:22:01,241 - adapters.tastytrade_adapter - INFO - Fetching positions from Tastytrade...
+2026-01-21 20:22:01,242 - adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-21 20:22:01,244 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 20:22:01,244 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-21 20:22:01,244 - services.position_sync - INFO - Position IWM accepted without Greeks - will calculate separately
+2026-01-21 20:22:01,245 - services.position_sync - INFO - Position IWM accepted without Greeks - will calculate separately
+2026-01-21 20:22:01,245 - services.position_sync - INFO - Position IWM accepted without Greeks - will calculate separately
+2026-01-21 20:22:01,245 - services.position_sync - INFO - Position IWM accepted without Greeks - will calculate separately
+2026-01-21 20:22:01,246 - services.position_sync - INFO - Position HOOD accepted without Greeks - will calculate separately
+2026-01-21 20:22:01,246 - services.position_sync - INFO - Position HOOD accepted without Greeks - will calculate separately
+2026-01-21 20:22:01,246 - services.position_sync - INFO - Valid positions: 7, Invalid: 0
+2026-01-21 20:22:01,250 - repositories.position - INFO - Deleted 1 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-21 20:22:01,250 - services.position_sync - INFO - Deleted 1 existing positions
+2026-01-21 20:22:01,272 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-21 20:22:01,282 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-21 20:22:01,282 - services.position_sync - INFO -   Deleted: 1
+2026-01-21 20:22:01,282 - services.position_sync - INFO -   Created: 7
+2026-01-21 20:22:01,283 - services.position_sync - INFO -   Failed: 0
+2026-01-21 20:22:01,283 - services.position_sync - INFO -   Final count: 7
+2026-01-22 21:17:29,488 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-22 21:17:29,627 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-22 21:17:29,630 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 21:17:29,630 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 21:17:29,632 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-22 21:17:29,633 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-22 21:17:30,465 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-22 21:17:30,537 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-22 21:17:30,616 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-22 21:17:30,617 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-22 21:17:30,618 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-22 21:17:30,618 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-22 21:17:30,758 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-22 21:17:30,809 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-22 21:17:30,811 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 6 option positions...
+2026-01-22 21:17:31,451 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 6 options
+2026-01-22 21:17:31,456 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-22 21:17:31,459 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 21:17:31,460 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-22 21:17:31,461 - services.position_sync - INFO - Valid positions: 7, Invalid: 0
+2026-01-22 21:17:31,472 - repositories.position - INFO - Deleted 7 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 21:17:31,473 - services.position_sync - INFO - Deleted 7 existing positions
+2026-01-22 21:17:31,508 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-22 21:17:31,519 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-22 21:17:31,519 - services.position_sync - INFO -   Deleted: 7
+2026-01-22 21:17:31,520 - services.position_sync - INFO -   Created: 7
+2026-01-22 21:17:31,520 - services.position_sync - INFO -   Failed: 0
+2026-01-22 21:17:31,520 - services.position_sync - INFO -   Final count: 7
+2026-01-22 21:39:15,449 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-22 21:39:15,479 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-22 21:39:15,481 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 21:39:15,481 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 21:39:15,483 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-22 21:39:15,484 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-22 21:39:16,383 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-22 21:39:16,455 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-22 21:39:16,530 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-22 21:39:16,531 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-22 21:39:16,532 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-22 21:39:16,532 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-22 21:39:16,662 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-22 21:39:16,716 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-22 21:39:16,718 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 6 option positions...
+2026-01-22 21:39:17,140 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 6 options
+2026-01-22 21:39:17,145 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-22 21:39:17,147 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 21:39:17,148 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-22 21:39:17,150 - services.position_sync - INFO - Valid positions: 7, Invalid: 0
+2026-01-22 21:39:17,159 - repositories.position - INFO - Deleted 7 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 21:39:17,160 - services.position_sync - INFO - Deleted 7 existing positions
+2026-01-22 21:39:17,191 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-22 21:39:17,202 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-22 21:39:17,203 - services.position_sync - INFO -   Deleted: 7
+2026-01-22 21:39:17,203 - services.position_sync - INFO -   Created: 7
+2026-01-22 21:39:17,203 - services.position_sync - INFO -   Failed: 0
+2026-01-22 21:39:17,204 - services.position_sync - INFO -   Final count: 7
+2026-01-22 21:39:17,259 - services.snapshot_service - INFO - Capturing daily snapshot for 2026-01-23
+2026-01-22 21:39:17,279 - services.snapshot_service - INFO - ✓ Snapshot captured:
+2026-01-22 21:39:17,279 - services.snapshot_service - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-22 21:39:17,279 - services.snapshot_service - INFO -   Positions: 7
+2026-01-22 21:39:17,280 - services.snapshot_service - INFO -   Greeks history: 7 positions
+2026-01-22 21:39:17,281 - services.snapshot_service - INFO -   Total Equity: $30,539.53
+2026-01-22 21:39:17,281 - services.snapshot_service - INFO -   Delta: 101.10
+2026-01-22 23:01:23,583 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-22 23:01:23,584 - services.risk_manager - INFO - Loading risk limits from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\services\risk_limits.yaml
+2026-01-22 23:01:23,602 - services.risk_manager - INFO - ✓ Risk manager initialized with limits from {limits_file}
+2026-01-22 23:01:23,639 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-22 23:01:23,838 - __main__ - INFO - ✓ Loaded portfolio: Tastytrade 5WZ78765
+2026-01-22 23:01:23,839 - __main__ - INFO -   Positions: 7
+2026-01-22 23:01:23,839 - __main__ - INFO -   Open trades: 0
+2026-01-22 23:01:23,839 - __main__ - INFO -   Total equity: $30,539.53
+2026-01-22 23:01:23,839 - __main__ - INFO -   Portfolio delta: 101.10
+2026-01-22 23:01:23,843 - __main__ - INFO - 
+================================================================================
+2026-01-22 23:01:23,843 - __main__ - INFO - RISK CHECK: SPY
+2026-01-22 23:01:23,844 - __main__ - INFO - ================================================================================
+2026-01-22 23:01:23,844 - services.risk_manager - INFO - Validating trade: Unknown
+2026-01-22 23:01:23,844 - services.risk_manager - INFO - Risk validation complete: BLOCKED
+2026-01-22 23:01:23,844 - services.risk_manager - INFO -   🚫 Portfolio Risk: Trade risk 19.0% exceeds max 5.0%
+2026-01-22 23:46:07,634 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-22 23:46:07,667 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-22 23:46:07,669 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 23:46:07,669 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 23:46:07,673 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-22 23:46:07,674 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-22 23:46:09,125 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-22 23:46:09,207 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-22 23:46:09,307 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-22 23:46:09,309 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-22 23:46:09,309 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-22 23:46:09,309 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-22 23:46:09,507 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-22 23:46:09,574 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-22 23:46:09,576 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 6 option positions...
+2026-01-22 23:46:10,103 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 6 options
+2026-01-22 23:46:10,105 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-22 23:46:10,107 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 23:46:10,107 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-22 23:46:10,108 - services.position_sync - INFO - Valid positions: 7, Invalid: 0
+2026-01-22 23:46:10,118 - repositories.position - INFO - Deleted 7 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 23:46:10,119 - services.position_sync - INFO - Deleted 7 existing positions
+2026-01-22 23:46:10,235 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-22 23:46:10,275 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-22 23:46:10,278 - services.position_sync - INFO -   Deleted: 7
+2026-01-22 23:46:10,297 - services.position_sync - INFO -   Created: 7
+2026-01-22 23:46:10,301 - services.position_sync - INFO -   Failed: 0
+2026-01-22 23:46:10,324 - services.position_sync - INFO -   Final count: 7
+2026-01-22 23:46:10,576 - services.snapshot_service - INFO - Capturing daily snapshot for 2026-01-23
+2026-01-22 23:46:10,583 - services.snapshot_service - INFO - Updating existing snapshot for 2026-01-23
+2026-01-22 23:46:10,649 - services.snapshot_service - INFO - ✓ Snapshot captured:
+2026-01-22 23:46:10,652 - services.snapshot_service - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-22 23:46:10,653 - services.snapshot_service - INFO -   Positions: 7
+2026-01-22 23:46:10,653 - services.snapshot_service - INFO -   Greeks history: 7 positions
+2026-01-22 23:46:10,654 - services.snapshot_service - INFO -   Total Equity: $30,539.53
+2026-01-22 23:46:10,654 - services.snapshot_service - INFO -   Delta: 101.10
+2026-01-23 00:04:52,933 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 00:07:49,401 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 00:07:49,451 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 00:07:49,506 - repositories.event - ERROR - Error creating event: 'TradeEvent' object has no attribute 'entry_gamma'
+2026-01-23 00:07:49,506 - repositories.event - ERROR - Full trace:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\repositories\event.py", line 37, in create_from_domain
+    entry_gamma=event.entry_gamma,
+                ^^^^^^^^^^^^^^^^^
+AttributeError: 'TradeEvent' object has no attribute 'entry_gamma'. Did you mean: 'entry_delta'?

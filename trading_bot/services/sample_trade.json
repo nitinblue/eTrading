@@ -1,0 +1,45 @@
+[
+    {
+        "trade_id": "IC_NVDA_JAN26",
+        "ticker": "NVDA",
+        "strategy_type": "Iron Condor",
+        "underlying_open_price": 140.00,
+        "underlying_current_price": 142.50,
+        "legs": [
+            {
+                "leg_id": "L1",
+                "strike": 120,
+                "option_type": "P",
+                "position": "Long",
+                "cost_basis": 150.0,
+                "current_value": 110.0,
+                "max_loss_leg": -150.0,
+                "open_greeks": {
+                    "delta": 0.15,
+                    "theta": -0.05
+                },
+                "current_greeks": {
+                    "delta": 0.10,
+                    "theta": -0.04
+                }
+            },
+            {
+                "leg_id": "L2",
+                "strike": 130,
+                "option_type": "P",
+                "position": "Short",
+                "cost_basis": -550.0,
+                "current_value": -420.0,
+                "max_loss_leg": -1000.0,
+                "open_greeks": {
+                    "delta": -0.40,
+                    "theta": 0.15
+                },
+                "current_greeks": {
+                    "delta": -0.32,
+                    "theta": 0.12
+                }
+            }
+        ]
+    }
+]

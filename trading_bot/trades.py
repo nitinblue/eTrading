@@ -2,19 +2,34 @@
 from decimal import Decimal
 from trading_bot.order_model import UniversalOrder, OrderLeg, OrderAction, PriceEffect, OrderType
 from trading_bot.trade_execution import TradeExecutor
+from tastytrade.instruments import get_option_chain
+from datetime import datetime, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
 
-def sell_otm_put(execution_broker, underlying: str = "MSFT", dte: int = 45, delta_target: float = -0.16, quantity: int = 1, dry_run: bool = False):
-    """Hard-coded sell of MSFT Sep 18 2026 $470 Put."""
-    symbol = "MSFT  260918P00470000"
-    logger.info(f"BOOKING: Selling put {symbol} | Qty: {quantity} | Dry Run: {dry_run}")
-
-    legs = [OrderLeg(symbol=symbol, quantity=quantity, action=OrderAction.SELL_TO_OPEN)]
-
+def sell_otm_put(execution_broker, underlying: str = "AAPL", dte: int = 46, delta_target: float = -0.16, quantity: int = 1, dry_run: bool = False):
+    """Hard-coded sell of AAPL Feb 20 2026 $110 Put."""  
+    logger.info(f"BOOKING: Selling put {underlying} | Qty: {quantity} | Dry Run: {dry_run}")   
+    chain = get_option_chain(execution_broker.session, underlying)  
+    today = datetime.now().date()
+    target_date = today + timedelta(days=dte)  
+    strikes = [110.0, 105.0, 100.0]  # Hard-coded strikes for butterfly
+    print(f"{target_date} expiry")
+    if target_date not in chain:
+        print(f"No {target_date} expiry")
+        return None
+    
+    options = chain[target_date]
+    
+    # Find legs
+    wing1_put = next((o for o in options if float(o.strike_price) == strikes[0] and o.option_type == "P"), None)
+    body_put = next((o for o in options if float(o.strike_price) == strikes[1] and o.option_type == "P"), None)
+    wing2_put = next((o for o in options if float(o.strike_price) == strikes[2] and o.option_type == "P"), None)
+          
+    tt_legs=[wing1_put.build_leg(Decimal(quantity), OrderAction.SELL_TO_OPEN),]  
     order = UniversalOrder(
-        legs=legs,
+        legs=tt_legs,
         price_effect=PriceEffect.CREDIT,
         order_type=OrderType.LIMIT,
         limit_price=1.50,

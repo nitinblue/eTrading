@@ -1,0 +1,10 @@
+defined:
+  enabled: true
+  strategies:
+    - iron_condor
+    - vertical_spread
+
+undefined:
+  enabled: true
+  strategies:
+    - cash_secured_put

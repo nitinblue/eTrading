@@ -1,4 +1,5 @@
 # trading_bot/positions.py
+from decimal import Decimal
 from typing import List, Dict
 from trading_bot.brokers.abstract_broker import Broker
 from datetime import datetime
@@ -21,7 +22,7 @@ class Position:
         self.take_profit = kwargs.get('take_profit')  # Price level
 
     def calculate_pnl(self) -> float:
-        return (self.current_price - self.entry_price) * self.quantity * 100
+        return (Decimal(self.current_price) - Decimal(self.entry_price)) * Decimal(self.quantity) * 100
 
     def is_stop_hit(self, current_price: float) -> bool:
         if self.quantity > 0:  # Long

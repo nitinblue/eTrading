@@ -1,5 +1,5 @@
 general:
-  execution_mode: "paper"  # "mock", "paper", "live"
+  execution_mode: "live"  # "mock", "paper", "live"
 
 broker:
   data:  # Always live for market data
@@ -12,13 +12,36 @@ broker:
     client_secret: ${TASTYTRADE_CLIENT_SECRET_LIVE}
     refresh_token: ${TASTYTRADE_REFRESH_TOKEN_LIVE}
 
+account:
+  capital: 100_000
+
+allocation:
+  defined_risk_pct: 80
+  undefined_risk_pct: 20
+
+RISK:
+  per_trade:
+    defined_max_pct: 0.5
+    undefined_max_pct: 0.5
+    stop_loss_level_pct: -0.1
+    take_profit_level_pct: 0.5
+
+  daily_stop_pct: 2
+  weekly_stop_pct: 5
+  total_stop_pct: 15
+
+STRATEGY_ENABLEMENT:
+  IRON_CONDOR: true
+  VERTICALS: true
+  CSP: true
+  STRANGLES: false
+
 risk:
   max_allocation_per_position: 0.05
   max_loss_per_trade: 0.002
   max_undefined_risk_allocation: 0.20
   reserved_margin_fraction: 0.20
-  stop_loss_level: -0.1
-  take_profit_level: 0.5
+
   max_strategy_concentration: 0.25
   greek_targets:
     delta_min: -0.10

@@ -1,0 +1,22 @@
+from collections import defaultdict
+
+class PortfolioState:
+    def __init__(self, trades, realized_pnl=0, unrealized_pnl=0):
+        self.trades = trades
+        self.realized_pnl = realized_pnl
+        self.unrealized_pnl = unrealized_pnl
+
+        # NEW fields
+        self.exposure_by_symbol = defaultdict(float)
+        self.risk_by_strategy = defaultdict(float)
+        self.greeks = defaultdict(lambda: {"delta": 0, "gamma": 0, "vega": 0})
+
+        self._recompute()
+        
+    def _recompute(self):
+        for t in self.trades:
+            self.exposure_by_symbol[t.symbol] += t.max_loss
+            self.risk_by_strategy[t.strategy] += t.max_loss
+            self.greeks[t.symbol]["delta"] += t.delta
+            self.greeks[t.symbol]["gamma"] += getattr(t, "gamma", 0)
+            self.greeks[t.symbol]["vega"] += getattr(t, "vega", 0)

@@ -1,7 +1,7 @@
 # trading_bot/portfolio.py
 from typing import Dict, List
-from .positions import PositionsManager, Position
-from .risk import RiskManager
+from trading_bot.positions import PositionsManager, Position
+from trading_bot.risk_main import RiskManager
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,8 +13,8 @@ class Portfolio:
         self.broker = positions_manager.broker  # ← Add this line to access broker
         self.total_value: float = 0.0
 
-    def update(self):
-        self.positions_manager.refresh()
+    async def update(self):
+        await self.positions_manager.refresh()
         balance = self.broker.get_account_balance()  # Now works
         capital = balance.get('equity', 100000.0)
         
@@ -26,9 +26,10 @@ class Portfolio:
             logger.error(f"Risk assessment failed: {e}")
             raise
 
-    def get_net_greeks(self) -> Dict:
-        net = {'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0, 'rho': 0.0}
+    def get_net_greeks(self) -> Dict:       
+        net = {g: 0.0 for g in ['delta', 'gamma', 'theta', 'vega', 'rho']}        
         for p in self.positions_manager.positions:
+            qty = float(p.quantity)
             for greek in net:
-                net[greek] += p.greeks.get(greek, 0.0) * p.quantity
+                net[greek] += p.greeks.get(greek, 0.0) * qty
         return net
