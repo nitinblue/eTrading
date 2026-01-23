@@ -1212,3 +1212,65 @@ KeyError: 'needs_greeks'
 2026-01-22 21:39:17,280 - services.snapshot_service - INFO -   Greeks history: 7 positions
 2026-01-22 21:39:17,281 - services.snapshot_service - INFO -   Total Equity: $30,539.53
 2026-01-22 21:39:17,281 - services.snapshot_service - INFO -   Delta: 101.10
+2026-01-22 23:01:23,583 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-22 23:01:23,584 - services.risk_manager - INFO - Loading risk limits from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\services\risk_limits.yaml
+2026-01-22 23:01:23,602 - services.risk_manager - INFO - ✓ Risk manager initialized with limits from {limits_file}
+2026-01-22 23:01:23,639 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-22 23:01:23,838 - __main__ - INFO - ✓ Loaded portfolio: Tastytrade 5WZ78765
+2026-01-22 23:01:23,839 - __main__ - INFO -   Positions: 7
+2026-01-22 23:01:23,839 - __main__ - INFO -   Open trades: 0
+2026-01-22 23:01:23,839 - __main__ - INFO -   Total equity: $30,539.53
+2026-01-22 23:01:23,839 - __main__ - INFO -   Portfolio delta: 101.10
+2026-01-22 23:01:23,843 - __main__ - INFO - 
+================================================================================
+2026-01-22 23:01:23,843 - __main__ - INFO - RISK CHECK: SPY
+2026-01-22 23:01:23,844 - __main__ - INFO - ================================================================================
+2026-01-22 23:01:23,844 - services.risk_manager - INFO - Validating trade: Unknown
+2026-01-22 23:01:23,844 - services.risk_manager - INFO - Risk validation complete: BLOCKED
+2026-01-22 23:01:23,844 - services.risk_manager - INFO -   🚫 Portfolio Risk: Trade risk 19.0% exceeds max 5.0%
+2026-01-22 23:46:07,634 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-22 23:46:07,667 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-22 23:46:07,669 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 23:46:07,669 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-22 23:46:07,673 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-22 23:46:07,674 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-22 23:46:09,125 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-22 23:46:09,207 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-22 23:46:09,307 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-22 23:46:09,309 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-22 23:46:09,309 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-22 23:46:09,309 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-22 23:46:09,507 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-22 23:46:09,574 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-22 23:46:09,576 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 6 option positions...
+2026-01-22 23:46:10,103 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 6 options
+2026-01-22 23:46:10,105 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 7 positions with Greeks
+2026-01-22 23:46:10,107 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 23:46:10,107 - services.position_sync - INFO - Received 7 positions from broker
+2026-01-22 23:46:10,108 - services.position_sync - INFO - Valid positions: 7, Invalid: 0
+2026-01-22 23:46:10,118 - repositories.position - INFO - Deleted 7 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-22 23:46:10,119 - services.position_sync - INFO - Deleted 7 existing positions
+2026-01-22 23:46:10,235 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-22 23:46:10,275 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-22 23:46:10,278 - services.position_sync - INFO -   Deleted: 7
+2026-01-22 23:46:10,297 - services.position_sync - INFO -   Created: 7
+2026-01-22 23:46:10,301 - services.position_sync - INFO -   Failed: 0
+2026-01-22 23:46:10,324 - services.position_sync - INFO -   Final count: 7
+2026-01-22 23:46:10,576 - services.snapshot_service - INFO - Capturing daily snapshot for 2026-01-23
+2026-01-22 23:46:10,583 - services.snapshot_service - INFO - Updating existing snapshot for 2026-01-23
+2026-01-22 23:46:10,649 - services.snapshot_service - INFO - ✓ Snapshot captured:
+2026-01-22 23:46:10,652 - services.snapshot_service - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-22 23:46:10,653 - services.snapshot_service - INFO -   Positions: 7
+2026-01-22 23:46:10,653 - services.snapshot_service - INFO -   Greeks history: 7 positions
+2026-01-22 23:46:10,654 - services.snapshot_service - INFO -   Total Equity: $30,539.53
+2026-01-22 23:46:10,654 - services.snapshot_service - INFO -   Delta: 101.10
+2026-01-23 00:04:52,933 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 00:07:49,401 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 00:07:49,451 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 00:07:49,506 - repositories.event - ERROR - Error creating event: 'TradeEvent' object has no attribute 'entry_gamma'
+2026-01-23 00:07:49,506 - repositories.event - ERROR - Full trace:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\repositories\event.py", line 37, in create_from_domain
+    entry_gamma=event.entry_gamma,
+                ^^^^^^^^^^^^^^^^^
+AttributeError: 'TradeEvent' object has no attribute 'entry_gamma'. Did you mean: 'entry_delta'?
