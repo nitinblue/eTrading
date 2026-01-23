@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 import logging
 
-from repositories.base import BaseRepository
-from core.database.schema import PortfolioORM
-import core.models.domain as dm
+from trading_cotrader.repositories.base import BaseRepository
+from trading_cotrader.core.database.schema import PortfolioORM
+import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
 

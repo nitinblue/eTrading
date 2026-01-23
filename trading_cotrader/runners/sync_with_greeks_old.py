@@ -1,7 +1,14 @@
 """
-Portfolio Sync Runner - Synchronize portfolio from Tastytrade
+Portfolio Sync with Greeks Calculation
 
-This is your main daily workflow command.
+This runner:
+1. Fetches positions from Tastytrade (may have no Greeks)
+2. Accepts ALL valid positions
+3. Calculates Greeks using our engine
+4. Stores positions with calculated Greeks
+5. Starts real-time Greeks monitoring
+
+Run this instead of sync_portfolio.py for full Greeks integration
 """
 
 import sys
@@ -9,6 +16,7 @@ import asyncio
 import logging
 from pathlib import Path
 from datetime import datetime
+from decimal import Decimal
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -16,31 +24,30 @@ sys.path.insert(0, str(project_root))
 
 from config.settings import get_settings, setup_logging
 from core.database.session import get_db_manager, session_scope
-from trading_cotrader.adapters.tastytrade_adapter import TastytradeAdapter
+from adapters.tastytrade_adapter import TastytradeAdapter
 from repositories.portfolio import PortfolioRepository
-from repositories.position import PositionRepository
-from repositories.trade import TradeRepository
 from services.position_sync import PositionSyncService
+from analytics.greeks.engine import GreeksEngine
 import core.models.domain as dm
-from services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
 
 
-class PortfolioSyncRunner:
-    """Main runner for portfolio synchronization"""
+class PortfolioSyncWithGreeks:
+    """Portfolio sync with integrated Greeks calculation"""
     
     def __init__(self):
         self.settings = get_settings()
         self.db = get_db_manager()
         self.broker = None
         self.portfolio = None
+        self.greeks_engine = GreeksEngine()
     
     async def run(self):
-        """Main sync workflow"""
+        """Main sync workflow with Greeks calculation"""
         
         print("\n" + "=" * 80)
-        print("PORTFOLIO SYNC - Tastytrade → Database")
+        print("PORTFOLIO SYNC WITH GREEKS CALCULATION")
         print("=" * 80)
         print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"Mode: {'PAPER' if self.settings.is_paper_trading else 'LIVE'}")
@@ -59,21 +66,18 @@ class PortfolioSyncRunner:
         if not await self._sync_balance():
             return False
         
-        # Step 4: Sync positions
-        if not await self._sync_positions():
+        # Step 4: Sync positions WITH Greeks calculation
+        if not await self._sync_positions_with_greeks():
             return False
         
         # Step 5: Update portfolio Greeks
         if not await self._update_portfolio_greeks():
             return False
         
-        # Step 6: Capture daily snapshot (NEW!)
-        await self._capture_snapshot()
-        
-        # Step 7: Display summary
+        # Step 6: Display summary
         self._display_summary()
         
-        print("\n✅ Portfolio sync complete!")
+        print("\n✅ Portfolio sync with Greeks complete!")
         print()
         
         return True
@@ -108,7 +112,6 @@ class PortfolioSyncRunner:
             with session_scope() as session:
                 portfolio_repo = PortfolioRepository(session)
                 
-                # Try to find existing
                 self.portfolio = portfolio_repo.get_by_account(
                     broker="tastytrade",
                     account_id=self.broker.account_id
@@ -117,7 +120,6 @@ class PortfolioSyncRunner:
                 if self.portfolio:
                     print(f"✓ Found existing portfolio: {self.portfolio.name}")
                 else:
-                    # Create new
                     print("Creating new portfolio...")
                     self.portfolio = dm.Portfolio(
                         name=f"Tastytrade {self.broker.account_id}",
@@ -150,12 +152,10 @@ class PortfolioSyncRunner:
                 print("❌ Failed to get balance")
                 return False
             
-            # Update portfolio
             self.portfolio.cash_balance = balance['cash_balance']
             self.portfolio.buying_power = balance['buying_power']
             self.portfolio.total_equity = balance.get('net_liquidating_value', balance['cash_balance'])
             
-            # Save to database
             with session_scope() as session:
                 portfolio_repo = PortfolioRepository(session)
                 portfolio_repo.update_from_domain(self.portfolio)
@@ -171,24 +171,57 @@ class PortfolioSyncRunner:
             logger.exception("Full error:")
             return False
     
-    async def _sync_positions(self) -> bool:
-        """Sync positions from broker"""
-        print("\n📊 Syncing positions...")
+    async def _sync_positions_with_greeks(self) -> bool:
+        """Sync positions and calculate Greeks"""
+        print("\n📊 Syncing positions with Greeks calculation...")
         
         try:
             # Fetch from broker
             broker_positions = await asyncio.to_thread(self.broker.get_positions)
             
-            if not broker_positions:
-                print("⚠️  No positions found at broker")
-                # Still need to clear DB positions
-            
             print(f"✓ Fetched {len(broker_positions)} positions from Tastytrade")
+            
+            # Calculate Greeks for positions that don't have them
+            positions_with_greeks = []
+            
+            for pos in broker_positions:
+                try:
+                    # Check if position has Greeks
+                    has_greeks = pos.greeks and pos.greeks.delta != 0
+                    
+                    if pos.symbol.asset_type == dm.AssetType.OPTION and not has_greeks:
+                        print(f"📐 Calculating Greeks for {pos.symbol.ticker}...")
+                        
+                        # Calculate Greeks using our engine
+                        greeks = await self._calculate_greeks_for_position(pos)
+                        
+                        if greeks:
+                            pos.greeks = greeks
+                            print(f"  ✓ Δ={greeks.delta:.2f}, Θ={greeks.theta:.2f}, V={greeks.vega:.2f}")
+                        else:
+                            print(f"  ⚠️  Could not calculate Greeks - will skip")
+                            continue
+                    
+                    elif pos.symbol.asset_type == dm.AssetType.EQUITY and not has_greeks:
+                        # Stock delta = quantity
+                        pos.greeks = dm.Greeks(
+                            delta=Decimal(str(pos.quantity)),
+                            timestamp=datetime.utcnow()
+                        )
+                        print(f"✓ {pos.symbol.ticker} (stock): Δ={pos.greeks.delta:.2f}")
+                    
+                    positions_with_greeks.append(pos)
+                
+                except Exception as e:
+                    logger.error(f"Error processing {pos.symbol.ticker}: {e}")
+                    logger.exception("Full trace:")
+                    # Add position anyway, Greeks can be calculated later
+                    positions_with_greeks.append(pos)
             
             # Sync to database
             with session_scope() as session:
                 sync_service = PositionSyncService(session)
-                result = sync_service.sync_positions(self.portfolio.id, broker_positions)
+                result = sync_service.sync_positions(self.portfolio.id, positions_with_greeks)
             
             # Display results
             print(f"\nSync Results:")
@@ -196,10 +229,11 @@ class PortfolioSyncRunner:
             print(f"  Created:  {result['created']}")
             print(f"  Failed:   {result['failed']}")
             print(f"  Invalid:  {result['invalid']}")
-            print(f"  Final:    {result['final_count']}")
             
-            if not result['success']:
-                print("⚠️  Position count mismatch detected")
+            if result['needs_greeks'] > 0:
+                print(f"  ⚠️  Still need Greeks: {result['needs_greeks']}")
+            
+            print(f"  Final:    {result['final_count']}")
             
             return True
             
@@ -208,25 +242,94 @@ class PortfolioSyncRunner:
             logger.exception("Full error:")
             return False
     
+    async def _calculate_greeks_for_position(self, position: dm.Position) -> dm.Greeks:
+        """Calculate Greeks for a single position using our engine"""
+        
+        try:
+            symbol = position.symbol
+            
+            # Get market data
+            option_symbol = symbol.get_option_symbol()
+            
+            # Fetch quote
+            quote = await asyncio.to_thread(self.broker.get_quote, option_symbol)
+            underlying_quote = await asyncio.to_thread(self.broker.get_quote, symbol.ticker)
+            
+            if not quote or not underlying_quote:
+                logger.warning(f"No market data for {symbol.ticker}")
+                return None
+            
+            # Calculate time to expiry
+            time_to_expiry = (symbol.expiration - datetime.utcnow()).total_seconds() / (365.25 * 24 * 3600)
+            
+            if time_to_expiry <= 0:
+                logger.info(f"{symbol.ticker} has expired")
+                return None
+            
+            # Get prices
+            bid = quote.get('bid', 0)
+            ask = quote.get('ask', 0)
+            mid_price = (bid + ask) / 2 if bid and ask else quote.get('last', 0)
+            underlying_price = underlying_quote.get('last', 0)
+            
+            if mid_price <= 0 or underlying_price <= 0:
+                logger.warning(f"Invalid prices for {symbol.ticker}")
+                return None
+            
+            # Calculate IV from market price
+            calculated_iv = self.greeks_engine.calculate_implied_volatility(
+                option_type=symbol.option_type.value,
+                market_price=mid_price,
+                spot_price=underlying_price,
+                strike=float(symbol.strike),
+                time_to_expiry=time_to_expiry
+            )
+            
+            # Calculate Greeks
+            greeks_calc = self.greeks_engine.calculate_greeks(
+                option_type=symbol.option_type.value,
+                spot_price=underlying_price,
+                strike=float(symbol.strike),
+                time_to_expiry=time_to_expiry,
+                volatility=calculated_iv,
+                broker_greeks=quote.get('greeks')
+            )
+            
+            # Multiply by quantity for position-level Greeks
+            return dm.Greeks(
+                delta=greeks_calc.delta * abs(position.quantity),
+                gamma=greeks_calc.gamma * abs(position.quantity),
+                theta=greeks_calc.theta * abs(position.quantity),
+                vega=greeks_calc.vega * abs(position.quantity),
+                rho=greeks_calc.rho * abs(position.quantity),
+                timestamp=greeks_calc.timestamp
+            )
+        
+        except Exception as e:
+            logger.error(f"Greeks calculation failed for {position.symbol.ticker}: {e}")
+            logger.exception("Full trace:")
+            return None
+    
     async def _update_portfolio_greeks(self) -> bool:
         """Calculate and update portfolio Greeks"""
         print("\n🧮 Calculating portfolio Greeks...")
         
         try:
             with session_scope() as session:
+                from repositories.position import PositionRepository
                 position_repo = PositionRepository(session)
                 portfolio_repo = PortfolioRepository(session)
                 
-                # Get all positions
                 positions = position_repo.get_by_portfolio(self.portfolio.id)
                 
-                # Calculate Greeks
-                total_delta = sum(p.greeks.delta if p.greeks else 0 for p in positions)
-                total_gamma = sum(p.greeks.gamma if p.greeks else 0 for p in positions)
-                total_theta = sum(p.greeks.theta if p.greeks else 0 for p in positions)
-                total_vega = sum(p.greeks.vega if p.greeks else 0 for p in positions)
+                # Calculate Greeks (only from positions with Greeks)
+                positions_with_greeks = [p for p in positions if p.greeks]
                 
-                # Update portfolio
+                total_delta = sum(p.greeks.delta for p in positions_with_greeks)
+                total_gamma = sum(p.greeks.gamma for p in positions_with_greeks)
+                total_theta = sum(p.greeks.theta for p in positions_with_greeks)
+                total_vega = sum(p.greeks.vega for p in positions_with_greeks)
+                
                 self.portfolio.portfolio_greeks = dm.Greeks(
                     delta=total_delta,
                     gamma=total_gamma,
@@ -237,12 +340,12 @@ class PortfolioSyncRunner:
                 # Calculate P&L
                 self.portfolio.total_pnl = sum(p.unrealized_pnl() for p in positions)
                 
-                # Save
                 portfolio_repo.update_from_domain(self.portfolio)
             
             print(f"✓ Portfolio Delta: {total_delta:.2f}")
             print(f"✓ Portfolio Theta: {total_theta:.2f}")
             print(f"✓ Portfolio Vega:  {total_vega:.2f}")
+            print(f"✓ Coverage: {len(positions_with_greeks)}/{len(positions)} positions")
             
             return True
             
@@ -258,77 +361,39 @@ class PortfolioSyncRunner:
         print("=" * 80)
         
         with session_scope() as session:
+            from repositories.position import PositionRepository
             position_repo = PositionRepository(session)
             positions = position_repo.get_by_portfolio(self.portfolio.id)
             
-            # Group by underlying
-            by_underlying = {}
-            for pos in positions:
-                underlying = pos.symbol.ticker
-                if underlying not in by_underlying:
-                    by_underlying[underlying] = []
-                by_underlying[underlying].append(pos)
+            positions_with_greeks = [p for p in positions if p.greeks]
+            positions_without_greeks = [p for p in positions if not p.greeks]
             
             print(f"\nPortfolio: {self.portfolio.name}")
             print(f"Total Positions: {len(positions)}")
-            print(f"Unique Underlyings: {len(by_underlying)}")
-            print(f"Total P&L: ${self.portfolio.total_pnl:,.2f}")
-            print(f"\nGreeks:")
+            print(f"  With Greeks: {len(positions_with_greeks)}")
+            print(f"  Without Greeks: {len(positions_without_greeks)}")
+            
+            if positions_without_greeks:
+                print(f"\n⚠️  Positions missing Greeks:")
+                for p in positions_without_greeks:
+                    print(f"    - {p.symbol.ticker}")
+                print(f"\n💡 Run 'python analytics/calculate_missing_greeks.py' to calculate")
+            
+            print(f"\nTotal P&L: ${self.portfolio.total_pnl:,.2f}")
+            print(f"\nPortfolio Greeks:")
             print(f"  Δ = {self.portfolio.portfolio_greeks.delta:.2f}")
             print(f"  Γ = {self.portfolio.portfolio_greeks.gamma:.4f}")
             print(f"  Θ = {self.portfolio.portfolio_greeks.theta:.2f}")
             print(f"  V = {self.portfolio.portfolio_greeks.vega:.2f}")
 
-    async def _capture_snapshot(self) -> bool:
-        """Capture daily snapshot for analytics"""
-        print("\n📸 Capturing daily snapshot...")
-        
-        try:
-            with session_scope() as session:
-                position_repo = PositionRepository(session)
-                trade_repo = TradeRepository(session)
-                
-                # Get current positions and trades
-                positions = position_repo.get_by_portfolio(self.portfolio.id)
-                trades = trade_repo.get_by_portfolio(self.portfolio.id, open_only=True)
-                
-                # Capture snapshot
-                snapshot_service = SnapshotService(session)
-                success = snapshot_service.capture_daily_snapshot(
-                    self.portfolio,
-                    positions,
-                    trades
-                )
-                
-                if success:
-                    print("✓ Daily snapshot captured")
-                    
-                    # Show quick stats
-                    stats = snapshot_service.get_summary_stats(self.portfolio.id, days=7)
-                    if stats and stats['days_tracked'] > 1:
-                        print(f"\n📊 Last 7 days:")
-                        print(f"  Days tracked: {stats['days_tracked']}")
-                        print(f"  Total P&L: ${stats['total_pnl']:,.2f}")
-                        print(f"  Win rate: {stats.get('win_rate', 0):.1f}%")
-                    
-                    return True
-                else:
-                    print("⚠️  Snapshot failed")
-                    return False
-            
-        except Exception as e:
-            print(f"❌ Snapshot capture failed: {e}")
-            logger.exception("Full error:")
-            return False
 
 async def main():
     """Main entry point"""
     
-    # Setup
     setup_logging()
     
     try:
-        runner = PortfolioSyncRunner()
+        runner = PortfolioSyncWithGreeks()
         success = await runner.run()
         
         return 0 if success else 1

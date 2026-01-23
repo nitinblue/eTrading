@@ -16,8 +16,8 @@ from typing import Generator
 from sqlalchemy import text
 import logging
 
-from config.settings import get_settings
-from core.database.schema import Base
+from trading_cotrader.config.settings import get_settings
+from trading_cotrader.core.database.schema import Base
 
 logger = logging.getLogger(__name__)
 
