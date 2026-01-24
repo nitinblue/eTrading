@@ -19,6 +19,9 @@ secrets.yaml
 *.pem
 *.key
 
+# google sheet
+service_account.json
+
 # Database files (contain your actual trading data)
 *.db
 *.sqlite
@@ -248,6 +251,7 @@ exports/
 notes.txt
 TODO.txt
 personal_notes/
+
 
 
 # ============================================================================
