@@ -26,6 +26,7 @@ service_account.json
 *.db
 *.sqlite
 *.sqlite3
+trading.db
 trading_cotrader.db
 trading_cotrader.db-journal
 trading_cotrader.db-wal

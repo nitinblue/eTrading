@@ -1,4 +1,0 @@
-ACCOUNT:
-  BASE_CURRENCY: USD
-  TOTAL_CAPITAL: 100_000
-  AVAILABLE_CAPITAL_BUFFER_PCT: 5      # unallocatable safety buffer
