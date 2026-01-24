@@ -11,10 +11,10 @@ import logging
 from typing import List, Dict
 from datetime import datetime
 
-from core.database.session import Session
-from repositories.position import PositionRepository
-from repositories.portfolio import PortfolioRepository
-import core.models.domain as dm
+from trading_cotrader.core.database.session import Session
+from trading_cotrader.repositories.position import PositionRepository
+from trading_cotrader.repositories.portfolio import PortfolioRepository
+import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
 

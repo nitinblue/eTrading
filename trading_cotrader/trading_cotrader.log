@@ -1274,3 +1274,639 @@ Traceback (most recent call last):
     entry_gamma=event.entry_gamma,
                 ^^^^^^^^^^^^^^^^^
 AttributeError: 'TradeEvent' object has no attribute 'entry_gamma'. Did you mean: 'entry_delta'?
+2026-01-23 22:01:37,504 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 22:01:37,637 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 22:01:37,638 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 22:01:37,639 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 22:01:37,655 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-23 22:01:37,656 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-23 22:01:38,888 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-23 22:01:39,057 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-23 22:01:39,139 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-23 22:01:39,140 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-23 22:01:39,140 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-23 22:01:39,141 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-23 22:01:39,388 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-23 22:01:39,456 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-23 22:01:39,457 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-23 22:01:39,985 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-23 22:01:39,990 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-23 22:01:39,992 - services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-23 22:01:39,993 - services.position_sync - INFO - Received 3 positions from broker
+2026-01-23 22:01:39,994 - services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-23 22:01:40,007 - repositories.position - INFO - Deleted 7 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-23 22:01:40,008 - services.position_sync - INFO - Deleted 7 existing positions
+2026-01-23 22:01:40,031 - services.position_sync - INFO - ✓ Transaction committed
+2026-01-23 22:01:40,039 - services.position_sync - INFO - ✓ Position sync complete:
+2026-01-23 22:01:40,039 - services.position_sync - INFO -   Deleted: 7
+2026-01-23 22:01:40,039 - services.position_sync - INFO -   Created: 3
+2026-01-23 22:01:40,040 - services.position_sync - INFO -   Failed: 0
+2026-01-23 22:01:40,040 - services.position_sync - INFO -   Final count: 3
+2026-01-23 22:01:40,083 - services.snapshot_service - INFO - Capturing daily snapshot for 2026-01-24
+2026-01-23 22:01:40,099 - services.snapshot_service - INFO - ✓ Snapshot captured:
+2026-01-23 22:01:40,099 - services.snapshot_service - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-23 22:01:40,099 - services.snapshot_service - INFO -   Positions: 3
+2026-01-23 22:01:40,100 - services.snapshot_service - INFO -   Greeks history: 3 positions
+2026-01-23 22:01:40,100 - services.snapshot_service - INFO -   Total Equity: $30,527.30
+2026-01-23 22:01:40,100 - services.snapshot_service - INFO -   Delta: 100.19
+2026-01-23 22:02:53,279 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 22:02:53,313 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 22:02:53,393 - repositories.event - ERROR - Error creating event: 'TradeEvent' object has no attribute 'entry_gamma'
+2026-01-23 22:02:53,393 - repositories.event - ERROR - Full trace:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\repositories\event.py", line 37, in create_from_domain
+    entry_gamma=event.entry_gamma,
+                ^^^^^^^^^^^^^^^^^
+AttributeError: 'TradeEvent' object has no attribute 'entry_gamma'. Did you mean: 'entry_delta'?
+2026-01-23 22:08:27,484 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 22:08:27,534 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 22:08:27,610 - repositories.base - ERROR - Integrity error creating TradeEventORM: (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+[SQL: INSERT INTO trade_events (event_id, trade_id, event_type, timestamp, market_context, decision_context, strategy_type, underlying_symbol, net_credit_debit, entry_delta, entry_gamma, entry_theta, entry_vega, outcome, tags, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('d311619d-d54f-499a-adf1-6dd9cf63a545', 'manual_IWM_20260124_040827', 'trade_opened', '2026-01-24 04:08:27.586775', '{"timestamp": "2026-01-24T04:08:27.586438", "underlying_symbol": "IWM", "underlying_price": 0.0, "vix": null, "iv_rank": null, "iv_percentile": null, "rsi": null, "support_level": null, "resistance_level": null, "market_trend": null, "days_to_earnings": null, "spy_price": null}', '{"rationale": "IV rank 80, expecting mean reversion", "market_outlook": "neutral", "confidence_level": 8, "time_horizon_days": 45, "profit_target_per ... (20 characters truncated) ... ss_percent": null, "risk_tolerance": "moderate", "position_size_rationale": "", "alternatives_considered": [], "why_chosen": "", "influenced_by": []}', 'iron_condor', 'IWM', 500.0, 0.0, 0.0, 0.0, 0.0, 'null', '["iron_condor", "IWM", "neutral"]', '2026-01-24 04:08:27.609542')]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+2026-01-23 22:28:36,777 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 22:28:36,815 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 22:28:36,901 - repositories.base - ERROR - Integrity error creating TradeEventORM: (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+[SQL: INSERT INTO trade_events (event_id, trade_id, event_type, timestamp, market_context, decision_context, strategy_type, underlying_symbol, net_credit_debit, entry_delta, entry_gamma, entry_theta, entry_vega, outcome, tags, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('008a32eb-a6c5-40ed-a115-c9ba89fff9ad', 'manual_IWM_20260124_042836', 'trade_opened', '2026-01-24 04:28:36.872308', '{"timestamp": "2026-01-24T04:28:36.871971", "underlying_symbol": "IWM", "underlying_price": 0.0, "vix": null, "iv_rank": null, "iv_percentile": null, "rsi": null, "support_level": null, "resistance_level": null, "market_trend": null, "days_to_earnings": null, "spy_price": null}', '{"rationale": "IV rank 80, expecting mean reversion", "market_outlook": "neutral", "confidence_level": 8, "time_horizon_days": 45, "profit_target_per ... (20 characters truncated) ... ss_percent": null, "risk_tolerance": "moderate", "position_size_rationale": "", "alternatives_considered": [], "why_chosen": "", "influenced_by": []}', 'iron_condor', 'IWM', 500.0, 0.0, 0.0, 0.0, 0.0, 'null', '["iron_condor", "IWM", "neutral"]', '2026-01-24 04:28:36.899801')]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+2026-01-23 23:05:33,991 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 23:05:33,992 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:05:33,992 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:05:33,994 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-23 23:05:33,994 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-23 23:05:34,851 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-23 23:05:34,929 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-23 23:05:35,007 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-23 23:05:35,009 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-23 23:05:35,009 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-23 23:05:35,010 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-23 23:05:35,054 - trading_cotrader.core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 23:05:35,054 - __main__ - INFO - Starting portfolio sync
+2026-01-23 23:05:35,088 - __main__ - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:05:35,088 - __main__ - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:05:35,089 - __main__ - INFO - Syncing account balance
+2026-01-23 23:05:35,179 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-23 23:05:35,207 - __main__ - INFO - ✓ Balance synced: $25,328.30
+2026-01-23 23:05:35,244 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-23 23:05:35,247 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-23 23:05:35,674 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-23 23:05:35,678 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-23 23:05:35,678 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-23 23:05:35,679 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-23 23:05:35,680 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-23 23:05:35,687 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-23 23:05:35,688 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-23 23:05:35,715 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-23 23:05:35,725 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-23 23:05:35,726 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-23 23:05:35,726 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-23 23:05:35,726 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-23 23:05:35,726 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-23 23:05:35,727 - __main__ - INFO - Calculating portfolio Greeks
+2026-01-23 23:05:35,733 - __main__ - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-23 23:05:35,733 - __main__ - INFO - ✓ Portfolio sync complete
+2026-01-23 23:05:35,743 - trading_cotrader.core.database.session - ERROR - Session rollback due to error: 'PortfolioORM' object has no attribute 'portfolio_greeks'
+2026-01-23 23:12:06,837 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 23:12:06,838 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:12:06,838 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:12:06,840 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-23 23:12:06,841 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-23 23:12:07,683 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-23 23:12:07,760 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-23 23:12:07,840 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-23 23:12:07,841 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-23 23:12:07,842 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-23 23:12:07,842 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-23 23:12:07,879 - trading_cotrader.core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 23:12:07,880 - __main__ - INFO - Starting portfolio sync
+2026-01-23 23:12:07,917 - __main__ - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:12:07,918 - __main__ - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:12:07,918 - __main__ - INFO - Syncing account balance
+2026-01-23 23:12:07,990 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-23 23:12:07,996 - trading_cotrader.repositories.base - ERROR - Error updating PortfolioORM: Class 'trading_cotrader.core.models.domain.Portfolio' is not mapped
+2026-01-23 23:12:07,997 - __main__ - ERROR - Failed to update portfolio balance
+2026-01-23 23:23:11,480 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 23:23:11,481 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:23:11,481 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:23:11,483 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-23 23:23:11,484 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-23 23:23:12,275 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-23 23:23:12,347 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-23 23:23:12,425 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-23 23:23:12,427 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-23 23:23:12,427 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-23 23:23:12,428 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-23 23:23:12,462 - trading_cotrader.core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 23:23:12,462 - __main__ - INFO - Starting portfolio sync
+2026-01-23 23:23:12,496 - __main__ - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:23:12,497 - __main__ - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:23:12,497 - __main__ - INFO - Syncing account balance
+2026-01-23 23:23:12,584 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-23 23:23:12,589 - trading_cotrader.repositories.base - ERROR - Error updating PortfolioORM: Class 'trading_cotrader.core.models.domain.Portfolio' is not mapped
+2026-01-23 23:23:12,589 - __main__ - ERROR - Failed to update portfolio balance
+2026-01-23 23:25:27,578 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 23:25:27,580 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:25:27,580 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:25:27,582 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-23 23:25:27,582 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-23 23:25:28,390 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-23 23:25:28,467 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-23 23:25:28,544 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-23 23:25:28,545 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-23 23:25:28,546 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-23 23:25:28,546 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-23 23:25:28,582 - trading_cotrader.core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 23:25:28,583 - __main__ - INFO - Starting portfolio sync
+2026-01-23 23:25:28,616 - __main__ - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:25:28,616 - __main__ - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:25:28,617 - __main__ - INFO - Syncing account balance
+2026-01-23 23:25:28,699 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-23 23:25:28,715 - __main__ - INFO - ✓ Balance synced: $25,328.30
+2026-01-23 23:25:28,749 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-23 23:25:28,752 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-23 23:25:29,283 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-23 23:25:29,286 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-23 23:25:29,287 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-23 23:25:29,288 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-23 23:25:29,289 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-23 23:25:29,295 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-23 23:25:29,295 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-23 23:25:29,328 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-23 23:25:29,337 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-23 23:25:29,338 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-23 23:25:29,338 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-23 23:25:29,338 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-23 23:25:29,338 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-23 23:25:29,339 - __main__ - INFO - Calculating portfolio Greeks
+2026-01-23 23:25:29,345 - __main__ - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-23 23:25:29,345 - __main__ - INFO - ✓ Portfolio sync complete
+2026-01-23 23:34:35,295 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 23:34:35,296 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:34:35,297 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:34:35,335 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-23 23:34:35,335 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-23 23:34:36,161 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-23 23:34:36,238 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-23 23:34:36,318 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-23 23:34:36,319 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-23 23:34:36,320 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-23 23:34:36,320 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-23 23:34:36,476 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 23:34:36,476 - services.portfolio_sync - INFO - Starting portfolio sync
+2026-01-23 23:34:36,518 - services.portfolio_sync - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:34:36,518 - services.portfolio_sync - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:34:36,518 - services.portfolio_sync - INFO - Syncing account balance
+2026-01-23 23:34:36,600 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-23 23:34:36,607 - services.portfolio_sync - INFO - ✓ Balance synced: $25,328.30
+2026-01-23 23:34:36,639 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-23 23:34:36,640 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-23 23:34:37,168 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-23 23:34:37,171 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-23 23:34:37,172 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-23 23:34:37,173 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-23 23:34:37,174 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-23 23:34:37,179 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio b08f59f1-67ee-4ffe-a270-ce0e5f8a5660
+2026-01-23 23:34:37,180 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-23 23:34:37,230 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-23 23:34:37,248 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-23 23:34:37,263 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-23 23:34:37,264 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-23 23:34:37,268 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-23 23:34:37,269 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-23 23:34:37,269 - services.portfolio_sync - INFO - Calculating portfolio Greeks
+2026-01-23 23:34:37,279 - services.portfolio_sync - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-23 23:34:37,280 - services.portfolio_sync - INFO - ✓ Portfolio sync complete
+2026-01-23 23:34:37,364 - repositories.base - ERROR - Error creating TradeORM: (sqlite3.OperationalError) table trades has no column named trade_type
+[SQL: INSERT INTO trades (trade_type, trade_status, intent_trade_id, executed_trade_id, intent_at, submitted_at, actual_entry, actual_exit, slippage, max_risk, id, portfolio_id, strategy_id, underlying_symbol, opened_at, closed_at, planned_entry, planned_exit, stop_loss, profit_target, is_open, notes, tags, broker_trade_id, created_at, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('real', 'intent', None, None, None, None, None, None, None, None, 'manual_SPY_20260124_053437', 'b08f59f1-67ee-4ffe-a270-ce0e5f8a5660', '50eaf397-c139-4bc1-ac04-18ba819825c8', 'SPY', '2026-01-24 05:34:37.295687', None, None, None, None, None, 1, 'Demo trade intent - testing event logging system', '["iron_condor", "SPY", "neutral"]', None, '2026-01-24 05:34:37.362959', '2026-01-24 05:34:37.362964')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-01-23 23:34:37,365 - services.risk_checker - INFO - Running risk checks on IWM Iron Condor
+2026-01-23 23:34:37,365 - services.risk_checker - WARNING - Trade rejected: Trade pushes delta to 100.19, exceeds ±100.0 limit
+2026-01-23 23:34:37,365 - services.risk_checker - WARNING - ✗ Trade rejected: Trade pushes delta to 100.19, exceeds ±100.0 limit
+2026-01-23 23:37:41,826 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 23:37:41,859 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 23:37:52,589 - core.database.session - WARNING - Dropping all database tables...
+2026-01-23 23:37:52,716 - core.database.session - WARNING - All tables dropped successfully
+2026-01-23 23:37:52,717 - core.database.session - INFO - Creating database tables...
+2026-01-23 23:37:52,879 - core.database.session - INFO - ✓ All tables created
+2026-01-23 23:39:34,772 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 23:39:34,797 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 23:39:49,205 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 23:39:49,207 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:39:49,208 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:39:49,211 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-23 23:39:49,211 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-23 23:39:50,059 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-23 23:39:50,128 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-23 23:39:50,211 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-23 23:39:50,212 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-23 23:39:50,212 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-23 23:39:50,213 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-23 23:39:50,244 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 23:39:50,244 - services.portfolio_sync - INFO - Starting portfolio sync
+2026-01-23 23:39:50,294 - services.portfolio_sync - INFO - Creating new portfolio
+2026-01-23 23:39:50,310 - services.portfolio_sync - INFO - Created portfolio: Tastytrade 5WZ78765
+2026-01-23 23:39:50,310 - services.portfolio_sync - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:39:50,310 - services.portfolio_sync - INFO - Syncing account balance
+2026-01-23 23:39:50,392 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-23 23:39:50,399 - services.portfolio_sync - INFO - ✓ Balance synced: $25,328.30
+2026-01-23 23:39:50,430 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-23 23:39:50,432 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-23 23:39:50,855 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-23 23:39:50,859 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-23 23:39:50,860 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-23 23:39:50,861 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-23 23:39:50,862 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-23 23:39:50,868 - trading_cotrader.repositories.position - INFO - Deleted 0 positions for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-23 23:39:50,869 - trading_cotrader.services.position_sync - INFO - Deleted 0 existing positions
+2026-01-23 23:39:50,909 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-23 23:39:50,917 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-23 23:39:50,917 - trading_cotrader.services.position_sync - INFO -   Deleted: 0
+2026-01-23 23:39:50,918 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-23 23:39:50,918 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-23 23:39:50,919 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-23 23:39:50,920 - services.portfolio_sync - INFO - Calculating portfolio Greeks
+2026-01-23 23:39:50,929 - services.portfolio_sync - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-23 23:39:50,929 - services.portfolio_sync - INFO - ✓ Portfolio sync complete
+2026-01-23 23:39:50,992 - services.event_logger - INFO - Created intent trade: manual_SPY_20260124_053950
+2026-01-23 23:39:50,996 - services.event_logger - INFO - Event logged: c3dbc061-b57e-4ca9-82a2-e8420eb4188f
+2026-01-23 23:39:51,003 - services.risk_checker - INFO - Running risk checks on IWM Iron Condor
+2026-01-23 23:39:51,005 - services.risk_checker - WARNING - Trade rejected: Trade pushes delta to 100.19, exceeds ±100.0 limit
+2026-01-23 23:39:51,006 - services.risk_checker - WARNING - ✗ Trade rejected: Trade pushes delta to 100.19, exceeds ±100.0 limit
+2026-01-23 23:43:12,154 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-23 23:43:12,156 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:43:12,156 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-23 23:43:12,158 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-23 23:43:12,159 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-23 23:43:13,042 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-23 23:43:13,115 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-23 23:43:13,194 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-23 23:43:13,197 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-23 23:43:13,197 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-23 23:43:13,198 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-23 23:43:13,243 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-23 23:43:13,244 - services.portfolio_sync - INFO - Starting portfolio sync
+2026-01-23 23:43:13,284 - services.portfolio_sync - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:43:13,284 - services.portfolio_sync - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-23 23:43:13,284 - services.portfolio_sync - INFO - Syncing account balance
+2026-01-23 23:43:13,358 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-23 23:43:13,371 - services.portfolio_sync - INFO - ✓ Balance synced: $25,328.30
+2026-01-23 23:43:13,403 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-23 23:43:13,404 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-23 23:43:14,050 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-23 23:43:14,051 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-23 23:43:14,051 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-23 23:43:14,051 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-23 23:43:14,051 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-23 23:43:14,054 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-23 23:43:14,054 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-23 23:43:14,071 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-23 23:43:14,078 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-23 23:43:14,078 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-23 23:43:14,078 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-23 23:43:14,079 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-23 23:43:14,079 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-23 23:43:14,079 - services.portfolio_sync - INFO - Calculating portfolio Greeks
+2026-01-23 23:43:14,090 - services.portfolio_sync - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-23 23:43:14,091 - services.portfolio_sync - INFO - ✓ Portfolio sync complete
+2026-01-23 23:43:14,154 - services.event_logger - INFO - Created intent trade: manual_SPY_20260124_054314
+2026-01-23 23:43:14,157 - services.event_logger - INFO - Event logged: 3f5a6bf2-5032-4e05-9a07-2c0bca745127
+2026-01-23 23:43:14,171 - core.database.session - ERROR - Session rollback due to error: 'str' object has no attribute 'value'
+2026-01-23 23:43:14,172 - __main__ - ERROR - Analytics error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\auto_trader.py", line 386, in _test_event_analytics
+    f"Outlook: {event.decision_context.market_outlook.value}")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'value'
+2026-01-23 23:43:14,178 - services.risk_checker - INFO - Running risk checks on TEST Test Strategy
+2026-01-23 23:43:14,178 - services.risk_checker - WARNING - Trade rejected: Trade pushes delta to 100.19, exceeds ±100.0 limit
+2026-01-23 23:43:14,178 - services.risk_checker - WARNING - ✗ Trade rejected: Trade pushes delta to 100.19, exceeds ±100.0 limit
+2026-01-24 15:43:56,390 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-24 15:43:56,392 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 15:43:56,392 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 15:43:56,402 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-24 15:43:56,403 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-24 15:43:57,321 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-24 15:43:57,417 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-24 15:43:57,504 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-24 15:43:57,506 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-24 15:43:57,507 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-24 15:43:57,508 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-24 15:43:57,674 - trading_cotrader.core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-24 15:43:57,674 - __main__ - INFO - Starting portfolio sync
+2026-01-24 15:43:57,726 - __main__ - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-24 15:43:57,726 - __main__ - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-24 15:43:57,726 - __main__ - INFO - Syncing account balance
+2026-01-24 15:43:57,798 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-24 15:43:57,823 - __main__ - INFO - ✓ Balance synced: $25,328.24
+2026-01-24 15:43:57,860 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-24 15:43:57,861 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-24 15:43:58,495 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-24 15:43:58,497 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-24 15:43:58,498 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 15:43:58,498 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-24 15:43:58,499 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-24 15:43:58,502 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 15:43:58,502 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-24 15:43:58,522 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-24 15:43:58,532 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-24 15:43:58,532 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-24 15:43:58,534 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-24 15:43:58,534 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-24 15:43:58,535 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-24 15:43:58,535 - __main__ - INFO - Calculating portfolio Greeks
+2026-01-24 15:43:58,545 - __main__ - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-24 15:43:58,545 - __main__ - INFO - ✓ Portfolio sync complete
+2026-01-24 15:49:44,178 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-24 15:49:44,207 - trading_cotrader.core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-24 15:49:44,256 - __main__ - INFO - Capturing daily snapshot for 2026-01-24
+2026-01-24 15:49:44,281 - __main__ - INFO - ✓ Snapshot captured:
+2026-01-24 15:49:44,282 - __main__ - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-24 15:49:44,282 - __main__ - INFO -   Positions: 3
+2026-01-24 15:49:44,283 - __main__ - INFO -   Greeks history: 3 positions
+2026-01-24 15:49:44,283 - __main__ - INFO -   Total Equity: $30,527.24
+2026-01-24 15:49:44,283 - __main__ - INFO -   Delta: 100.19
+2026-01-24 15:50:45,617 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-24 15:50:45,639 - trading_cotrader.core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-24 15:50:45,697 - __main__ - INFO - Capturing daily snapshot for 2026-01-24
+2026-01-24 15:50:45,701 - __main__ - INFO - Updating existing snapshot for 2026-01-24
+2026-01-24 15:50:45,711 - __main__ - INFO - ✓ Snapshot captured:
+2026-01-24 15:50:45,712 - __main__ - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-24 15:50:45,712 - __main__ - INFO -   Positions: 3
+2026-01-24 15:50:45,713 - __main__ - INFO -   Greeks history: 3 positions
+2026-01-24 15:50:45,713 - __main__ - INFO -   Total Equity: $30,527.24
+2026-01-24 15:50:45,713 - __main__ - INFO -   Delta: 100.19
+2026-01-24 15:52:21,343 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-24 15:52:21,367 - trading_cotrader.core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-24 15:52:21,423 - __main__ - INFO - Capturing daily snapshot for 2026-01-24
+2026-01-24 15:52:21,427 - __main__ - INFO - Updating existing snapshot for 2026-01-24
+2026-01-24 15:52:21,434 - __main__ - INFO - ✓ Snapshot captured:
+2026-01-24 15:52:21,435 - __main__ - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-24 15:52:21,435 - __main__ - INFO -   Positions: 3
+2026-01-24 15:52:21,435 - __main__ - INFO -   Greeks history: 3 positions
+2026-01-24 15:52:21,435 - __main__ - INFO -   Total Equity: $30,527.24
+2026-01-24 15:52:21,436 - __main__ - INFO -   Delta: 100.19
+2026-01-24 16:02:59,860 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-24 16:02:59,862 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:02:59,863 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:02:59,865 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-24 16:02:59,865 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-24 16:03:00,850 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-24 16:03:00,930 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-24 16:03:01,009 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-24 16:03:01,010 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-24 16:03:01,011 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-24 16:03:01,011 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-24 16:03:01,049 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-24 16:03:01,049 - services.portfolio_sync - INFO - Starting portfolio sync
+2026-01-24 16:03:01,091 - services.portfolio_sync - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:03:01,091 - services.portfolio_sync - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:03:01,092 - services.portfolio_sync - INFO - Syncing account balance
+2026-01-24 16:03:01,175 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-24 16:03:01,188 - services.portfolio_sync - INFO - ✓ Balance synced: $25,328.24
+2026-01-24 16:03:01,239 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-24 16:03:01,241 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-24 16:03:01,664 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-24 16:03:01,667 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-24 16:03:01,668 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:03:01,668 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-24 16:03:01,669 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-24 16:03:01,674 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:03:01,675 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-24 16:03:01,702 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-24 16:03:01,715 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-24 16:03:01,715 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-24 16:03:01,716 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-24 16:03:01,716 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-24 16:03:01,716 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-24 16:03:01,717 - services.portfolio_sync - INFO - Calculating portfolio Greeks
+2026-01-24 16:03:01,726 - services.portfolio_sync - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-24 16:03:01,727 - services.portfolio_sync - INFO - ✓ Portfolio sync complete
+2026-01-24 16:03:01,786 - services.event_logger - INFO - Created intent trade: manual_SPY_20260124_220301
+2026-01-24 16:03:01,792 - services.event_logger - INFO - Event logged: 7a4ddb2a-060a-4f03-bdef-26c674b52147
+2026-01-24 16:03:01,806 - core.database.session - ERROR - Session rollback due to error: 'str' object has no attribute 'value'
+2026-01-24 16:03:01,806 - __main__ - ERROR - Analytics error:
+Traceback (most recent call last):
+  File "C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\runners\auto_trader.py", line 411, in _test_event_analytics
+    f"Outlook: {event.decision_context.market_outlook.value}")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'value'
+2026-01-24 16:03:01,809 - services.risk_checker - INFO - Running risk checks on TEST Test Strategy
+2026-01-24 16:03:01,809 - services.risk_checker - WARNING - Trade rejected: Trade pushes delta to 100.19, exceeds ±100.0 limit
+2026-01-24 16:03:01,810 - services.risk_checker - WARNING - ✗ Trade rejected: Trade pushes delta to 100.19, exceeds ±100.0 limit
+2026-01-24 16:06:03,484 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-24 16:06:03,486 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:06:03,487 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:06:03,489 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-24 16:06:03,489 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-24 16:06:04,424 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-24 16:06:04,496 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-24 16:06:04,572 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-24 16:06:04,574 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-24 16:06:04,574 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-24 16:06:04,575 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-24 16:06:04,615 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-24 16:06:04,615 - services.portfolio_sync - INFO - Starting portfolio sync
+2026-01-24 16:06:04,651 - services.portfolio_sync - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:06:04,651 - services.portfolio_sync - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:06:04,651 - services.portfolio_sync - INFO - Syncing account balance
+2026-01-24 16:06:04,726 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-24 16:06:04,735 - services.portfolio_sync - INFO - ✓ Balance synced: $25,328.24
+2026-01-24 16:06:04,765 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-24 16:06:04,767 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-24 16:06:05,286 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-24 16:06:05,290 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-24 16:06:05,291 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:06:05,291 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-24 16:06:05,292 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-24 16:06:05,296 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:06:05,297 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-24 16:06:05,325 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-24 16:06:05,335 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-24 16:06:05,335 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-24 16:06:05,335 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-24 16:06:05,336 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-24 16:06:05,336 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-24 16:06:05,336 - services.portfolio_sync - INFO - Calculating portfolio Greeks
+2026-01-24 16:06:05,347 - services.portfolio_sync - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-24 16:06:05,348 - services.portfolio_sync - INFO - ✓ Portfolio sync complete
+2026-01-24 16:06:05,356 - trading_cotrader.services.snapshot_service - INFO - Capturing daily snapshot for 2026-01-24
+2026-01-24 16:06:05,356 - trading_cotrader.services.snapshot_service - ERROR - Error creating portfolio snapshot: 'PositionRepository' object is not iterable
+2026-01-24 16:06:05,356 - trading_cotrader.services.snapshot_service - ERROR - Failed to create portfolio snapshot
+2026-01-24 16:07:20,908 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-24 16:07:20,909 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:07:20,909 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:07:20,911 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-24 16:07:20,912 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-24 16:07:21,828 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-24 16:07:21,913 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-24 16:07:22,003 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-24 16:07:22,014 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-24 16:07:22,020 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-24 16:07:22,021 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-24 16:07:22,059 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-24 16:07:22,061 - services.portfolio_sync - INFO - Starting portfolio sync
+2026-01-24 16:07:22,112 - services.portfolio_sync - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:07:22,113 - services.portfolio_sync - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:07:22,113 - services.portfolio_sync - INFO - Syncing account balance
+2026-01-24 16:07:22,199 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-24 16:07:22,224 - services.portfolio_sync - INFO - ✓ Balance synced: $25,328.24
+2026-01-24 16:07:22,258 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-24 16:07:22,260 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-24 16:07:22,679 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-24 16:07:22,684 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-24 16:07:22,685 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:07:22,686 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-24 16:07:22,686 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-24 16:07:22,692 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:07:22,692 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-24 16:07:22,720 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-24 16:07:22,729 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-24 16:07:22,730 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-24 16:07:22,730 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-24 16:07:22,730 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-24 16:07:22,730 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-24 16:07:22,731 - services.portfolio_sync - INFO - Calculating portfolio Greeks
+2026-01-24 16:07:22,741 - services.portfolio_sync - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-24 16:07:22,742 - services.portfolio_sync - INFO - ✓ Portfolio sync complete
+2026-01-24 16:07:22,755 - trading_cotrader.services.snapshot_service - INFO - Capturing daily snapshot for 2026-01-24
+2026-01-24 16:07:22,759 - trading_cotrader.services.snapshot_service - INFO - Updating existing snapshot for 2026-01-24
+2026-01-24 16:07:22,776 - trading_cotrader.services.snapshot_service - INFO - ✓ Snapshot captured:
+2026-01-24 16:07:22,776 - trading_cotrader.services.snapshot_service - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-24 16:07:22,776 - trading_cotrader.services.snapshot_service - INFO -   Positions: 3
+2026-01-24 16:07:22,777 - trading_cotrader.services.snapshot_service - INFO -   Greeks history: 3 positions
+2026-01-24 16:07:22,777 - trading_cotrader.services.snapshot_service - INFO -   Total Equity: $30,527.24
+2026-01-24 16:07:22,777 - trading_cotrader.services.snapshot_service - INFO -   Delta: 100.19
+2026-01-24 16:09:54,930 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-24 16:09:54,933 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:09:54,933 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:09:54,935 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-24 16:09:54,935 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-24 16:09:55,871 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-24 16:09:55,945 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-24 16:09:56,023 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-24 16:09:56,024 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-24 16:09:56,025 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-24 16:09:56,025 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-24 16:09:56,055 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-24 16:09:56,056 - services.portfolio_sync - INFO - Starting portfolio sync
+2026-01-24 16:09:56,109 - services.portfolio_sync - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:09:56,118 - services.portfolio_sync - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:09:56,119 - services.portfolio_sync - INFO - Syncing account balance
+2026-01-24 16:09:56,195 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-24 16:09:56,214 - services.portfolio_sync - INFO - ✓ Balance synced: $25,328.24
+2026-01-24 16:09:56,253 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-24 16:09:56,254 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-24 16:09:56,684 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-24 16:09:56,689 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-24 16:09:56,690 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:09:56,690 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-24 16:09:56,691 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-24 16:09:56,697 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:09:56,698 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-24 16:09:56,737 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-24 16:09:56,747 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-24 16:09:56,748 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-24 16:09:56,749 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-24 16:09:56,750 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-24 16:09:56,750 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-24 16:09:56,751 - services.portfolio_sync - INFO - Calculating portfolio Greeks
+2026-01-24 16:09:56,758 - services.portfolio_sync - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-24 16:09:56,759 - services.portfolio_sync - INFO - ✓ Portfolio sync complete
+2026-01-24 16:09:56,771 - trading_cotrader.services.snapshot_service - INFO - Capturing daily snapshot for 2026-01-24
+2026-01-24 16:09:56,774 - trading_cotrader.services.snapshot_service - INFO - Updating existing snapshot for 2026-01-24
+2026-01-24 16:09:56,789 - trading_cotrader.services.snapshot_service - INFO - ✓ Snapshot captured:
+2026-01-24 16:09:56,790 - trading_cotrader.services.snapshot_service - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-24 16:09:56,790 - trading_cotrader.services.snapshot_service - INFO -   Positions: 3
+2026-01-24 16:09:56,790 - trading_cotrader.services.snapshot_service - INFO -   Greeks history: 3 positions
+2026-01-24 16:09:56,790 - trading_cotrader.services.snapshot_service - INFO -   Total Equity: $30,527.24
+2026-01-24 16:09:56,791 - trading_cotrader.services.snapshot_service - INFO -   Delta: 100.19
+2026-01-24 16:17:07,931 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-24 16:17:07,934 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:17:07,934 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:17:07,936 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-24 16:17:07,936 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-24 16:17:08,841 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-24 16:17:08,917 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-24 16:17:08,998 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-24 16:17:08,999 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-24 16:17:09,000 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-24 16:17:09,000 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-24 16:17:09,029 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-24 16:17:09,029 - services.portfolio_sync - INFO - Starting portfolio sync
+2026-01-24 16:17:09,075 - services.portfolio_sync - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:17:09,075 - services.portfolio_sync - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:17:09,075 - services.portfolio_sync - INFO - Syncing account balance
+2026-01-24 16:17:09,159 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-24 16:17:09,182 - services.portfolio_sync - INFO - ✓ Balance synced: $25,328.24
+2026-01-24 16:17:09,213 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-24 16:17:09,214 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-24 16:17:09,640 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-24 16:17:09,642 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-24 16:17:09,642 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:17:09,643 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-24 16:17:09,643 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-24 16:17:09,647 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:17:09,648 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-24 16:17:09,669 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-24 16:17:09,684 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-24 16:17:09,685 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-24 16:17:09,685 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-24 16:17:09,686 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-24 16:17:09,687 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-24 16:17:09,687 - services.portfolio_sync - INFO - Calculating portfolio Greeks
+2026-01-24 16:17:09,694 - services.portfolio_sync - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-24 16:17:09,695 - services.portfolio_sync - INFO - ✓ Portfolio sync complete
+2026-01-24 16:17:09,708 - trading_cotrader.services.snapshot_service - INFO - Capturing daily snapshot for 2026-01-24
+2026-01-24 16:17:09,711 - trading_cotrader.services.snapshot_service - INFO - Updating existing snapshot for 2026-01-24
+2026-01-24 16:17:09,726 - trading_cotrader.services.snapshot_service - INFO - ✓ Snapshot captured:
+2026-01-24 16:17:09,726 - trading_cotrader.services.snapshot_service - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-24 16:17:09,727 - trading_cotrader.services.snapshot_service - INFO -   Positions: 3
+2026-01-24 16:17:09,727 - trading_cotrader.services.snapshot_service - INFO -   Greeks history: 3 positions
+2026-01-24 16:17:09,727 - trading_cotrader.services.snapshot_service - INFO -   Total Equity: $30,527.24
+2026-01-24 16:17:09,728 - trading_cotrader.services.snapshot_service - INFO -   Delta: 100.19
+2026-01-24 16:24:45,007 - root - INFO - Logging configured: level=INFO, file=trading_cotrader.log
+2026-01-24 16:24:45,009 - trading_cotrader.adapters.tastytrade_adapter - INFO - Found credentials file at: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:24:45,009 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loading credentials from: C:\Users\nitin\PythonProjects\trading-bot-project\trading_cotrader\adapters\tastytrade_broker.yaml
+2026-01-24 16:24:45,011 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Loaded credentials for live mode (secret length: 40)
+2026-01-24 16:24:45,012 - trading_cotrader.adapters.tastytrade_adapter - INFO - Connecting to Tastytrade | LIVE
+2026-01-24 16:24:46,007 - httpx - INFO - HTTP Request: POST https://api.tastyworks.com/oauth/token "HTTP/1.1 200 OK"
+2026-01-24 16:24:46,082 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/api-quote-tokens "HTTP/1.1 200 OK"
+2026-01-24 16:24:46,177 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/customers/me/accounts "HTTP/1.1 200 OK"
+2026-01-24 16:24:46,180 - trading_cotrader.adapters.tastytrade_adapter - INFO - Loaded 1 account(s): ['5WZ78765']
+2026-01-24 16:24:46,181 - trading_cotrader.adapters.tastytrade_adapter - INFO - Using account: 5WZ78765
+2026-01-24 16:24:46,182 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Authenticated successfully with Tastytrade
+2026-01-24 16:24:46,246 - core.database.session - INFO - Database engine created: sqlite:///trading_cotrader.db
+2026-01-24 16:24:46,247 - services.portfolio_sync - INFO - Starting portfolio sync
+2026-01-24 16:24:46,347 - services.portfolio_sync - INFO - Found existing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:24:46,349 - services.portfolio_sync - INFO - Syncing portfolio: Tastytrade 5WZ78765
+2026-01-24 16:24:46,353 - services.portfolio_sync - INFO - Syncing account balance
+2026-01-24 16:24:46,433 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/balances/USD "HTTP/1.1 200 OK"
+2026-01-24 16:24:46,447 - services.portfolio_sync - INFO - ✓ Balance synced: $25,328.24
+2026-01-24 16:24:46,481 - httpx - INFO - HTTP Request: GET https://api.tastyworks.com/accounts/5WZ78765/positions "HTTP/1.1 200 OK"
+2026-01-24 16:24:46,485 - trading_cotrader.adapters.tastytrade_adapter - INFO - Fetching Greeks for 2 option positions...
+2026-01-24 16:24:46,883 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched Greeks for 2 options
+2026-01-24 16:24:46,884 - trading_cotrader.adapters.tastytrade_adapter - INFO - ✓ Fetched 3 positions with Greeks
+2026-01-24 16:24:46,884 - trading_cotrader.services.position_sync - INFO - Starting position sync for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:24:46,885 - trading_cotrader.services.position_sync - INFO - Received 3 positions from broker
+2026-01-24 16:24:46,885 - trading_cotrader.services.position_sync - INFO - Valid positions: 3, Invalid: 0
+2026-01-24 16:24:46,887 - trading_cotrader.repositories.position - INFO - Deleted 3 positions for portfolio 12691e0c-0439-4932-ba4b-6776c7f6ac43
+2026-01-24 16:24:46,888 - trading_cotrader.services.position_sync - INFO - Deleted 3 existing positions
+2026-01-24 16:24:46,905 - trading_cotrader.services.position_sync - INFO - ✓ Transaction committed
+2026-01-24 16:24:46,914 - trading_cotrader.services.position_sync - INFO - ✓ Position sync complete:
+2026-01-24 16:24:46,915 - trading_cotrader.services.position_sync - INFO -   Deleted: 3
+2026-01-24 16:24:46,915 - trading_cotrader.services.position_sync - INFO -   Created: 3
+2026-01-24 16:24:46,916 - trading_cotrader.services.position_sync - INFO -   Failed: 0
+2026-01-24 16:24:46,916 - trading_cotrader.services.position_sync - INFO -   Final count: 3
+2026-01-24 16:24:46,917 - services.portfolio_sync - INFO - Calculating portfolio Greeks
+2026-01-24 16:24:46,925 - services.portfolio_sync - INFO - ✓ Greeks updated: Δ=100.19, Θ=-0.14
+2026-01-24 16:24:46,926 - services.portfolio_sync - INFO - ✓ Portfolio sync complete
+2026-01-24 16:24:46,940 - trading_cotrader.services.snapshot_service - INFO - Capturing daily snapshot for 2026-01-24
+2026-01-24 16:24:46,944 - trading_cotrader.services.snapshot_service - INFO - Updating existing snapshot for 2026-01-24
+2026-01-24 16:24:46,958 - trading_cotrader.services.snapshot_service - INFO - ✓ Snapshot captured:
+2026-01-24 16:24:46,958 - trading_cotrader.services.snapshot_service - INFO -   Portfolio: Tastytrade 5WZ78765
+2026-01-24 16:24:46,959 - trading_cotrader.services.snapshot_service - INFO -   Positions: 3
+2026-01-24 16:24:46,959 - trading_cotrader.services.snapshot_service - INFO -   Greeks history: 3 positions
+2026-01-24 16:24:46,959 - trading_cotrader.services.snapshot_service - INFO -   Total Equity: $30,527.24
+2026-01-24 16:24:46,959 - trading_cotrader.services.snapshot_service - INFO -   Delta: 100.19

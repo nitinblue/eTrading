@@ -6,11 +6,17 @@ This is the foundation of the Co-Trader system.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, Optional, List, Any
 from decimal import Decimal
 import uuid
+
+
+# Helper function for timezone-aware UTC datetime
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime"""
+    return datetime.now(timezone.utc)
 
 
 class EventType(Enum):
@@ -66,7 +72,7 @@ class MarketContext:
     Market conditions when decision was made
     Critical for AI to understand the environment
     """
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=utcnow)
     
     # Underlying
     underlying_symbol: str = ""
@@ -206,7 +212,7 @@ class TradeEvent:
     This is stored in the database for AI learning
     """
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=utcnow)
     
     # What happened
     event_type: EventType = EventType.TRADE_OPENED
@@ -221,8 +227,9 @@ class TradeEvent:
     underlying_symbol: str = ""
     net_credit_debit: Decimal = Decimal('0')
     
-    # Greeks at entry
+    # Greeks at entry - ALL GREEKS INCLUDED
     entry_delta: Decimal = Decimal('0')
+    entry_gamma: Decimal = Decimal('0')
     entry_theta: Decimal = Decimal('0')
     entry_vega: Decimal = Decimal('0')
     
@@ -245,6 +252,7 @@ class TradeEvent:
             'underlying_symbol': self.underlying_symbol,
             'net_credit_debit': float(self.net_credit_debit),
             'entry_delta': float(self.entry_delta),
+            'entry_gamma': float(self.entry_gamma),
             'entry_theta': float(self.entry_theta),
             'entry_vega': float(self.entry_vega),
             'outcome': self.outcome.to_dict() if self.outcome else None,
@@ -317,5 +325,5 @@ class RecognizedPattern:
     confidence_score: float = 0.0  # 0-1, how confident the AI is
     
     # When discovered
-    discovered_at: datetime = field(default_factory=datetime.utcnow)
-    last_seen: datetime = field(default_factory=datetime.utcnow)
+    discovered_at: datetime = field(default_factory=utcnow)
+    last_seen: datetime = field(default_factory=utcnow)

@@ -20,6 +20,15 @@ class PortfolioRepository(BaseRepository[dm.Portfolio, PortfolioORM]):
     def __init__(self, session: Session):
         super().__init__(session, PortfolioORM)
     
+    def get_by_id(self, id: str) -> Optional[dm.Portfolio]:
+        """Get portfolio by ID, returns domain model"""
+        try:
+            portfolio_orm = self.session.query(PortfolioORM).filter_by(id=id).first()
+            return self.to_domain(portfolio_orm) if portfolio_orm else None
+        except Exception as e:
+            logger.error(f"Error getting portfolio by id {id}: {e}")
+            return None
+    
     def create_from_domain(self, portfolio: dm.Portfolio) -> Optional[dm.Portfolio]:
         """Create portfolio from domain model"""
         try:
@@ -81,12 +90,14 @@ class PortfolioRepository(BaseRepository[dm.Portfolio, PortfolioORM]):
     def update_from_domain(self, portfolio: dm.Portfolio) -> Optional[dm.Portfolio]:
         """Update portfolio from domain model"""
         try:
-            portfolio_orm = self.get_by_id(portfolio.id)
+            # Get the ORM object by ID
+            portfolio_orm = self.session.query(PortfolioORM).filter_by(id=portfolio.id).first()
+            
             if not portfolio_orm:
                 logger.error(f"Portfolio {portfolio.id} not found for update")
                 return None
             
-            # Update fields
+            # Update ORM fields
             portfolio_orm.name = portfolio.name
             portfolio_orm.cash_balance = portfolio.cash_balance
             portfolio_orm.buying_power = portfolio.buying_power
@@ -103,8 +114,16 @@ class PortfolioRepository(BaseRepository[dm.Portfolio, PortfolioORM]):
                 portfolio_orm.portfolio_vega = portfolio.portfolio_greeks.vega
                 portfolio_orm.portfolio_rho = portfolio.portfolio_greeks.rho
             
-            updated = self.update(portfolio_orm)
-            return self.to_domain(updated) if updated else None
+            # Flush - DON'T call self.update()
+            self.session.flush()
+            
+            # Return domain model
+            return self.to_domain(portfolio_orm)
+            
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Error updating portfolio {portfolio.id}: {e}")
+            return None
             
         except Exception as e:
             self.rollback()

@@ -161,6 +161,26 @@ class TradeORM(Base):
         Index('idx_opened_at', 'opened_at'),
     )
     
+    trade_type = Column(String(20), nullable=False, default='real', index=True)
+    # Values: 'real', 'paper', 'backtest', 'research', 'replay'
+    
+    trade_status = Column(String(20), nullable=False, default='intent', index=True)
+    # Values: 'intent', 'pending', 'executed', 'closed', 'rejected', 'cancelled', 'abandoned'
+    
+    # Link intent to execution
+    intent_trade_id = Column(String(36), ForeignKey('trades.id'))
+    executed_trade_id = Column(String(36))
+    
+    # Timestamps for lifecycle
+    intent_at = Column(DateTime)
+    submitted_at = Column(DateTime)
+    
+    # Execution reality
+    actual_entry = Column(Numeric(10, 4))
+    actual_exit = Column(Numeric(10, 4))
+    slippage = Column(Numeric(10, 4))
+    max_risk = Column(Numeric(10, 2))
+    
     id = Column(String(36), primary_key=True)
     portfolio_id = Column(String(36), ForeignKey('portfolios.id', ondelete='CASCADE'), nullable=False)
     strategy_id = Column(String(36), ForeignKey('strategies.id'))
@@ -321,7 +341,8 @@ class TradeEventORM(Base):
     )
     
     event_id = Column(String(36), primary_key=True)
-    trade_id = Column(String(36), ForeignKey('trades.id', ondelete='CASCADE'), nullable=False)
+    trade_id = Column(String(36), ForeignKey('trades.id', ondelete='CASCADE'), nullable=True)
+
     
     # Event metadata
     event_type = Column(String(50), nullable=False)

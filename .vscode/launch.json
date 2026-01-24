@@ -19,7 +19,8 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "cwd": "${workspaceFolder}",
-            "python": "${workspaceFolder}/.venv/Scripts/python.exe"
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "args": ["--mode", "full"]
         }
     ]
 }

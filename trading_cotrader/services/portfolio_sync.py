@@ -5,15 +5,10 @@ Business logic for syncing portfolio from broker to database.
 Can be called from CLI, web UI, scheduled jobs, etc.
 """
 
-from trading_cotrader.config.settings import setup_logging, get_settings
-from trading_cotrader.core.database.session import session_scope
-from trading_cotrader.adapters.tastytrade_adapter import TastytradeAdapter
-    
-
 import logging
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from trading_cotrader.core.database.session import Session
 from trading_cotrader.repositories.portfolio import PortfolioRepository
@@ -90,7 +85,7 @@ class PortfolioSyncService:
             logger.info(f"Syncing portfolio: {portfolio.name}")
             
             # Step 2: Sync balance
-            balance_success = self._sync_balance(portfolio)
+            balance_success = self._sync_balance(portfolio.id)
             if not balance_success:
                 return SyncResult(
                     success=False,
@@ -107,7 +102,7 @@ class PortfolioSyncService:
             )
             
             # Step 4: Update portfolio Greeks
-            greeks_success = self._update_portfolio_greeks(portfolio)
+            greeks_success = self._update_portfolio_greeks(portfolio.id)
             
             logger.info(f"✓ Portfolio sync complete")
             
@@ -140,7 +135,7 @@ class PortfolioSyncService:
                 return portfolio
             
             # Create new
-            logger.info("Creating new portfolio - (check why we getting new portfolio, this should exist in DB.)")
+            logger.info("Creating new portfolio")
             portfolio = dm.Portfolio(
                 name=f"Tastytrade {self.broker.account_id}",
                 broker="tastytrade",
@@ -156,7 +151,7 @@ class PortfolioSyncService:
             logger.error(f"Error getting/creating portfolio: {e}")
             return None
     
-    def _sync_balance(self, portfolio: dm.Portfolio) -> bool:
+    def _sync_balance(self, portfolio_id: str) -> bool:
         """Sync account balance"""
         try:
             logger.info("Syncing account balance")
@@ -166,13 +161,20 @@ class PortfolioSyncService:
                 logger.error("Failed to get balance from broker")
                 return False
             
-            # Update portfolio
+            # Get the current portfolio
+            portfolio = self.portfolio_repo.get_by_id(portfolio_id)
+            if not portfolio:
+                logger.error(f"Portfolio {portfolio_id} not found")
+                return False
+            
+            # Update domain model
             portfolio.cash_balance = balance['cash_balance']
             portfolio.buying_power = balance['buying_power']
             portfolio.total_equity = balance.get('net_liquidating_value', balance['cash_balance'])
             
-            # Save
+            # Save back to database
             updated = self.portfolio_repo.update_from_domain(portfolio)
+            
             if updated:
                 logger.info(f"✓ Balance synced: ${balance['cash_balance']:,.2f}")
                 return True
@@ -181,16 +183,22 @@ class PortfolioSyncService:
                 return False
             
         except Exception as e:
-            logger.error(f"Balance sync failed: {e}")
+            logger.error(f"Balance sync failed: {e}", exc_info=True)
             return False
     
-    def _update_portfolio_greeks(self, portfolio: dm.Portfolio) -> bool:
+    def _update_portfolio_greeks(self, portfolio_id: str) -> bool:
         """Calculate and update portfolio Greeks"""
         try:
             logger.info("Calculating portfolio Greeks")
             
+            # Get portfolio
+            portfolio = self.portfolio_repo.get_by_id(portfolio_id)
+            if not portfolio:
+                logger.error(f"Portfolio {portfolio_id} not found")
+                return False
+            
             # Get all positions
-            positions = self.position_repo.get_by_portfolio(portfolio.id)
+            positions = self.position_repo.get_by_portfolio(portfolio_id)
             
             # Calculate Greeks
             total_delta = sum(p.greeks.delta if p.greeks else 0 for p in positions)
@@ -211,6 +219,7 @@ class PortfolioSyncService:
             
             # Save
             updated = self.portfolio_repo.update_from_domain(portfolio)
+            
             if updated:
                 logger.info(f"✓ Greeks updated: Δ={total_delta:.2f}, Θ={total_theta:.2f}")
                 return True
@@ -219,7 +228,7 @@ class PortfolioSyncService:
                 return False
             
         except Exception as e:
-            logger.error(f"Greeks calculation failed: {e}")
+            logger.error(f"Greeks calculation failed: {e}", exc_info=True)
             return False
 
 
@@ -234,7 +243,10 @@ def main():
     Usage:
         python -m services.portfolio_sync
     """
-
+    from trading_cotrader.config.settings import setup_logging, get_settings
+    from trading_cotrader.core.database.session import session_scope
+    from trading_cotrader.adapters.tastytrade_adapter import TastytradeAdapter
+    
     # Setup
     setup_logging()
     settings = get_settings()
@@ -261,6 +273,7 @@ def main():
         
     except Exception as e:
         print(f"✗ Connection failed: {e}")
+        logger.exception("Full error:")
         return 1
     
     # Run sync
@@ -297,17 +310,24 @@ def main():
         
         portfolio = portfolio_repo.get_by_id(result.portfolio_id)
         if portfolio:
-            print(f"✓ Portfolio: {portfolio.name}")
+            print(f"\n✓ Portfolio: {portfolio.name}")
             print(f"  Cash: ${portfolio.cash_balance:,.2f}")
-            print(f"  Equity: ${portfolio.total_equity:,.2f}")
+            print(f"  Buying Power: ${portfolio.buying_power:,.2f}")
+            print(f"  Total Equity: ${portfolio.total_equity:,.2f}")
             
             if portfolio.portfolio_greeks:
-                print(f"  Greeks:")
+                print(f"\n  Portfolio Greeks:")
                 print(f"    Δ = {portfolio.portfolio_greeks.delta:.2f}")
+                print(f"    Γ = {portfolio.portfolio_greeks.gamma:.4f}")
                 print(f"    Θ = {portfolio.portfolio_greeks.theta:.2f}")
+                print(f"    V = {portfolio.portfolio_greeks.vega:.2f}")
             
             positions = position_repo.get_by_portfolio(portfolio.id)
-            print(f"  Positions: {len(positions)}")
+            print(f"\n  Positions: {len(positions)}")
+            
+            # Show first few positions
+            for pos in positions[:3]:
+                print(f"    - {pos.symbol.ticker}: {pos.quantity} @ ${pos.current_price}")
     
     print("\n" + "=" * 80)
     print("✓ Test completed")
@@ -319,3 +339,11 @@ def main():
 if __name__ == "__main__":
     import sys
     sys.exit(main())
+    
+    ''' Delte these files
+   runners/sync_portfolio.py
+   runners/sync_with_greeks.py
+   runners/sync_with_greeks_old.py
+   services/real_risk_check.py  (or merge into risk_checker.py)
+   services/risk_limits_test_script.py
+    '''

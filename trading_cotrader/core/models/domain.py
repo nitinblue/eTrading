@@ -16,7 +16,25 @@ import uuid
 # ============================================================================
 # Enumerations
 # ============================================================================
+class TradeType(Enum):
+    """What kind of trade is this?"""
+    REAL = "real"
+    PAPER = "paper"
+    BACKTEST = "backtest"
+    RESEARCH = "research"
+    REPLAY = "replay"
 
+
+class TradeStatus(Enum):
+    """Trade lifecycle status"""
+    INTENT = "intent"
+    PENDING = "pending"
+    EXECUTED = "executed"
+    CLOSED = "closed"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+    ABANDONED = "abandoned"
+    
 class AssetType(Enum):
     EQUITY = "equity"
     OPTION = "option"
@@ -223,7 +241,6 @@ class Strategy:
         # Placeholder - implement with Black-Scholes
         return 0.5
 
-
 @dataclass
 class Trade:
     """
@@ -238,6 +255,18 @@ class Trade:
     opened_at: datetime = field(default_factory=datetime.utcnow)
     closed_at: Optional[datetime] = None
     underlying_symbol: str = ""
+    
+    # ADD THESE NEW FIELDS
+    trade_type: TradeType = TradeType.REAL
+    trade_status: TradeStatus = TradeStatus.INTENT
+    intent_trade_id: Optional[str] = None
+    executed_trade_id: Optional[str] = None
+    intent_at: Optional[datetime] = None
+    submitted_at: Optional[datetime] = None
+    actual_entry: Optional[Decimal] = None
+    actual_exit: Optional[Decimal] = None
+    slippage: Optional[Decimal] = None
+    max_risk: Optional[Decimal] = None
     
     # Risk management
     planned_entry: Optional[Decimal] = None
