@@ -1,349 +1,326 @@
 """
-Portfolio Sync Service
+Portfolio Sync Service - FIXED VERSION
 
-Business logic for syncing portfolio from broker to database.
-Can be called from CLI, web UI, scheduled jobs, etc.
+Synchronizes portfolio and positions from broker to database.
+
+FIXES:
+1. Properly finds existing portfolio by (broker, account_id)
+2. Uses same session throughout to avoid detached object issues
+3. Better error handling and logging
 """
 
 import logging
-from typing import Dict, Any, Optional
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import datetime
+from decimal import Decimal
+from typing import List, Optional
 
 from trading_cotrader.core.database.session import Session
 from trading_cotrader.repositories.portfolio import PortfolioRepository
 from trading_cotrader.repositories.position import PositionRepository
-from trading_cotrader.services.position_sync import PositionSyncService
 import trading_cotrader.core.models.domain as dm
-
+from trading_cotrader.core.database.session import session_scope
+from trading_cotrader.core.database.schema import PortfolioORM
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class SyncResult:
     """Result of portfolio sync operation"""
-    success: bool
-    portfolio_id: Optional[str] = None
+    success: bool = False
+    portfolio_id: str = ""
     positions_synced: int = 0
     positions_failed: int = 0
-    error: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
+    error: str = ""
+    warnings: List[str] = field(default_factory=list)
 
 
 class PortfolioSyncService:
     """
-    Service for syncing portfolio from broker
+    Synchronize portfolio from broker to database.
     
-    Handles:
-    - Account balance sync
-    - Position sync
-    - Portfolio Greeks calculation
+    IMPORTANT: This service must be used within a session_scope context.
+    
+    Usage:
+        with session_scope() as session:
+            sync_service = PortfolioSyncService(session, broker_adapter)
+            result = sync_service.sync_portfolio()
+            
+            if result.success:
+                print(f"Synced {result.positions_synced} positions")
     """
     
     def __init__(self, session: Session, broker):
         """
-        Initialize sync service
-        
         Args:
-            session: Database session
-            broker: Broker adapter (e.g. TastytradeAdapter)
+            session: SQLAlchemy session (from session_scope)
+            broker: Broker adapter (e.g., TastytradeAdapter)
         """
         self.session = session
         self.broker = broker
         self.portfolio_repo = PortfolioRepository(session)
         self.position_repo = PositionRepository(session)
-        self.position_sync = PositionSyncService(session)
     
-    def sync_portfolio(self, account_id: Optional[str] = None) -> SyncResult:
+    def sync_portfolio(self) -> SyncResult:
         """
-        Sync entire portfolio from broker
+        Main sync method - syncs portfolio and positions from broker.
         
-        Steps:
-        1. Get or create portfolio
-        2. Sync account balance
-        3. Sync positions
-        4. Calculate portfolio Greeks
-        
-        Args:
-            account_id: Specific account (uses broker default if not provided)
-            
         Returns:
-            SyncResult with success/failure info
+            SyncResult with status and statistics
         """
+        result = SyncResult()
         
         try:
-            logger.info("Starting portfolio sync")
-            
-            # Step 1: Get or create portfolio
-            portfolio = self._get_or_create_portfolio()
-            if not portfolio:
-                return SyncResult(
-                    success=False,
-                    error="Failed to get/create portfolio"
-                )
-            
-            logger.info(f"Syncing portfolio: {portfolio.name}")
-            
-            # Step 2: Sync balance
-            balance_success = self._sync_balance(portfolio.id)
-            if not balance_success:
-                return SyncResult(
-                    success=False,
-                    portfolio_id=portfolio.id,
-                    error="Failed to sync balance"
-                )
-            
-            # Step 3: Sync positions
-            broker_positions = self.broker.get_positions()
-            
-            sync_result = self.position_sync.sync_positions(
-                portfolio.id,
-                broker_positions
-            )
-            
-            # Step 4: Update portfolio Greeks
-            greeks_success = self._update_portfolio_greeks(portfolio.id)
-            
-            logger.info(f"✓ Portfolio sync complete")
-            
-            return SyncResult(
-                success=sync_result['success'],
-                portfolio_id=portfolio.id,
-                positions_synced=sync_result['created'],
-                positions_failed=sync_result['failed'],
-                details=sync_result
-            )
-            
-        except Exception as e:
-            logger.error(f"Portfolio sync failed: {e}", exc_info=True)
-            return SyncResult(
-                success=False,
-                error=str(e)
-            )
-    
-    def _get_or_create_portfolio(self) -> Optional[dm.Portfolio]:
-        """Get existing portfolio or create new one"""
-        try:
-            # Try to find existing
-            portfolio = self.portfolio_repo.get_by_account(
-                broker="tastytrade",
-                account_id=self.broker.account_id
-            )
-            
-            if portfolio:
-                logger.info(f"Found existing portfolio: {portfolio.name}")
-                return portfolio
-            
-            # Create new
-            logger.info("Creating new portfolio")
-            portfolio = dm.Portfolio(
-                name=f"Tastytrade {self.broker.account_id}",
-                broker="tastytrade",
-                account_id=self.broker.account_id
-            )
-            
-            created = self.portfolio_repo.create_from_domain(portfolio)
-            if created:
-                logger.info(f"Created portfolio: {created.name}")
-            return created
-            
-        except Exception as e:
-            logger.error(f"Error getting/creating portfolio: {e}")
-            return None
-    
-    def _sync_balance(self, portfolio_id: str) -> bool:
-        """Sync account balance"""
-        try:
-            logger.info("Syncing account balance")
-            
+            # Step 1: Get account info from broker
+            logger.info("Fetching account balance from broker...")
             balance = self.broker.get_account_balance()
+            
             if not balance:
-                logger.error("Failed to get balance from broker")
-                return False
+                result.error = "Failed to get account balance"
+                return result
             
-            # Get the current portfolio
-            portfolio = self.portfolio_repo.get_by_id(portfolio_id)
+            # Step 2: Get or create portfolio
+            logger.info(f"Looking for portfolio: broker=tastytrade, account={self.broker.account_id}")
+            portfolio = self._get_or_create_portfolio(balance)
+            
             if not portfolio:
-                logger.error(f"Portfolio {portfolio_id} not found")
-                return False
+                result.error = "Failed to get/create portfolio"
+                return result
             
-            # Update domain model
-            portfolio.cash_balance = balance['cash_balance']
-            portfolio.buying_power = balance['buying_power']
-            portfolio.total_equity = balance.get('net_liquidating_value', balance['cash_balance'])
+            result.portfolio_id = portfolio.id
+            logger.info(f"Using portfolio: {portfolio.id} ({portfolio.name})")
             
-            # Save back to database
-            updated = self.portfolio_repo.update_from_domain(portfolio)
+            # Step 3: Get positions from broker
+            logger.info("Fetching positions from broker...")
+            broker_positions = self.broker.get_positions()
+            logger.info(f"Broker returned {len(broker_positions)} positions")
             
-            if updated:
-                logger.info(f"✓ Balance synced: ${balance['cash_balance']:,.2f}")
-                return True
-            else:
-                logger.error("Failed to update portfolio balance")
-                return False
+            # Step 4: Sync positions (clear and rebuild)
+            sync_stats = self._sync_positions(portfolio.id, broker_positions)
+            result.positions_synced = sync_stats['created']
+            result.positions_failed = sync_stats['failed']
+            result.warnings = sync_stats.get('warnings', [])
+            
+            # Step 5: Update portfolio Greeks and totals
+            self._update_portfolio_aggregates(portfolio)
+            
+            # Commit everything
+            self.session.commit()
+            
+            result.success = True
+            logger.info(f"✓ Portfolio sync complete: {result.positions_synced} positions")
             
         except Exception as e:
-            logger.error(f"Balance sync failed: {e}", exc_info=True)
-            return False
+            self.session.rollback()
+            result.error = str(e)
+            logger.error(f"Portfolio sync failed: {e}")
+            logger.exception("Full error:")
+        
+        return result
     
-    def _update_portfolio_greeks(self, portfolio_id: str) -> bool:
-        """Calculate and update portfolio Greeks"""
-        try:
-            logger.info("Calculating portfolio Greeks")
+    def _get_or_create_portfolio(self, balance: dict) -> Optional[dm.Portfolio]:
+        """
+        Get existing portfolio or create new one.
+        
+        CRITICAL: Uses get_by_account to find existing portfolio first!
+        """
+        broker_name = "tastytrade"
+        account_id = self.broker.account_id
+        
+        # Try to find existing portfolio
+        logger.debug(f"Querying for existing portfolio: broker={broker_name}, account={account_id}")
+        existing = self.portfolio_repo.get_by_account(broker_name, account_id)
+        
+        if existing:
+            logger.info(f"Found existing portfolio: {existing.id}")
             
-            # Get portfolio
-            portfolio = self.portfolio_repo.get_by_id(portfolio_id)
-            if not portfolio:
-                logger.error(f"Portfolio {portfolio_id} not found")
-                return False
+            # Update with latest balance
+            existing.cash_balance = balance.get('cash_balance', Decimal('0'))
+            existing.buying_power = balance.get('buying_power', Decimal('0'))
+            existing.total_equity = balance.get('net_liquidating_value', Decimal('0'))
+            existing.last_updated = datetime.utcnow()
             
-            # Get all positions
-            positions = self.position_repo.get_by_portfolio(portfolio_id)
-            
-            # Calculate Greeks
-            total_delta = sum(p.greeks.delta if p.greeks else 0 for p in positions)
-            total_gamma = sum(p.greeks.gamma if p.greeks else 0 for p in positions)
-            total_theta = sum(p.greeks.theta if p.greeks else 0 for p in positions)
-            total_vega = sum(p.greeks.vega if p.greeks else 0 for p in positions)
-            
-            # Update portfolio
-            portfolio.portfolio_greeks = dm.Greeks(
-                delta=total_delta,
-                gamma=total_gamma,
-                theta=total_theta,
-                vega=total_vega
-            )
-            
-            # Calculate P&L
-            portfolio.total_pnl = sum(p.unrealized_pnl() for p in positions)
-            
-            # Save
-            updated = self.portfolio_repo.update_from_domain(portfolio)
-            
-            if updated:
-                logger.info(f"✓ Greeks updated: Δ={total_delta:.2f}, Θ={total_theta:.2f}")
-                return True
-            else:
-                logger.error("Failed to update portfolio Greeks")
-                return False
-            
-        except Exception as e:
-            logger.error(f"Greeks calculation failed: {e}", exc_info=True)
-            return False
-
-
-# ============================================================================
-# Testing
-# ============================================================================
-
-def main():
-    """
-    Test portfolio sync service
-    
-    Usage:
-        python -m services.portfolio_sync
-    """
-    from trading_cotrader.config.settings import setup_logging, get_settings
-    from trading_cotrader.core.database.session import session_scope
-    from trading_cotrader.adapters.tastytrade_adapter import TastytradeAdapter
-    
-    # Setup
-    setup_logging()
-    settings = get_settings()
-    
-    print("=" * 80)
-    print("PORTFOLIO SYNC SERVICE - Test")
-    print("=" * 80)
-    print()
-    
-    # Connect to broker
-    print("Connecting to broker...")
-    try:
-        broker = TastytradeAdapter(
-            account_number=settings.tastytrade_account_number,
-            is_paper=settings.is_paper_trading
+            # Save updates
+            updated = self.portfolio_repo.update_from_domain(existing)
+            return updated
+        
+        # Create new portfolio
+        logger.info(f"Creating new portfolio for account {account_id}")
+        
+        new_portfolio = dm.Portfolio(
+            name=f"Tastytrade {account_id}",
+            broker=broker_name,
+            account_id=account_id,
+            cash_balance=balance.get('cash_balance', Decimal('0')),
+            buying_power=balance.get('buying_power', Decimal('0')),
+            total_equity=balance.get('net_liquidating_value', Decimal('0')),
         )
         
-        if not broker.authenticate():
-            print("✗ Failed to authenticate")
-            return 1
+        created = self.portfolio_repo.create_from_domain(new_portfolio)
         
-        print(f"✓ Connected to account: {broker.account_id}")
-        print()
-        
-    except Exception as e:
-        print(f"✗ Connection failed: {e}")
-        logger.exception("Full error:")
-        return 1
-    
-    # Run sync
-    print("Running portfolio sync...")
-    print("-" * 80)
-    
-    with session_scope() as session:
-        sync_service = PortfolioSyncService(session, broker)
-        result = sync_service.sync_portfolio()
-        
-        if result.success:
-            print(f"\n✓ Sync completed successfully!")
-            print(f"  Portfolio ID: {result.portfolio_id}")
-            print(f"  Positions synced: {result.positions_synced}")
-            print(f"  Positions failed: {result.positions_failed}")
-            
-            if result.details:
-                print(f"\n  Details:")
-                print(f"    Deleted: {result.details.get('deleted', 0)}")
-                print(f"    Created: {result.details.get('created', 0)}")
-                print(f"    Invalid: {result.details.get('invalid', 0)}")
-                print(f"    Final count: {result.details.get('final_count', 0)}")
+        if created:
+            logger.info(f"Created new portfolio: {created.id}")
         else:
-            print(f"\n✗ Sync failed: {result.error}")
-            return 1
+            logger.error("Failed to create portfolio")
+        
+        return created
     
-    # Verify
-    print("\n" + "-" * 80)
-    print("Verifying sync...")
+    def _sync_positions(self, portfolio_id: str, broker_positions: List[dm.Position]) -> dict:
+        """
+        Sync positions using clear-and-rebuild strategy.
+        
+        Returns:
+            dict with 'created', 'failed', 'warnings' keys
+        """
+        stats = {'created': 0, 'failed': 0, 'warnings': []}
+        
+        # Validate positions
+        valid_positions = []
+        for pos in broker_positions:
+            is_valid, errors = self._validate_position(pos)
+            if is_valid:
+                valid_positions.append(pos)
+            else:
+                stats['warnings'].append(f"{pos.symbol.ticker}: {errors}")
+        
+        logger.info(f"Valid positions: {len(valid_positions)}, Invalid: {len(broker_positions) - len(valid_positions)}")
+        
+        # Clear existing positions
+        deleted = self.position_repo.delete_by_portfolio(portfolio_id)
+        logger.info(f"Deleted {deleted} existing positions")
+        
+        # Create new positions
+        for pos in valid_positions:
+            try:
+                created = self.position_repo.create_from_domain(pos, portfolio_id)
+                if created:
+                    stats['created'] += 1
+                else:
+                    stats['failed'] += 1
+                    logger.error(f"Failed to create position: {pos.symbol.ticker}")
+            except Exception as e:
+                stats['failed'] += 1
+                logger.error(f"Error creating position {pos.symbol.ticker}: {e}")
+        
+        return stats
+    
+    def _validate_position(self, position: dm.Position) -> tuple:
+        """Validate a position from broker"""
+        errors = []
+        
+        if position.quantity == 0:
+            errors.append("Zero quantity")
+        
+        if not position.symbol:
+            errors.append("Missing symbol")
+        
+        # For options, check Greeks
+        if position.symbol and position.symbol.asset_type == dm.AssetType.OPTION:
+            if not position.greeks or (position.greeks.delta == 0 and position.greeks.gamma == 0):
+                errors.append("Option has zero Greeks - likely not fetched from broker")
+        
+        if not position.broker_position_id:
+            errors.append("Missing broker_position_id")
+        
+        return (len(errors) == 0, errors)
+    
+    def _update_portfolio_aggregates(self, portfolio: dm.Portfolio):
+        """Update portfolio-level Greeks and totals"""
+        
+        # Get all positions for this portfolio
+        positions = self.position_repo.get_by_portfolio(portfolio.id)
+        
+        # Calculate aggregates
+        total_delta = Decimal('0')
+        total_gamma = Decimal('0')
+        total_theta = Decimal('0')
+        total_vega = Decimal('0')
+        total_pnl = Decimal('0')
+        total_value = Decimal('0')
+        
+        for pos in positions:
+            if pos.greeks:
+                total_delta += pos.greeks.delta or Decimal('0')
+                total_gamma += pos.greeks.gamma or Decimal('0')
+                total_theta += pos.greeks.theta or Decimal('0')
+                total_vega += pos.greeks.vega or Decimal('0')
+            
+            total_pnl += pos.unrealized_pnl()
+            total_value += pos.market_value or Decimal('0')
+        
+        # Update portfolio
+        portfolio.portfolio_greeks = dm.Greeks(
+            delta=total_delta,
+            gamma=total_gamma,
+            theta=total_theta,
+            vega=total_vega
+        )
+        portfolio.total_pnl = total_pnl
+        
+        # Save
+        self.portfolio_repo.update_from_domain(portfolio)
+        
+        logger.info(f"Portfolio aggregates: Δ={total_delta:.2f}, Θ={total_theta:.2f}, P&L=${total_pnl:.2f}")
+
+
+# =============================================================================
+# Diagnostic Function
+# =============================================================================
+
+def diagnose_portfolio_issue():
+    """
+    Run this to diagnose portfolio creation issues.
+    
+    Usage:
+        from services.portfolio_sync import diagnose_portfolio_issue
+        diagnose_portfolio_issue()
+    """
+
+    
+    print("\n" + "=" * 60)
+    print("PORTFOLIO DIAGNOSTIC")
+    print("=" * 60)
     
     with session_scope() as session:
-        portfolio_repo = PortfolioRepository(session)
-        position_repo = PositionRepository(session)
+        # Count portfolios
+        portfolios = session.query(PortfolioORM).all()
+        print(f"\nTotal portfolios in DB: {len(portfolios)}")
         
-        portfolio = portfolio_repo.get_by_id(result.portfolio_id)
-        if portfolio:
-            print(f"\n✓ Portfolio: {portfolio.name}")
-            print(f"  Cash: ${portfolio.cash_balance:,.2f}")
-            print(f"  Buying Power: ${portfolio.buying_power:,.2f}")
-            print(f"  Total Equity: ${portfolio.total_equity:,.2f}")
+        # Group by (broker, account_id)
+        groups = {}
+        for p in portfolios:
+            key = (p.broker, p.account_id)
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(p)
+        
+        print(f"Unique (broker, account) combinations: {len(groups)}")
+        
+        for key, group in groups.items():
+            print(f"\n  {key}:")
+            for p in group:
+                print(f"    ID: {p.id}")
+                print(f"    Name: {p.name}")
+                print(f"    Created: {p.created_at}")
             
-            if portfolio.portfolio_greeks:
-                print(f"\n  Portfolio Greeks:")
-                print(f"    Δ = {portfolio.portfolio_greeks.delta:.2f}")
-                print(f"    Γ = {portfolio.portfolio_greeks.gamma:.4f}")
-                print(f"    Θ = {portfolio.portfolio_greeks.theta:.2f}")
-                print(f"    V = {portfolio.portfolio_greeks.vega:.2f}")
+            if len(group) > 1:
+                print(f"    ⚠️  DUPLICATE DETECTED!")
+        
+        # Test the repository query
+        print("\n" + "-" * 40)
+        print("Testing PortfolioRepository.get_by_account():")
+        
+        repo = PortfolioRepository(session)
+        for key in list(groups.keys())[:3]:  # Test first 3
+            broker, account_id = key
+            found = repo.get_by_account(broker, account_id)
             
-            positions = position_repo.get_by_portfolio(portfolio.id)
-            print(f"\n  Positions: {len(positions)}")
-            
-            # Show first few positions
-            for pos in positions[:3]:
-                print(f"    - {pos.symbol.ticker}: {pos.quantity} @ ${pos.current_price}")
-    
-    print("\n" + "=" * 80)
-    print("✓ Test completed")
-    print("=" * 80)
-    
-    return 0
+            if found:
+                print(f"  ✓ Found portfolio for {key}: {found.id}")
+            else:
+                print(f"  ❌ NOT FOUND for {key}!")
+                print(f"     This is likely the bug - query returning None")
 
 
 if __name__ == "__main__":
-    import sys
-    sys.exit(main())
-    
-    ''' Delte these files
-   runners/sync_portfolio.py
-   runners/sync_with_greeks.py
-   runners/sync_with_greeks_old.py
-   services/real_risk_check.py  (or merge into risk_checker.py)
-   services/risk_limits_test_script.py
-    '''
+    diagnose_portfolio_issue()
