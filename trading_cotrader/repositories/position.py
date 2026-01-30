@@ -46,7 +46,7 @@ class PositionRepository(BaseRepository[dm.Position, PositionORM]):
                 portfolio_id=portfolio_id,
                 symbol_id=symbol_orm.id,
                 quantity=position.quantity,
-                average_price=position.average_price,
+                entry_price=position.entry_underlying_price,
                 total_cost=position.total_cost,
                 current_price=position.current_price,
                 market_value=position.market_value,
@@ -55,13 +55,13 @@ class PositionRepository(BaseRepository[dm.Position, PositionORM]):
             )
             
             # Add Greeks if available
-            if position.greeks:
-                position_orm.delta = position.greeks.delta
-                position_orm.gamma = position.greeks.gamma
-                position_orm.theta = position.greeks.theta
-                position_orm.vega = position.greeks.vega
-                position_orm.rho = position.greeks.rho
-                position_orm.greeks_updated_at = position.greeks.timestamp
+            if position.current_greeks:
+                position_orm.delta = position.current_greeks.delta
+                position_orm.gamma = position.current_greeks.gamma
+                position_orm.theta = position.current_greeks.theta
+                position_orm.vega = position.current_greeks.vega
+                position_orm.rho = position.current_greeks.rho
+                position_orm.greeks_updated_at = position.current_greeks.timestamp
             
             # Create
             created = self.create(position_orm)
