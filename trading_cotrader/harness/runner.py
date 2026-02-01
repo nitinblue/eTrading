@@ -26,14 +26,14 @@ from harness.base import (
 )
 
 # Import all steps
-from harness.steps.step01_imports import ImportStep
-from harness.steps.step02_broker import BrokerConnectionStep
-from harness.steps.step03_portfolio import PortfolioSyncStep
-from harness.steps.step04_market_data import MarketDataContainerStep
-from harness.steps.step05_risk_aggregation import RiskAggregationStep
-from harness.steps.step06_hedging import HedgeCalculatorStep
-from harness.steps.step07_risk_limits import RiskLimitsStep
-from harness.steps.step08_trades import TradeHistoryStep
+from trading_cotrader.harness.steps.step01_imports import ImportStep
+from trading_cotrader.harness.steps.step02_broker import BrokerConnectionStep
+from trading_cotrader.harness.steps.step03_portfolio import PortfolioSyncStep
+from trading_cotrader.harness.steps.step04_market_data import MarketDataContainerStep
+from trading_cotrader.harness.steps.step05_risk_aggregation import RiskAggregationStep
+from trading_cotrader.harness.steps.step06_hedging import HedgeCalculatorStep
+from trading_cotrader.harness.steps.step07_risk_limits import RiskLimitsStep
+from trading_cotrader.harness.steps.step08_trades import TradeHistoryStep
 
 
 def run_harness(skip_sync: bool = False, use_mock: bool = False):
