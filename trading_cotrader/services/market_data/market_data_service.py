@@ -116,13 +116,14 @@ class MarketDataService:
         self.registry = registry or get_registry()
         self._last_sync: Optional[datetime] = None
     
-    def sync_from_positions(self, positions: List[Dict[str, Any]]) -> int:
+    def sync_from_positions(self, positions: List[Any]) -> int:
         """
         Extract unique instruments from broker positions and register them.
         
         Args:
-            positions: List of position dicts from broker adapter.
-                       Expected format matches TastyTrade position response.
+            positions: List of positions - can be either:
+                       - Dicts from raw broker response
+                       - Position domain objects (dm.Position)
         
         Returns:
             Number of new instruments registered.
@@ -130,6 +131,10 @@ class MarketDataService:
         new_count = 0
         
         for pos in positions:
+            # Handle Position domain objects - convert to dict format
+            if hasattr(pos, 'symbol') and hasattr(pos.symbol, 'asset_type'):
+                pos = self._domain_position_to_dict(pos)
+            
             instrument = self._position_to_instrument(pos)
             if instrument:
                 existing = self.registry.get_by_id(instrument.instrument_id)
@@ -183,6 +188,60 @@ class MarketDataService:
         except Exception as e:
             print(f"Error parsing position: {e}")
             return None
+    
+    def _domain_position_to_dict(self, position) -> Dict[str, Any]:
+        """
+        Convert a Position domain object to dict format for parsing.
+        
+        This allows MarketDataService to work with both raw broker dicts
+        and Position domain objects (dm.Position).
+        """
+        symbol = position.symbol
+        
+        # Determine instrument type from asset_type
+        asset_type = symbol.asset_type.value if hasattr(symbol.asset_type, 'value') else str(symbol.asset_type)
+        
+        if asset_type == "OPTION":
+            instrument_type = "EQUITY_OPTION"
+        elif asset_type == "FUTURE":
+            instrument_type = "FUTURE"
+        elif asset_type == "FUTURE_OPTION":
+            instrument_type = "FUTURE_OPTION"
+        elif asset_type in ("FOREX", "FX"):
+            instrument_type = "FOREX"
+        else:
+            instrument_type = "EQUITY"
+        
+        # Build OCC-style symbol for options
+        if instrument_type == "EQUITY_OPTION" and symbol.expiration and symbol.strike:
+            opt_type = "C" if symbol.option_type and symbol.option_type.value == "CALL" else "P"
+            strike_int = int(float(symbol.strike) * 1000)
+            occ_symbol = f"{symbol.ticker:<6}{symbol.expiration.strftime('%y%m%d')}{opt_type}{strike_int:08d}"
+        elif hasattr(symbol, 'get_option_symbol') and callable(symbol.get_option_symbol):
+            occ_symbol = symbol.get_option_symbol()
+        else:
+            occ_symbol = symbol.ticker
+        
+        result = {
+            "symbol": occ_symbol if instrument_type != "EQUITY" else symbol.ticker,
+            "instrument_type": instrument_type,
+            "quantity": position.quantity,
+            "underlying_symbol": symbol.ticker,
+        }
+        
+        # Add option-specific fields
+        if asset_type == "OPTION":
+            result["strike_price"] = str(symbol.strike) if symbol.strike else None
+            result["expiration_date"] = symbol.expiration.isoformat() if symbol.expiration else None
+            result["option_type"] = symbol.option_type.value if symbol.option_type else None
+            result["multiplier"] = symbol.multiplier if hasattr(symbol, 'multiplier') and symbol.multiplier else 100
+        
+        # Add futures-specific fields
+        elif asset_type == "FUTURE":
+            result["expiration_date"] = symbol.expiration.isoformat() if hasattr(symbol, 'expiration') and symbol.expiration else None
+            result["multiplier"] = symbol.multiplier if hasattr(symbol, 'multiplier') and symbol.multiplier else 1
+        
+        return result
     
     def _parse_equity_option(self, position: Dict[str, Any]) -> Instrument:
         """Parse equity option from broker position."""

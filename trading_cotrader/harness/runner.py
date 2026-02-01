@@ -20,7 +20,7 @@ from typing import List, Dict, Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from harness.base import (
+from trading_cotrader.harness.base import (
     TestStep, StepResult, header, subheader, success, error, warning,
     rich_table, Colors, colored
 )
