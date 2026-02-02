@@ -1,400 +1,342 @@
 """
-Hedge Calculator Service
-========================
+Hedge Calculator
 
-Computes hedge requirements at the instrument level.
+Computes hedge recommendations at the RISK FACTOR level.
+Uses existing analytics/greeks/engine.py for Greek calculations.
 
-Key principle: Hedge at the risk factor level, not the strategy level.
-    - If you're short delta on MSFT options, hedge with MSFT shares
-    - If you're short delta on /GC options, hedge with /GC futures
+Based on institutional_trading_v3.py logic:
+- Delta: Futures/Stock (lowest cost, no time decay)
+- Gamma: ATM options (highest gamma per contract)
+- Vega: Longer-dated options (higher vega per unit)
+- Theta: Short options/iron condor (collect premium)
+- Rho: Long-dated options (higher rho sensitivity)
 """
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import List, Dict, Optional, Literal
 from enum import Enum
-from typing import Optional, List, Dict
+import logging
 
-# Import from market_data module
-from trading_cotrader.services.market_data import (
-    Instrument, InstrumentRegistry, RiskFactor, RiskFactorType,
-    AssetType, Greeks
+try:
+    from scipy.stats import norm
+    import numpy as np
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
+
+from trading_cotrader.services.risk_factors.models import (
+    RiskFactor, RiskFactorType, AggregatedRiskFactor, RiskFactorContainer
 )
+
+logger = logging.getLogger(__name__)
 
 
 class HedgeType(Enum):
-    """Type of hedge instrument."""
-    SHARES = "SHARES"           # Stock shares
-    FUTURES = "FUTURES"         # Futures contracts
-    OPTIONS = "OPTIONS"         # Options (for gamma/vega hedging)
+    STOCK = "stock"
+    FUTURE = "future"
+    ATM_CALL = "atm_call"
+    ATM_PUT = "atm_put"
+    LONG_DATED_CALL = "long_dated_call"
+    LONG_DATED_PUT = "long_dated_put"
+    IRON_CONDOR = "iron_condor"
+    STRADDLE = "straddle"
+
+
+@dataclass
+class HedgeOption:
+    """Single hedge option with analysis"""
+    hedge_type: HedgeType
+    instrument: str
+    position: Decimal
+    greek_per_unit: Decimal
+    
+    delta_impact: Decimal = Decimal('0')
+    gamma_impact: Decimal = Decimal('0')
+    theta_impact: Decimal = Decimal('0')
+    vega_impact: Decimal = Decimal('0')
+    rho_impact: Decimal = Decimal('0')
+    
+    estimated_price: Optional[Decimal] = None
+    estimated_cost: Optional[Decimal] = None
+    
+    is_recommended: bool = False
+    pros: List[str] = field(default_factory=list)
+    cons: List[str] = field(default_factory=list)
+    why_not: str = ""
+    
+    def to_dict(self) -> Dict:
+        return {
+            'hedge_type': self.hedge_type.value,
+            'instrument': self.instrument,
+            'position': float(self.position),
+            'delta_impact': float(self.delta_impact),
+            'is_recommended': self.is_recommended,
+            'pros': self.pros,
+        }
 
 
 @dataclass
 class HedgeRecommendation:
-    """
-    A recommended hedge action.
-    
-    Example:
-        To neutralize SPY delta: BUY 150 SPY shares @ $588.25
-        Cost: $88,237.50
-    """
-    underlying_symbol: str              # What to hedge (SPY, /GC, etc.)
-    hedge_type: HedgeType               # How to hedge
-    
-    # What to do
-    quantity: int                       # Signed: positive=buy, negative=sell
-    instrument_symbol: str              # Exact symbol to trade
-    
-    # Current market
-    current_price: Optional[Decimal] = None
-    bid: Optional[Decimal] = None
-    ask: Optional[Decimal] = None
-    
-    # Risk being hedged
-    target_greek: str = "delta"         # Which greek we're hedging
-    current_exposure: Decimal = Decimal("0")  # Current exposure (e.g., delta = -150)
-    post_hedge_exposure: Decimal = Decimal("0")  # After hedge (should be ~0)
-    
-    # Cost analysis
-    estimated_cost: Optional[Decimal] = None  # Total cost to execute
-    
-    # Optional: alternative hedges
-    alternatives: List["HedgeRecommendation"] = field(default_factory=list)
+    """Complete hedge recommendation for one risk factor"""
+    risk_factor: RiskFactor
+    greek_type: Literal["delta", "gamma", "theta", "vega", "rho"]
+    exposure: Decimal
+    target: Decimal
+    optimizing_for: str
+    options: List[HedgeOption] = field(default_factory=list)
     
     @property
-    def action(self) -> str:
-        """Human-readable action: BUY or SELL."""
-        return "BUY" if self.quantity > 0 else "SELL"
+    def recommended(self) -> Optional[HedgeOption]:
+        for opt in self.options:
+            if opt.is_recommended:
+                return opt
+        return self.options[0] if self.options else None
     
-    def to_dict(self) -> dict:
-        """Convert to dictionary for API response."""
+    def to_dict(self) -> Dict:
         return {
-            "underlying": self.underlying_symbol,
-            "hedge_type": self.hedge_type.value,
-            "action": self.action,
-            "quantity": abs(self.quantity),
-            "symbol": self.instrument_symbol,
-            "price": float(self.current_price) if self.current_price else None,
-            "target_greek": self.target_greek,
-            "current_exposure": float(self.current_exposure),
-            "post_hedge_exposure": float(self.post_hedge_exposure),
-            "estimated_cost": float(self.estimated_cost) if self.estimated_cost else None,
+            'underlying': self.risk_factor.underlying,
+            'greek_type': self.greek_type,
+            'exposure': float(self.exposure),
+            'target': float(self.target),
+            'recommended': self.recommended.to_dict() if self.recommended else None,
         }
 
 
-@dataclass
-class RiskBucket:
-    """
-    Aggregated risk for one underlying.
+def _bs_greeks(S: float, K: float, T: float, r: float, sigma: float, opt_type: str = 'call') -> Dict:
+    """Black-Scholes Greeks for hedge sizing"""
+    if not HAS_SCIPY:
+        # Fallback approximation
+        return {'delta': 0.5, 'gamma': 0.01, 'theta': -0.05, 'vega': 0.2, 'rho': 0.1}
     
-    Used to see total exposure to SPY, MSFT, /GC, etc.
-    """
-    underlying: str
+    if T <= 0:
+        T = 1/365
     
-    # Greeks (aggregated across all positions)
-    delta: Decimal = Decimal("0")
-    gamma: Decimal = Decimal("0")
-    theta: Decimal = Decimal("0")
-    vega: Decimal = Decimal("0")
+    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
     
-    # Dollar exposures
-    delta_dollars: Decimal = Decimal("0")   # Delta × spot × multiplier
-    gamma_dollars: Decimal = Decimal("0")   # P&L from 1% move due to gamma
+    if opt_type == 'call':
+        delta = norm.cdf(d1)
+        theta = - (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(T)) - r * K * np.exp(-r * T) * norm.cdf(d2)
+        rho = K * T * np.exp(-r * T) * norm.cdf(d2)
+    else:
+        delta = -norm.cdf(-d1)
+        theta = - (S * norm.pdf(d1) * sigma) / (2 * np.sqrt(T)) + r * K * np.exp(-r * T) * norm.cdf(-d2)
+        rho = -K * T * np.exp(-r * T) * norm.cdf(-d2)
     
-    # Position count
-    position_count: int = 0
+    gamma = norm.pdf(d1) / (S * sigma * np.sqrt(T))
+    vega = S * np.sqrt(T) * norm.pdf(d1)
     
-    # Breakdown by expiry (for term structure view)
-    delta_by_expiry: Dict[str, Decimal] = field(default_factory=dict)
-    theta_by_expiry: Dict[str, Decimal] = field(default_factory=dict)
-    
-    def add_position_greeks(self, greeks: Greeks, expiry: Optional[str] = None, quantity: int = 1):
-        """Add a position's greeks to this bucket."""
-        scaled = greeks * quantity
-        self.delta += scaled.delta
-        self.gamma += scaled.gamma
-        self.theta += scaled.theta
-        self.vega += scaled.vega
-        self.position_count += 1
-        
-        if expiry:
-            self.delta_by_expiry[expiry] = self.delta_by_expiry.get(expiry, Decimal("0")) + scaled.delta
-            self.theta_by_expiry[expiry] = self.theta_by_expiry.get(expiry, Decimal("0")) + scaled.theta
-    
-    def calculate_dollar_exposures(self, underlying_price: Decimal, multiplier: int = 100):
-        """Calculate dollar exposures given underlying price."""
-        # Delta dollars: delta × price × multiplier
-        # For a delta of 0.5 on 1 contract, if stock is $100: 0.5 × 100 × 100 = $5,000
-        self.delta_dollars = self.delta * underlying_price * multiplier
-        
-        # Gamma dollars: P&L from 1% move = 0.5 × gamma × (price × 0.01)² × multiplier
-        # Simplified: gamma_dollars ≈ 0.5 × gamma × price² × 0.0001 × multiplier
-        one_percent_move = underlying_price * Decimal("0.01")
-        self.gamma_dollars = Decimal("0.5") * self.gamma * (one_percent_move ** 2) * multiplier
+    return {'delta': delta, 'gamma': gamma, 'theta': theta, 'vega': vega, 'rho': rho}
 
 
 class HedgeCalculator:
     """
-    Calculates hedge recommendations.
+    Calculate hedge recommendations for risk factors.
     
-    Philosophy:
-        - Hedge at the instrument level, not strategy level
-        - Use the simplest hedge (shares for equity, futures for futures)
-        - Provide alternatives when available
+    Usage:
+        calculator = HedgeCalculator()
+        
+        # Single hedge
+        reco = calculator.calculate_delta_hedge('MSFT', Decimal('150'), Decimal('410'))
+        
+        # All hedges for container
+        recommendations = calculator.calculate_all_hedges(container, market_data)
     """
     
-    def __init__(self, registry: InstrumentRegistry):
-        self.registry = registry
+    def __init__(self, risk_free_rate: float = 0.05, default_vol: float = 0.25, default_expiry: float = 30/365):
+        self.risk_free_rate = risk_free_rate
+        self.default_vol = default_vol
+        self.default_expiry = default_expiry
     
     def calculate_delta_hedge(
         self,
-        underlying_symbol: str,
-        current_delta: Decimal,
-        underlying_price: Optional[Decimal] = None,
-        target_delta: Decimal = Decimal("0")
-    ) -> Optional[HedgeRecommendation]:
-        """
-        Calculate delta hedge for a given underlying.
+        underlying: str,
+        total_delta: Decimal,
+        spot_price: Decimal,
+        target_delta: Decimal = Decimal('0'),
+    ) -> HedgeRecommendation:
+        """Delta hedge - recommend stock/futures"""
+        S = float(spot_price)
+        delta_to_hedge = float(total_delta - target_delta)
         
-        Args:
-            underlying_symbol: The underlying to hedge (MSFT, SPY, /GC)
-            current_delta: Current delta exposure (signed)
-            underlying_price: Current price of underlying
-            target_delta: Target delta after hedge (default: 0 = fully hedged)
+        risk_factor = RiskFactor(RiskFactorType.UNDERLYING_PRICE, underlying)
+        options = []
         
-        Returns:
-            HedgeRecommendation or None if no hedge needed
-        """
-        delta_to_hedge = target_delta - current_delta
+        # Option 1: Stock/Future (RECOMMENDED)
+        stock_option = HedgeOption(
+            hedge_type=HedgeType.STOCK,
+            instrument=f"{underlying}_Stock",
+            position=Decimal(str(-delta_to_hedge)),
+            greek_per_unit=Decimal('1'),
+            delta_impact=Decimal(str(-delta_to_hedge)),
+            estimated_price=spot_price,
+            estimated_cost=abs(Decimal(str(delta_to_hedge)) * spot_price),
+            is_recommended=True,
+            pros=["Low cost", "No time decay", "Precise offset"],
+        )
+        options.append(stock_option)
         
-        # If delta to hedge is negligible, no action needed
-        if abs(delta_to_hedge) < Decimal("0.5"):
-            return None
+        # Option 2: ATM Call
+        atm = _bs_greeks(S, S, self.default_expiry, self.risk_free_rate, self.default_vol, 'call')
+        call_pos = -delta_to_hedge / atm['delta'] if atm['delta'] != 0 else 0
+        call_option = HedgeOption(
+            hedge_type=HedgeType.ATM_CALL,
+            instrument=f"{underlying}_ATM_Call",
+            position=Decimal(str(round(call_pos, 2))),
+            greek_per_unit=Decimal(str(atm['delta'])),
+            delta_impact=Decimal(str(-delta_to_hedge)),
+            gamma_impact=Decimal(str(call_pos * atm['gamma'])),
+            is_recommended=False,
+            pros=["Adds gamma protection"],
+            why_not="Higher cost and time decay vs stock",
+        )
+        options.append(call_option)
         
-        # Determine hedge type based on underlying
-        is_futures = underlying_symbol.startswith("/")
-        
-        if is_futures:
-            # Hedge with futures contracts
-            # For futures, delta is usually quoted per contract
-            # Quantity = delta to hedge (rounded to whole contracts)
-            quantity = int(round(delta_to_hedge))
-            if quantity == 0:
-                return None
-                
-            return HedgeRecommendation(
-                underlying_symbol=underlying_symbol,
-                hedge_type=HedgeType.FUTURES,
-                quantity=quantity,  # Positive = buy, Negative = sell
-                instrument_symbol=underlying_symbol,
-                current_price=underlying_price,
-                target_greek="delta",
-                current_exposure=current_delta,
-                post_hedge_exposure=current_delta + Decimal(quantity),
-                estimated_cost=abs(Decimal(quantity)) * (underlying_price or Decimal("0")) if underlying_price else None
-            )
-        else:
-            # Hedge with stock shares
-            # For equity options, delta 1.0 = 100 shares (due to multiplier)
-            # So to hedge delta of -1.5, need to buy 150 shares
-            shares_needed = int(round(delta_to_hedge * 100))
-            if shares_needed == 0:
-                return None
-            
-            estimated_cost = None
-            if underlying_price:
-                estimated_cost = abs(shares_needed) * underlying_price
-            
-            return HedgeRecommendation(
-                underlying_symbol=underlying_symbol,
-                hedge_type=HedgeType.SHARES,
-                quantity=shares_needed,  # Positive = buy, Negative = sell
-                instrument_symbol=underlying_symbol,
-                current_price=underlying_price,
-                target_greek="delta",
-                current_exposure=current_delta,
-                post_hedge_exposure=current_delta + Decimal(shares_needed) / 100,
-                estimated_cost=estimated_cost
-            )
-    
-    def calculate_portfolio_hedge(
-        self,
-        risk_buckets: Dict[str, RiskBucket]
-    ) -> List[HedgeRecommendation]:
-        """
-        Calculate hedges for entire portfolio.
-        
-        Args:
-            risk_buckets: Dict of underlying -> RiskBucket
-        
-        Returns:
-            List of hedge recommendations (one per underlying with exposure)
-        """
-        recommendations = []
-        
-        for underlying, bucket in risk_buckets.items():
-            # Get underlying price from registry if available
-            underlying_price = self._get_underlying_price(underlying)
-            
-            # Calculate delta hedge
-            hedge = self.calculate_delta_hedge(
-                underlying_symbol=underlying,
-                current_delta=bucket.delta,
-                underlying_price=underlying_price
-            )
-            
-            if hedge:
-                recommendations.append(hedge)
-        
-        return recommendations
-    
-    def _get_underlying_price(self, underlying_symbol: str) -> Optional[Decimal]:
-        """Get underlying price from registry."""
-        # Look for the underlying as a registered instrument
-        instrument = self.registry.get_by_id(underlying_symbol)
-        if instrument and instrument.current_price:
-            return instrument.current_price
-        
-        # Look for any instrument with this underlying and get the underlying factor
-        for inst in self.registry.instruments.values():
-            if inst.underlying_symbol == underlying_symbol:
-                underlying_factor = inst.get_underlying_factor()
-                if underlying_factor and underlying_factor.mark:
-                    return underlying_factor.mark
-        
-        return None
-    
-    def aggregate_risk_by_underlying(
-        self,
-        positions: List[dict]  # List of {instrument_id, quantity, greeks}
-    ) -> Dict[str, RiskBucket]:
-        """
-        Aggregate position greeks into risk buckets by underlying.
-        
-        Args:
-            positions: List of position dicts with instrument_id, quantity, greeks
-        
-        Returns:
-            Dict mapping underlying symbol to RiskBucket
-        """
-        buckets: Dict[str, RiskBucket] = {}
-        
-        for pos in positions:
-            instrument_id = pos.get("instrument_id")
-            quantity = pos.get("quantity", 0)
-            greeks = pos.get("greeks")
-            
-            if not instrument_id or not greeks:
-                continue
-            
-            # Find instrument in registry
-            instrument = self.registry.get_by_id(instrument_id)
-            if not instrument:
-                continue
-            
-            # Determine the underlying
-            underlying = instrument.underlying_symbol or instrument.ticker
-            
-            # Create bucket if needed
-            if underlying not in buckets:
-                buckets[underlying] = RiskBucket(underlying=underlying)
-            
-            # Add greeks to bucket
-            expiry_str = instrument.expiry.isoformat() if instrument.expiry else None
-            buckets[underlying].add_position_greeks(greeks, expiry_str, quantity)
-        
-        return buckets
-
-
-# =============================================================================
-# Example usage
-# =============================================================================
-
-if __name__ == "__main__":
-    from decimal import Decimal
-    from datetime import date
-    from market_data import (
-        InstrumentRegistry, create_stock_instrument, create_equity_option_instrument,
-        OptionType, Greeks
-    )
-    
-    # Setup
-    registry = InstrumentRegistry()
-    
-    # Register instruments
-    spy_stock = create_stock_instrument("SPY")
-    registry.register(spy_stock)
-    
-    spy_put = create_equity_option_instrument(
-        occ_symbol="SPY   260131P00580000",
-        ticker="SPY",
-        option_type=OptionType.PUT,
-        strike=Decimal("580"),
-        expiry=date(2026, 1, 31)
-    )
-    registry.register(spy_put)
-    
-    # Simulate market data on the underlying
-    spy_stock_factor = spy_stock.get_self_factor()
-    if spy_stock_factor:
-        spy_stock_factor.update_market_data(
-            bid=Decimal("588.20"),
-            ask=Decimal("588.30"),
-            mark=Decimal("588.25")
+        return HedgeRecommendation(
+            risk_factor=risk_factor,
+            greek_type="delta",
+            exposure=total_delta,
+            target=target_delta,
+            optimizing_for="minimize cost, no time decay",
+            options=options,
         )
     
-    # Create hedge calculator
-    calc = HedgeCalculator(registry)
-    
-    # Example 1: Calculate delta hedge
-    print("=== Delta Hedge Example ===")
-    hedge = calc.calculate_delta_hedge(
-        underlying_symbol="SPY",
-        current_delta=Decimal("-1.50"),  # Short 150 delta
-        underlying_price=Decimal("588.25")
-    )
-    
-    if hedge:
-        print(f"Recommendation: {hedge.action} {abs(hedge.quantity)} {hedge.instrument_symbol}")
-        print(f"  Current delta: {hedge.current_exposure}")
-        print(f"  Post-hedge delta: {hedge.post_hedge_exposure}")
-        print(f"  Estimated cost: ${hedge.estimated_cost:,.2f}")
-    
-    # Example 2: Risk bucket aggregation
-    print("\n=== Risk Bucket Example ===")
-    
-    positions = [
-        {
-            "instrument_id": "SPY   260131P00580000",
-            "quantity": -2,
-            "greeks": Greeks(
-                delta=Decimal("-0.40"),
-                gamma=Decimal("0.02"),
-                theta=Decimal("0.15"),
-                vega=Decimal("0.30")
-            )
-        },
-        {
-            "instrument_id": "SPY   260131P00580000",
-            "quantity": -3,
-            "greeks": Greeks(
-                delta=Decimal("-0.40"),
-                gamma=Decimal("0.02"),
-                theta=Decimal("0.15"),
-                vega=Decimal("0.30")
-            )
-        }
-    ]
-    
-    buckets = calc.aggregate_risk_by_underlying(positions)
-    
-    for underlying, bucket in buckets.items():
-        print(f"\n{underlying} Risk Bucket:")
-        print(f"  Delta: {bucket.delta}")
-        print(f"  Gamma: {bucket.gamma}")
-        print(f"  Theta: {bucket.theta}")
-        print(f"  Vega: {bucket.vega}")
-        print(f"  Positions: {bucket.position_count}")
+    def calculate_gamma_hedge(
+        self,
+        underlying: str,
+        total_gamma: Decimal,
+        spot_price: Decimal,
+        target_gamma: Decimal = Decimal('0'),
+    ) -> HedgeRecommendation:
+        """Gamma hedge - recommend ATM options"""
+        S = float(spot_price)
+        gamma_to_hedge = float(total_gamma - target_gamma)
         
-        # Calculate dollar exposures
-        bucket.calculate_dollar_exposures(Decimal("588.25"))
-        print(f"  Delta $: ${bucket.delta_dollars:,.2f}")
+        risk_factor = RiskFactor(RiskFactorType.UNDERLYING_PRICE, underlying)
+        
+        atm = _bs_greeks(S, S, self.default_expiry, self.risk_free_rate, self.default_vol, 'call')
+        call_pos = -gamma_to_hedge / atm['gamma'] if atm['gamma'] != 0 else 0
+        
+        call_option = HedgeOption(
+            hedge_type=HedgeType.ATM_CALL,
+            instrument=f"{underlying}_ATM_Call",
+            position=Decimal(str(round(call_pos, 2))),
+            greek_per_unit=Decimal(str(atm['gamma'])),
+            delta_impact=Decimal(str(call_pos * atm['delta'])),
+            gamma_impact=Decimal(str(-gamma_to_hedge)),
+            is_recommended=True,
+            pros=["Highest gamma per contract", "Convexity protection"],
+        )
+        
+        return HedgeRecommendation(
+            risk_factor=risk_factor,
+            greek_type="gamma",
+            exposure=total_gamma,
+            target=target_gamma,
+            optimizing_for="convexity protection, cost efficiency",
+            options=[call_option],
+        )
+    
+    def calculate_vega_hedge(
+        self,
+        underlying: str,
+        total_vega: Decimal,
+        spot_price: Decimal,
+        target_vega: Decimal = Decimal('0'),
+    ) -> HedgeRecommendation:
+        """Vega hedge - recommend longer-dated options"""
+        S = float(spot_price)
+        vega_to_hedge = float(total_vega - target_vega)
+        
+        risk_factor = RiskFactor(RiskFactorType.IMPLIED_VOL, underlying)
+        
+        long_greeks = _bs_greeks(S, S, 0.5, self.risk_free_rate, self.default_vol, 'put')
+        pos = -vega_to_hedge / long_greeks['vega'] if long_greeks['vega'] != 0 else 0
+        
+        put_option = HedgeOption(
+            hedge_type=HedgeType.LONG_DATED_PUT,
+            instrument=f"{underlying}_Long_Dated_Put",
+            position=Decimal(str(round(pos, 2))),
+            greek_per_unit=Decimal(str(long_greeks['vega'])),
+            vega_impact=Decimal(str(-vega_to_hedge)),
+            is_recommended=True,
+            pros=["Higher vega per unit", "Lower theta bleed"],
+        )
+        
+        return HedgeRecommendation(
+            risk_factor=risk_factor,
+            greek_type="vega",
+            exposure=total_vega,
+            target=target_vega,
+            optimizing_for="vol protection with minimal cost",
+            options=[put_option],
+        )
+    
+    def calculate_theta_hedge(
+        self,
+        underlying: str,
+        total_theta: Decimal,
+        spot_price: Decimal,
+        target_theta: Decimal = Decimal('0'),
+    ) -> HedgeRecommendation:
+        """Theta hedge - recommend iron condor"""
+        S = float(spot_price)
+        theta_to_hedge = float(total_theta - target_theta)
+        
+        risk_factor = RiskFactor(RiskFactorType.TIME_DECAY, underlying)
+        
+        atm = _bs_greeks(S, S, self.default_expiry, self.risk_free_rate, self.default_vol, 'call')
+        pos = -theta_to_hedge / (atm['theta'] * 4) if atm['theta'] != 0 else 0
+        
+        condor_option = HedgeOption(
+            hedge_type=HedgeType.IRON_CONDOR,
+            instrument=f"{underlying}_Iron_Condor",
+            position=Decimal(str(round(pos, 2))),
+            greek_per_unit=Decimal(str(atm['theta'] * 4)),
+            theta_impact=Decimal(str(-theta_to_hedge)),
+            is_recommended=True,
+            pros=["Defined risk", "Collects premium"],
+        )
+        
+        return HedgeRecommendation(
+            risk_factor=risk_factor,
+            greek_type="theta",
+            exposure=total_theta,
+            target=target_theta,
+            optimizing_for="offset decay with premium collection",
+            options=[condor_option],
+        )
+    
+    def calculate_all_hedges(
+        self,
+        container: RiskFactorContainer,
+        market_data: Dict[str, Decimal],
+        delta_threshold: Decimal = Decimal('50'),
+        gamma_threshold: Decimal = Decimal('5'),
+        vega_threshold: Decimal = Decimal('200'),
+        theta_threshold: Decimal = Decimal('100'),
+    ) -> List[HedgeRecommendation]:
+        """Calculate hedges for all risk factors exceeding thresholds"""
+        recommendations = []
+        
+        for factor_id, agg in container.aggregated.items():
+            if agg.risk_factor.factor_type != RiskFactorType.UNDERLYING_PRICE:
+                continue
+            
+            underlying = agg.risk_factor.underlying
+            spot = market_data.get(underlying, Decimal('100'))
+            
+            if abs(agg.total_delta) > delta_threshold:
+                recommendations.append(self.calculate_delta_hedge(underlying, agg.total_delta, spot))
+            
+            if abs(agg.total_gamma) > gamma_threshold:
+                recommendations.append(self.calculate_gamma_hedge(underlying, agg.total_gamma, spot))
+            
+            if abs(agg.total_vega) > vega_threshold:
+                recommendations.append(self.calculate_vega_hedge(underlying, agg.total_vega, spot))
+            
+            if abs(agg.total_theta) > theta_threshold:
+                recommendations.append(self.calculate_theta_hedge(underlying, agg.total_theta, spot))
+        
+        return recommendations

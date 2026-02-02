@@ -34,6 +34,8 @@ from trading_cotrader.harness.steps.step05_risk_aggregation import RiskAggregati
 from trading_cotrader.harness.steps.step06_hedging import HedgeCalculatorStep
 from trading_cotrader.harness.steps.step07_risk_limits import RiskLimitsStep
 from trading_cotrader.harness.steps.step08_trades import TradeHistoryStep
+from trading_cotrader.harness.steps.step09_events import EventsStep
+from trading_cotrader.harness.steps.step10_ml_status import MLStatusStep
 
 
 def run_harness(skip_sync: bool = False, use_mock: bool = False):
@@ -65,7 +67,9 @@ def run_harness(skip_sync: bool = False, use_mock: bool = False):
         HedgeCalculatorStep(context),
         RiskLimitsStep(context),
         TradeHistoryStep(context),
-    ]
+        EventsStep(context),
+        MLStatusStep(context),
+        ]
     
     # Run all steps
     results: List[StepResult] = []

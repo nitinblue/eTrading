@@ -11,7 +11,8 @@ from harness.base import (
     TestStep, StepResult, rich_table, format_currency, format_greek,
     format_percent
 )
-
+from services.hedging import HedgeCalculator #RiskBucket
+from services.market_data import Greeks
 
 class RiskAggregationStep(TestStep):
     """Aggregate and display risk by underlying."""
@@ -22,9 +23,6 @@ class RiskAggregationStep(TestStep):
     def execute(self) -> StepResult:
         tables = []
         messages = []
-        
-        from services.hedging import HedgeCalculator, RiskBucket
-        from services.market_data import Greeks
         
         registry = self.context.get('instrument_registry')
         if not registry:

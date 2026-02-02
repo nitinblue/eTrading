@@ -11,16 +11,17 @@ Usage:
     hedge = calc.calculate_delta_hedge("SPY", current_delta=-1.5, underlying_price=588.25)
 """
 
-from .hedge_calculator import (
+from trading_cotrader.services.hedging.hedge_calculator import (
     HedgeType,
     HedgeRecommendation,
-    RiskBucket,
     HedgeCalculator,
 )
 
 __all__ = [
     "HedgeType",
-    "HedgeRecommendation", 
-    "RiskBucket",
+    "HedgeRecommendation",
     "HedgeCalculator",
 ]
+    
+    
+    #"RiskBucket",
