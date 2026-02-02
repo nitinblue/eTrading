@@ -71,6 +71,7 @@ class TastytradeAdapter(BrokerAdapter):
             
             cred_path = None
             for path in possible_paths:
+                logger.info("possible paths", path)
                 if path.exists():
                     cred_path = path
                     logger.info(f"Found credentials file at: {path.absolute()}")
@@ -99,6 +100,7 @@ class TastytradeAdapter(BrokerAdapter):
 
     def _resolve_credential(self, value: str) -> str:
         """Resolve credential value from environment variable"""
+        
         if not value:
             return value
         
@@ -313,7 +315,7 @@ class TastytradeAdapter(BrokerAdapter):
                     position = dm.Position(
                         symbol=symbol,
                         quantity=raw_quantity,
-                        average_price=Decimal(str(pos_data.average_open_price or 0)),
+                        entry_price=Decimal(str(pos_data.average_open_price or 0)),
                         current_price=Decimal(str(pos_data.close_price or 0)),
                         market_value=Decimal(str(pos_data.mark or 0)) * abs(raw_quantity) * symbol.multiplier,
                         total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(raw_quantity) * symbol.multiplier,
@@ -358,12 +360,12 @@ class TastytradeAdapter(BrokerAdapter):
                     position = dm.Position(
                         symbol=symbol,
                         quantity=raw_quantity,
-                        average_price=Decimal(str(pos_data.average_open_price or 0)),
+                        entry_price=Decimal(str(pos_data.average_open_price or 0)),
                         current_price=Decimal(str(pos_data.close_price or 0)),
                         market_value=Decimal(str(pos_data.mark or 0)) * abs(raw_quantity),
                         total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(raw_quantity),
                         broker_position_id=broker_pos_id,
-                        greeks=dm.Greeks(
+                        current_greeks=dm.Greeks(
                             delta=Decimal(str(raw_quantity)),  # Stock delta = quantity
                             timestamp=datetime.utcnow()
                         )

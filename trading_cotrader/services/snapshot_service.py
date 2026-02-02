@@ -7,19 +7,24 @@ This is the foundation for all analytics and ML:
 - Enables time-series analysis and pattern detection
 """
 
+from trading_cotrader.config.settings import setup_logging
+from trading_cotrader.core.database.session import session_scope
+from trading_cotrader.repositories.portfolio import PortfolioRepository
+from trading_cotrader.repositories.position import PositionRepository
+
 import logging
 from typing import List, Dict
 from datetime import datetime, date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
-from core.database.schema import (
+from trading_cotrader.core.database.schema import (
     DailyPerformanceORM,
     GreeksHistoryORM,
     PortfolioORM,
     PositionORM
 )
-import core.models.domain as dm
+import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
 
@@ -332,10 +337,7 @@ class SnapshotService:
 # ============================================================================
 
 if __name__ == "__main__":
-    from config.settings import setup_logging
-    from core.database.session import session_scope
-    from repositories.portfolio import PortfolioRepository
-    from repositories.position import PositionRepository
+
     
     setup_logging()
     

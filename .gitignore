@@ -1,24 +1,269 @@
-# Environment
-.env
-*.env
-*.env.*
-.venv
-.venv/
-/trading_bot/.env
-service_account.json
-/trading_bot/__pycache__/
-/trading_bot/__pycache__/
-/tests/__pycache__
-/tests/__pycache__/
-/tests/integration/__pycache__/
-/tests/unit/__pycache__/
-/trading_bot/market_data/__pycache__/
-/trading_bot/market_data/__pycache__
-/trading_bot/brokers/__pycache__/
-/trading_bot/brokers/__pycache__
-/trading_bot/strategies/__pycache__/
-/trading_bot/strategies/__pycache__
-/trading_bot/utils/__pycache__/
-/trading_bot/utils/__pycache__
+# ============================================================================
+# Trading Co-Trader .gitignore
+# ============================================================================
 
-/trading_claude/__pycache__
+# ============================================================================
+# CRITICAL: Sensitive Data (NEVER commit these)
+# ============================================================================
+
+# Credentials and secrets
+.env
+.env.local
+.env.*.local
+*.yaml
+!risk_limits.yaml  # Risk limits are OK to commit (no secrets)
+!.github/**/*.yaml  # GitHub config is OK
+tastytrade_broker.yaml
+credentials.yaml
+secrets.yaml
+*.pem
+*.key
+
+# google sheet
+service_account.json
+
+# Database files (contain your actual trading data)
+*.db
+*.sqlite
+*.sqlite3
+trading.db
+trading_cotrader.db
+trading_cotrader.db-journal
+trading_cotrader.db-wal
+trading_cotrader.db-shm
+
+# Backup files
+*.db.backup
+*.db.bak
+backups/
+
+# API tokens and keys
+api_keys.txt
+tokens.txt
+
+
+# ============================================================================
+# Python
+# ============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+.hypothesis/
+
+
+# ============================================================================
+# Logs and Runtime Files
+# ============================================================================
+
+# Log files
+*.log
+logs/
+trading_cotrader.log
+trading_cotrader.log.*
+*.log.*
+
+# Runtime data
+*.pid
+*.seed
+*.pid.lock
+
+
+# ============================================================================
+# Machine Learning / AI Models
+# ============================================================================
+
+# Trained models (can be large)
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.hdf5
+*.pb
+ai_cotrader/models/*.pkl
+ai_cotrader/models/*.joblib
+models/
+
+# Training data (can be large)
+training_data/
+*.csv
+*.parquet
+!examples/**/*.csv  # Example CSVs are OK
+
+
+# ============================================================================
+# IDE / Editor Files
+# ============================================================================
+
+# VSCode
+.vscode/
+*.code-workspace
+.history/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+
+# ============================================================================
+# Operating System Files
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.directory
+.Trash-*
+
+
+# ============================================================================
+# Jupyter Notebooks
+# ============================================================================
+
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+
+# ============================================================================
+# Documentation Build
+# ============================================================================
+
+# Sphinx documentation
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# MkDocs
+site/
+
+
+# ============================================================================
+# Temporary Files
+# ============================================================================
+
+# General temp files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# Test outputs
+test_output/
+tmp/
+temp/
+
+
+# ============================================================================
+# Project-Specific
+# ============================================================================
+
+# Screenshots/images that might contain sensitive info
+screenshots/
+*.png
+*.jpg
+*.jpeg
+!docs/**/*.png  # Documentation images are OK
+!examples/**/*.png  # Example images are OK
+
+# Exports that might contain sensitive data
+exports/
+*.xlsx
+*.xlsm
+*.pdf
+!docs/**/*.pdf
+
+# Personal notes
+notes.txt
+TODO.txt
+personal_notes/
+
+
+
+# ============================================================================
+# What's SAFE to Commit
+# ============================================================================
+
+# These ARE tracked by git:
+# - Source code (*.py)
+# - Configuration templates (.env.example)
+# - Risk limits (risk_limits.yaml - no secrets)
+# - Documentation (*.md, docs/)
+# - Requirements (requirements.txt, pyproject.toml)
+# - Tests (tests/*.py)
+# - README, LICENSE, etc.

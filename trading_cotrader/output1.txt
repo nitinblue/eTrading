@@ -1,0 +1,250 @@
+Step 1: Defining Instruments and Initial Market Data
++----+-----------------------+------------+---------------+
+|    | Instrument            |   Position |   Entry_Price |
+|----+-----------------------+------------+---------------|
+|  0 | MSFT_Call             |        100 |            15 |
+|  1 | Gold_Silver_Spread    |         10 |          1975 |
+|  2 | Crude_Vertical_Spread |         50 |             2 |
++----+-----------------------+------------+---------------+
+
+Initial Market Data
++----+--------------+-----------------+--------------+
+|    | Underlying   |   Opening_Price |   Volatility |
+|----+--------------+-----------------+--------------|
+|  0 | MSFT         |             410 |         0.25 |
+|  1 | Gold         |            2000 |         0.2  |
+|  2 | Silver       |              25 |         0.3  |
+|  3 | Crude        |              72 |         0.3  |
++----+--------------+-----------------+--------------+
+
+Step 2: Calculating Sensitivities (Greeks) for Each Instrument at Risk Factor Level
++----+-----------------------+--------------+--------------+------------+-------------+------------+--------------+----------------+---------+--------+-------+---------------+---------------+--------------+-------------+
+|    | Instrument            |   Delta_MSFT |   Gamma_MSFT |      Theta |   Vega_MSFT |   Rho_MSFT |   Delta_Gold |   Delta_Silver |   Gamma |   Vega |   Rho |   Delta_Crude |   Gamma_Crude |   Vega_Crude |   Rho_Crude |
+|----+-----------------------+--------------+--------------+------------+-------------+------------+--------------+----------------+---------+--------+-------+---------------+---------------+--------------+-------------|
+|  0 | MSFT_Call             |     0.669196 |    0.0123359 | -77.606    |     42.6097 |    21.0473 |          nan |            nan |     nan |    nan |   nan |      nan      | nan           |    nan       |   nan       |
+|  1 | Gold_Silver_Spread    |   nan        |  nan         |   0        |    nan      |   nan      |            1 |             -1 |       0 |      0 |     0 |      nan      | nan           |    nan       |   nan       |
+|  2 | Crude_Vertical_Spread |   nan        |  nan         |  -0.812635 |    nan      |   nan      |          nan |            nan |     nan |    nan |   nan |        0.3116 |  -0.000821908 |     -0.10506 |     1.65102 |
++----+-----------------------+--------------+--------------+------------+-------------+------------+--------------+----------------+---------+--------+-------+---------------+---------------+--------------+-------------+
+
+Step 3: Portfolio-Level Risks (Sensitivities)
++----+-----------------------+--------------------+--------------------+---------------+-------------------+------------------+--------------------+----------------------+---------------+--------------+-------------+---------------------+---------------------+--------------------+-------------------+
+|    | Instrument            |   Total_Delta_MSFT |   Total_Gamma_MSFT |   Total_Theta |   Total_Vega_MSFT |   Total_Rho_MSFT |   Total_Delta_Gold |   Total_Delta_Silver |   Total_Gamma |   Total_Vega |   Total_Rho |   Total_Delta_Crude |   Total_Gamma_Crude |   Total_Vega_Crude |   Total_Rho_Crude |
+|----+-----------------------+--------------------+--------------------+---------------+-------------------+------------------+--------------------+----------------------+---------------+--------------+-------------+---------------------+---------------------+--------------------+-------------------|
+|  0 | MSFT_Call             |            66.9196 |            1.23359 |    -7760.6    |           4260.97 |          2104.73 |                nan |                  nan |           nan |          nan |         nan |              nan    |         nan         |          nan       |          nan      |
+|  1 | Gold_Silver_Spread    |           nan      |          nan       |        0      |            nan    |           nan    |                 10 |                  -10 |             0 |            0 |           0 |              nan    |         nan         |          nan       |          nan      |
+|  2 | Crude_Vertical_Spread |           nan      |          nan       |      -40.6318 |            nan    |           nan    |                nan |                  nan |           nan |          nan |         nan |               15.58 |          -0.0410954 |           -5.25301 |           82.5509 |
++----+-----------------------+--------------------+--------------------+---------------+-------------------+------------------+--------------------+----------------------+---------------+--------------+-------------+---------------------+---------------------+--------------------+-------------------+
+
+Aggregated Risks at Risk Factor Level with Explanations
++----+---------------+--------------------+--------------------------------------------------------------------------------------------------------+
+|    | Risk_Factor   |   Aggregated_Value | Explanation                                                                                            |
+|----+---------------+--------------------+--------------------------------------------------------------------------------------------------------|
+|  0 | MSFT_Delta    |         66.9196    | Sum of all deltas to MSFT price across portfolio. High value indicates directional bias to MSFT moves. |
+|  1 | Crude_Delta   |         15.58      | Sum of deltas to Crude price. Aggregated to manage commodity exposure.                                 |
+|  2 | Gold_Delta    |         10         | Sum of deltas to Gold price from spreads or other instruments.                                         |
+|  3 | Silver_Delta  |        -10         | Sum of deltas to Silver price.                                                                         |
+|  4 | MSFT_Gamma    |          1.23359   | Aggregated gamma for MSFT; measures how delta changes with price.                                      |
+|  5 | Crude_Gamma   |         -0.0410954 | Aggregated gamma for Crude.                                                                            |
+|  6 | Total_Gamma   |          1.1925    | Total gamma across underlyings (additive assumption for demo).                                         |
+|  7 | MSFT_Vega     |       4260.97      | Aggregated vega to MSFT vol changes.                                                                   |
+|  8 | Crude_Vega    |         -5.25301   | Aggregated vega to Crude vol.                                                                          |
+|  9 | Total_Vega    |       4255.71      | Total vega (additive).                                                                                 |
+| 10 | MSFT_Rho      |       2104.73      | Aggregated rho to interest rate changes for MSFT options.                                              |
+| 11 | Crude_Rho     |         82.5509    | Aggregated rho for Crude options.                                                                      |
+| 12 | Total_Rho     |       2187.28      | Total rho across options.                                                                              |
+| 13 | Total_Theta   |      -7801.23      | Aggregated time decay across all options.                                                              |
++----+---------------+--------------------+--------------------------------------------------------------------------------------------------------+
+
+Step 4: Hedging to Delta Neutral
++----+--------------------+------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|    | Hedge_Instrument   |   Hedge_Position | Explanation                                                                                                                                                                                                                                                                                                                                                           |
+|----+--------------------+------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|  0 | MSFT_Stock         |         -66.9196 | Sell 66.91956992215565 shares of MSFT if positive, or buy if negative, to offset delta exposure to MSFT price changes. Rationale: Delta measures price sensitivity; hedging neutralizes directional risk. Entry criteria: When total_msft_delta > threshold (e.g., 100), to avoid over-hedging small exposures. Better than options hedge: Lower cost, no time decay. |
+|  1 | Crude_Future       |         -15.58   | Sell 15.580009196679526 Crude futures if positive, or buy if negative, to offset delta exposure to Crude price changes. Rationale: Keeps portfolio neutral to Crude price movements. Entry: If exposure exceeds 5% of portfolio value. Futures better than ETFs: Tighter tracking, lower fees.                                                                        |
+|  2 | Gold_Future        |         -10      | Sell 10.0 Gold futures if positive, or buy if negative, to offset exposure to Gold price. Rationale: Neutralizes specific commodity risk. Entry: During high vol periods. Better than physical gold: Liquidity, no storage costs.                                                                                                                                     |
+|  3 | Silver_Future      |          10      | Sell 10.0 Silver futures if positive, or buy if negative, to offset exposure to Silver price. Rationale: Balances the spread trade risk. Entry: If spread delta imbalanced >10%. Futures vs options: Simpler for delta hedge, but options if gamma needed.                                                                                                            |
++----+--------------------+------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+Step 4.2: Hedging to Gamma Neutral
++----+--------------------+------------------+------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|    | Hedge_Instrument   |   Hedge_Position |   Hedge_Gamma_Per_Unit | Explanation                                                                                                                                                                                                                                                                               |
+|----+--------------------+------------------+------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|  0 | MSFT_ATM_Call      |       -91.261    |              0.0135172 | Trade -91.26097065670997 MSFT ATM calls (negative means sell, positive buy) to offset gamma. Rationale: Gamma measures convexity; hedging stabilizes delta as price changes. Entry: If gamma > 0.1, during volatile markets. Better than straddle: Targeted to underlying, lower premium. |
+|  1 | Crude_ATM_Call     |         0.640532 |              0.0641582 | Trade 0.6405322433146706 Crude ATM calls (negative means sell, positive buy) to offset gamma. Rationale: Reduces risk from large price swings affecting delta. Entry: Pre-earnings or news events. Calls vs puts: Similar gamma, but calls if bullish bias.                               |
++----+--------------------+------------------+------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+Step 4.3: Hedging to Theta Neutral
++----+----------------------+------------------+------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|    | Hedge_Instrument     |   Hedge_Position |   Hedge_Theta_Per_Unit | Explanation                                                                                                                                                                                                                                                      |
+|----+----------------------+------------------+------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|  0 | MSFT_ATM_Call_Short  |         -47.9246 |               -81.3906 | Sell 47.92460466857609 MSFT ATM calls (positive position means short) to offset theta. Rationale: Theta measures time decay; hedging balances daily decay/gain. Entry: If theta loss > $100/day. Short calls better than longs: Collect premium to offset decay. |
+|  1 | Crude_ATM_Call_Short |        -232.646  |               -16.7663 | Sell 232.64629580261368 Crude ATM calls (positive position means short) to offset theta. Rationale: Neutralizes time-based PnL erosion. Entry: Near expiry. Better in low vol: Higher theta collection.                                                          |
++----+----------------------+------------------+------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+Step 4.4: Hedging to Rho Neutral
++----+-----------------------+------------------+----------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|    | Hedge_Instrument      |   Hedge_Position |   Hedge_Rho_Per_Unit | Explanation                                                                                                                                                                                                                                                                             |
+|----+-----------------------+------------------+----------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|  0 | MSFT_Long_Dated_Call  |        -10.1845  |             206.66   | Trade -10.18449350391427 long-dated MSFT calls (negative means sell, positive buy) to offset rho. Rationale: Rho measures rate sensitivity; longer options have higher rho for hedging. Entry: If rates expected to change >0.5%. Better than bonds: Specific to equity rates exposure. |
+|  1 | Crude_Long_Dated_Call |         -2.37902 |              34.6996 | Trade -2.3790157756932744 long-dated Crude calls to offset rho. Rationale: Neutralizes rate impact on option values. Entry: In rising rate environment. Options vs rate futures: Tied to underlying.                                                                                    |
++----+-----------------------+------------------+----------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+Step 4.5: Hedging to Vega Neutral
++----+--------------------+------------------+-----------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|    | Hedge_Instrument   |   Hedge_Position |   Hedge_Vega_Per_Unit | Explanation                                                                                                                                                                                                                                                                            |
+|----+--------------------+------------------+-----------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|  0 | MSFT_ATM_Put       |       -91.261    |               46.6899 | Trade -91.26097065670999 MSFT ATM puts (negative means sell, positive buy) to offset vega. Rationale: Vega measures vol sensitivity; hedging protects against volatility changes. Entry: Before vol events like earnings. Puts vs calls: Similar vega, but puts if expecting downside. |
+|  1 | Crude_ATM_Put      |         0.640532 |                8.201  | Trade 0.640532243314676 Crude ATM puts (negative means sell, positive buy) to offset vega. Rationale: Neutralizes impact from implied vol shifts. Entry: If vega > portfolio limit. Better than VIX: Specific to underlying vol.                                                       |
++----+--------------------+------------------+-----------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+Hedging Options for DELTA on MSFT
+Optimizing for: minimizing transaction costs while achieving delta neutrality without introducing additional risks like time decay.
+Recommend direct futures/ETF/stock hedge for MSFT: lowest cost, no time decay, precise delta offset. Ideal for retail $200k portfolios.
++----+----------------------+------------------------------------------------+-------------------------------------------------------------------------------------------+---------------+---------------------------------------------------------------------------------------+
+|    | Hedge_Instrument     | Position_Action                                | Comment                                                                                   | Recommended   | Why_Not                                                                               |
+|----+----------------------+------------------------------------------------+-------------------------------------------------------------------------------------------+---------------+---------------------------------------------------------------------------------------|
+|  0 | MSFT_Future_or_Stock | -66.92                                         | Hedge with futures/stock: Position -66.92. Pros: Low cost, high liquidity, direct offset. | Yes           | This is the recommended hedge.                                                        |
+|  1 | MSFT_Option_Roll     | Roll to higher/lower strike based on direction | Roll existing option position to adjust delta exposure.                                   | No            | Rolling adds transaction costs and slippage without changing net delta significantly. |
+|  2 | MSFT_Adjust_Size     | Reduce position by 33.46                       | Partially unwind the position to reduce delta.                                            | No            | Partial adjustment leaves residual directional risk; not true neutral.                |
+|  3 | MSFT_Close_Trade     | Close entire position                          | Exit the trade completely to eliminate delta exposure.                                    | No            | Booking loss realizes unnecessary loss when the core thesis is still valid.           |
++----+----------------------+------------------------------------------------+-------------------------------------------------------------------------------------------+---------------+---------------------------------------------------------------------------------------+
+
+Hedging Options for GAMMA on Crude
+Optimizing for: balancing convexity protection with premium costs and avoiding unnecessary volatility exposure.
+Recommend ATM option hedge for Crude: highest gamma per contract, targeted convexity protection without excessive premium.
++----+------------------------------+----------------------------------------------------+--------------------------------------------------------------------------+---------------+------------------------------------------------------------------------------+
+|    | Hedge_Instrument             | Position_Action                                    | Comment                                                                  | Recommended   | Why_Not                                                                      |
+|----+------------------------------+----------------------------------------------------+--------------------------------------------------------------------------+---------------+------------------------------------------------------------------------------|
+|  0 | Crude_ATM_Call_or_Put        | 0.64 (negative=sell, positive=buy)                 | Hedge with ATM options: High gamma efficiency, stabilizes delta changes. | Yes           | This is the recommended hedge.                                               |
+|  1 | Crude_Straddle               | Buy/sell straddle equivalent to offset -0.04 gamma | Use straddle for gamma hedge with vega component.                        | No            | Straddle is expensive and adds unnecessary vega exposure.                    |
+|  2 | Crude_Roll_to_Shorter_Expiry | Roll to nearer expiry                              | Roll position to shorter expiry to adjust gamma.                         | No            | Rolling to shorter expiry increases theta bleed and transaction costs.       |
+|  3 | Crude_Close_Trade            | Close entire position                              | Exit the trade to eliminate gamma exposure.                              | No            | Booking loss removes positive convexity potential if volatility is expected. |
++----+------------------------------+----------------------------------------------------+--------------------------------------------------------------------------+---------------+------------------------------------------------------------------------------+
+
+Hedging Options for VEGA on MSFT
+Optimizing for: protecting against volatility shifts with minimal delta/gamma side effects and cost efficiency.
+Recommend longer-dated option hedge for MSFT: higher vega exposure, better ratio for vol protection, minimal delta impact.
++----+-----------------------------+--------------------------------------+-------------------------------------------------------------------------------+---------------+-----------------------------------------------------------------------+
+|    | Hedge_Instrument            | Position_Action                      | Comment                                                                       | Recommended   | Why_Not                                                               |
+|----+-----------------------------+--------------------------------------+-------------------------------------------------------------------------------+---------------+-----------------------------------------------------------------------|
+|  0 | MSFT_Long_Dated_Put_or_Call | -37.83 (negative=sell, positive=buy) | Hedge with longer-dated options: High vega per unit, targeted vol protection. | Yes           | This is the recommended hedge.                                        |
+|  1 | MSFT_Calendar_Spread        | Buy/sell calendar spread             | Use calendar spread for vega adjustment.                                      | No            | Calendar spreads introduce complex theta and carry risks.             |
+|  2 | MSFT_Add_Opposing_Position  | Add position to offset 4260.97 vega  | Add counter positions to net out vega.                                        | No            | Adding opposing positions increases overall position size and margin. |
+|  3 | MSFT_Close_Trade            | Close entire position                | Exit the trade to eliminate vega exposure.                                    | No            | Booking loss is premature if implied vol is still expected to rise.   |
++----+-----------------------------+--------------------------------------+-------------------------------------------------------------------------------+---------------+-----------------------------------------------------------------------+
+
+Hedging Options for THETA on Crude
+Optimizing for: offsetting time decay with income generation while limiting downside risk.
+Recommend short option (or iron condor) for Crude: positive theta collection, defined risk when using condor.
++----+-----------------------------------+--------------------------+-----------------------------------------------------------+---------------+-------------------------------------------------------------------------------+
+|    | Hedge_Instrument                  | Position_Action          | Comment                                                   | Recommended   | Why_Not                                                                       |
+|----+-----------------------------------+--------------------------+-----------------------------------------------------------+---------------+-------------------------------------------------------------------------------|
+|  0 | Crude_Iron_Condor_or_Short_Option | -232.65 (positive=short) | Sell options or iron condor: Collect theta, defined risk. | Yes           | This is the recommended hedge.                                                |
+|  1 | Crude_Naked_Short                 | Sell naked options       | Naked short for high theta collection (high risk).        | No            | Naked short options carry unlimited risk, unsuitable for most retail traders. |
+|  2 | Crude_Roll_Position               | Roll to new expiry       | Roll to manage theta decay.                               | No            | Rolling extends exposure but adds costs and may chase decaying value.         |
+|  3 | Crude_Close_Trade                 | Close entire position    | Exit to stop theta bleed.                                 | No            | Booking loss removes income stream when time decay is the strategy edge.      |
++----+-----------------------------------+--------------------------+-----------------------------------------------------------+---------------+-------------------------------------------------------------------------------+
+
+Hedging Options for RHO on MSFT
+Optimizing for: neutralizing interest rate sensitivity with low cost and minimal minimal impact on other greeks.
+Recommend interest rate futures or long-dated options for MSFT: direct rate exposure hedge, especially in rising rate environment.
++----+---------------------------------------+---------------------------+-------------------------------------------------------------------+---------------+-----------------------------------------------------------------------+
+|    | Hedge_Instrument                      | Position_Action           | Comment                                                           | Recommended   | Why_Not                                                               |
+|----+---------------------------------------+---------------------------+-------------------------------------------------------------------+---------------+-----------------------------------------------------------------------|
+|  0 | MSFT_Rate_Future_or_Long_Dated_Option | -10.18                    | Hedge with rate futures or long-dated options: Direct rho offset. | Yes           | This is the recommended hedge.                                        |
+|  1 | MSFT_Long_Dated_Option_Only           | -10.18                    | Use long-dated options for rho hedge.                             | No            | Long-dated options are capital intensive and add unwanted gamma/vega. |
+|  2 | MSFT_Adjust_Expiry                    | Shift to different expiry | Adjust option expiry to modify rho.                               | No            | Adjusting expiry reduces rho but also changes delta and theta.        |
+|  3 | MSFT_Close_Trade                      | Close entire position     | Exit to eliminate rho exposure.                                   | No            | Booking loss is too aggressive if rates movement is temporary.        |
++----+---------------------------------------+---------------------------+-------------------------------------------------------------------+---------------+-----------------------------------------------------------------------+
+
+Market Data Changes (Including Time Passage: 0.0027 years, Rate Change: 0.0010)
++----+--------------+-----------------+-----------------+----------------+--------------+---------------+
+|    | Underlying   |   Opening_Price |   Current_Price |   Price_Change |   Vol_Change |   Rate_Change |
+|----+--------------+-----------------+-----------------+----------------+--------------+---------------|
+|  0 | MSFT         |             410 |             415 |              5 |         0.01 |         0.001 |
+|  1 | Gold         |            2000 |            2010 |             10 |       nan    |       nan     |
+|  2 | Silver       |              25 |              26 |              1 |       nan    |       nan     |
+|  3 | Crude        |              72 |              74 |              2 |         0.01 |         0.001 |
++----+--------------+-----------------+-----------------+----------------+--------------+---------------+
+
+Step 5: Simulate Market Change and Core Portfolio PnL Attribution
++----+-----------------------+-------------+-------------+-------------+-------------+-------------+-------------+------------+--------------+
+|    | Instrument            |   Delta_PnL |   Gamma_PnL |   Theta_PnL |    Vega_PnL |     Rho_PnL |   Total_PnL |   Gold_PnL |   Silver_PnL |
+|----+-----------------------+-------------+-------------+-------------+-------------+-------------+-------------+------------+--------------|
+|  0 | MSFT_Call             |     334.598 |  15.4199    |   -21.2619  |  42.6097    |   2.10473   |    373.47   |        nan |          nan |
+|  1 | Gold_Silver_Spread    |     nan     | nan         |   nan       | nan         | nan         |     90      |        100 |          -10 |
+|  2 | Crude_Vertical_Spread |      31.16  |  -0.0821908 |    -0.11132 |  -0.0525301 |   0.0825509 |     30.9965 |        nan |          nan |
++----+-----------------------+-------------+-------------+-------------+-------------+-------------+-------------+------------+--------------+
+Total Core PnL: 494.46677121572304
+
+Demonstration: PnL from Executed Hedges (Delta, Gamma, Vega, Theta, Rho)
++----+----------------------+-------------+----------------+-------------+
+|    | Hedge                |    Position |   Price_Change |   Hedge_PnL |
+|----+----------------------+-------------+----------------+-------------|
+|  0 | MSFT_Stock_Delta     |  -66.9196   |              5 | -334.598    |
+|  1 | Crude_Future_Delta   |  -15.58     |              2 |  -31.16     |
+|  2 | Gold_Future_Delta    |  -10        |             10 | -100        |
+|  3 | Silver_Future_Delta  |   10        |              1 |   10        |
+|  4 | MSFT_ATM_Call_Gamma  |  -91.261    |              5 | -284.326    |
+|  5 | Crude_ATM_Call_Gamma |    0.640532 |              2 |    0.794059 |
+|  6 | MSFT_ATM_Put_Vega    |  -91.261    |              5 |  169.937    |
+|  7 | Crude_ATM_Put_Vega   |    0.640532 |              2 |   -0.484489 |
+|  8 | MSFT_ATM_Call_Theta  |  -47.9246   |              5 | -149.311    |
+|  9 | Crude_ATM_Call_Theta | -232.646    |              2 | -288.408    |
+| 10 | MSFT_Long_Call_Rho   |  -10.1845   |              5 |  -49.496    |
+| 11 | Crude_Long_Call_Rho  |   -2.37902  |              2 |   -3.74825  |
++----+----------------------+-------------+----------------+-------------+
+Total Hedge PnL: -1060.8015383727193
+Net Portfolio PnL (Core + All Hedges): -566.3347671569962
+
+Step 6: Closing Trades (Core Portfolio Only)
++----+-----------------------+---------------+----------+
+|    | Instrument            |   Close_Price |      PnL |
+|----+-----------------------+---------------+----------|
+|  0 | MSFT_Call             |      18.7347  | 373.47   |
+|  1 | Gold_Silver_Spread    |    1984       |  90      |
+|  2 | Crude_Vertical_Spread |       2.61993 |  30.9965 |
++----+-----------------------+---------------+----------+
+
+Total Core Portfolio PnL: 494.46677121572304
+
+Consolidated Portfolio Risks Including Hedges (Positions and Sensitivities)
++----+-----------------------+--------------------+--------------------+---------------+-------------------+------------------+--------------------+----------------------+---------------+--------------+-------------+---------------------+---------------------+--------------------+-------------------+
+|    | Instrument            |   Total_Delta_MSFT |   Total_Gamma_MSFT |   Total_Theta |   Total_Vega_MSFT |   Total_Rho_MSFT |   Total_Delta_Gold |   Total_Delta_Silver |   Total_Gamma |   Total_Vega |   Total_Rho |   Total_Delta_Crude |   Total_Gamma_Crude |   Total_Vega_Crude |   Total_Rho_Crude |
+|----+-----------------------+--------------------+--------------------+---------------+-------------------+------------------+--------------------+----------------------+---------------+--------------+-------------+---------------------+---------------------+--------------------+-------------------|
+|  0 | MSFT_Call             |           66.9196  |          1.23359   |   -7760.6     |           4260.97 |         2104.73  |                nan |                  nan |           nan |          nan |         nan |          nan        |         nan         |          nan       |          nan      |
+|  1 | Gold_Silver_Spread    |          nan       |        nan         |       0       |            nan    |          nan     |                 10 |                  -10 |             0 |            0 |           0 |          nan        |         nan         |          nan       |          nan      |
+|  2 | Crude_Vertical_Spread |          nan       |        nan         |     -40.6318  |            nan    |          nan     |                nan |                  nan |           nan |          nan |         nan |           15.58     |          -0.0410954 |           -5.25301 |           82.5509 |
+|  3 | MSFT_Stock            |          -66.9196  |          0         |       0       |              0    |            0     |                nan |                  nan |           nan |          nan |         nan |          nan        |         nan         |          nan       |          nan      |
+|  4 | Crude_Future          |          nan       |        nan         |       0       |            nan    |          nan     |                nan |                  nan |           nan |          nan |         nan |          -15.58     |           0         |            0       |            0      |
+|  5 | Gold_Future           |          nan       |        nan         |       0       |            nan    |          nan     |                -10 |                  nan |             0 |            0 |           0 |          nan        |         nan         |          nan       |          nan      |
+|  6 | Silver_Future         |          nan       |        nan         |       0       |            nan    |          nan     |                nan |                   10 |             0 |            0 |           0 |          nan        |         nan         |          nan       |          nan      |
+|  7 | MSFT_ATM_Call         |          -49.0179  |         -1.23359   |    7427.79    |          -4260.97 |        -1557.65  |                nan |                  nan |           nan |          nan |         nan |          nan        |         nan         |          nan       |          nan      |
+|  8 | Crude_ATM_Call        |          nan       |        nan         |     -10.7393  |            nan    |          nan     |                nan |                  nan |           nan |          nan |         nan |            0.343433 |           0.0410954 |            5.25301 |            1.8947 |
+|  9 | MSFT_ATM_Put          |           42.2431  |         -1.23359   |    5564.61    |          -4260.97 |         1505.11  |                nan |                  nan |           nan |          nan |         nan |          nan        |         nan         |          nan       |          nan      |
+| 10 | Crude_ATM_Put         |          nan       |        nan         |      -8.44289 |            nan    |          nan     |                nan |                  nan |           nan |          nan |         nan |           -0.297099 |           0.0410954 |            5.25301 |           -1.8803 |
+| 11 | MSFT_ATM_Call_Short   |           25.7411  |          0.647807  |   -3900.61    |           2237.6  |          817.981 |                nan |                  nan |           nan |          nan |         nan |          nan        |         nan         |          nan       |          nan      |
+| 12 | Crude_ATM_Call_Short  |          nan       |        nan         |   -3900.61    |            nan    |          nan     |                nan |                  nan |           nan |          nan |         nan |          124.738    |          14.9262    |         1907.93    |          688.169  |
+| 13 | MSFT_Long_Dated_Call  |           -6.38985 |         -0.0376001 |     302.755   |          -1580.15 |        -2104.73  |                nan |                  nan |           nan |          nan |         nan |          nan        |         nan         |          nan       |          nan      |
+| 14 | Crude_Long_Dated_Call |          nan       |        nan         |      13.8765  |            nan    |          nan     |                nan |                  nan |           nan |          nan |         nan |           -1.4851   |          -0.0417906 |          -64.9927  |          -82.5509 |
++----+-----------------------+--------------------+--------------------+---------------+-------------------+------------------+--------------------+----------------------+---------------+--------------+-------------+---------------------+---------------------+--------------------+-------------------+
+
+Aggregated Risks Including Hedges with Explanations
++----+---------------+--------------------+-----------------------------------+
+|    | Risk_Factor   |   Aggregated_Value | Explanation                       |
+|----+---------------+--------------------+-----------------------------------|
+|  0 | MSFT_Delta    |          12.5765   | Net delta to MSFT after hedges.   |
+|  1 | Crude_Delta   |         123.299    | Net delta to Crude after hedges.  |
+|  2 | Gold_Delta    |           0        | Net delta to Gold after hedges.   |
+|  3 | Silver_Delta  |           0        | Net delta to Silver after hedges. |
+|  4 | MSFT_Gamma    |          -0.623387 | Net gamma for MSFT after hedges.  |
+|  5 | Crude_Gamma   |          14.9255   | Net gamma for Crude after hedges. |
+|  6 | Total_Gamma   |          14.3021   | Net total gamma after hedges.     |
+|  7 | MSFT_Vega     |       -3603.52     | Net vega to MSFT after hedges.    |
+|  8 | Crude_Vega    |        1848.19     | Net vega to Crude after hedges.   |
+|  9 | Total_Vega    |       -1755.32     | Net total vega after hedges.      |
+| 10 | MSFT_Rho      |         765.44     | Net rho for MSFT after hedges.    |
+| 11 | Crude_Rho     |         688.183    | Net rho for Crude after hedges.   |
+| 12 | Total_Rho     |        1453.62     | Net total rho after hedges.       |
+| 13 | Total_Theta   |       -2312.61     | Net theta after hedges.           |
++----+---------------+--------------------+-----------------------------------+
