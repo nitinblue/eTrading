@@ -19,18 +19,18 @@ from tabulate import tabulate
 import sys
 
 # Import your modules
-import data_model as dm
-from broker_adapters import TastytradeAdapter
-from data_access import (
+import trading_claude.data_model as dm
+from trading_claude.broker_adapters import TastytradeAdapter
+from trading_claude.data_access import (
     PortfolioRepository, TradeRepository, PositionRepository, 
     OrderRepository
 )
 
-from data_model import (
+from trading_claude.data_model import (
     get_session, init_database
 )
 
-from service_layer import PortfolioService
+from trading_claude.service_layer import PortfolioService
 
 # Setup logging
 logging.basicConfig(
