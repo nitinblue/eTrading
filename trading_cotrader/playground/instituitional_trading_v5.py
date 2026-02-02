@@ -766,15 +766,7 @@ def final_aggregated_risk_table_including_hedges(portfolio_risks_df, delta_hedge
     print("\nAggregated Risks Including Hedges with Explanations")
     print(tabulate(aggregated_df, headers='keys', tablefmt='psql'))
 
-    # Single table for concise summary
-    summary_data = aggregated_data.copy()
-    for item in summary_data:
-        item['Initial_Value'] = 0  # Placeholder, need to pass initial
-    # Actually, to have initial, we need initial aggregated
-    # Assuming initial is from aggregate_risks, but since it's after, we can pass initial_aggregated_data from aggregate_risks
-    # For simplicity, assume we have initial_aggregated_df from aggregate_risks, but to make it work, let's add parameters for initial
-    # Let's modify the function to take initial_aggregated_df
-    # In code, we can call aggregate_risks first for initial, then this function with initial_aggregated_df
+    return total_msft_delta, total_crude_delta, total_gold_delta, total_silver_delta, total_msft_gamma, total_crude_gamma, total_gamma, total_msft_vega, total_crude_vega, total_vega, total_msft_rho, total_crude_rho, total_rho, total_theta, aggregated_data
 
 def concise_summary(initial_aggregated_df, after_aggregated_df, total_core_pnl, total_hedge_pnl):
     summary_data = []

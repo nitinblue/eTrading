@@ -67,8 +67,8 @@ def run_harness(skip_sync: bool = False, use_mock: bool = False):
         HedgeCalculatorStep(context),
         RiskLimitsStep(context),
         TradeHistoryStep(context),
-        EventsStep(context),
-        MLStatusStep(context),
+        #EventsStep(context),
+        #MLStatusStep(context),
         ]
     
     # Run all steps

@@ -39,7 +39,7 @@ class EventsStep(TestStep):
         self.event_logger = None
         self.event_analytics = None
     
-    def run(self, context: Dict[str, Any]) -> bool:
+    def execute(self, context: Dict[str, Any]) -> bool:
         """
         Run events step.
         
