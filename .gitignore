@@ -128,7 +128,6 @@ trading_cotrader.log.*
 *.pb
 ai_cotrader/models/*.pkl
 ai_cotrader/models/*.joblib
-models/
 
 # Training data (can be large)
 training_data/
