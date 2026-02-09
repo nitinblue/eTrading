@@ -1,11 +1,13 @@
 """
-WebSocket Server for Real-Time Cell Updates
+WebSocket Server for Real-Time Trading Grid
 
 Provides:
 - WebSocket endpoint for cell-level push updates
-- REST endpoint for initial data load
+- REST endpoints for data and sync operations
 - Event-driven architecture with container integration
-- Refresh endpoint to reload from data source
+- Real + What-If portfolio display
+
+NO MOCK DATA - all data from TastyTrade broker and SQLite database.
 """
 
 import json
@@ -21,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from trading_cotrader.containers import ContainerManager, ContainerEvent
+from trading_cotrader.services.data_service import DataService
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +52,11 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.add(websocket)
-        logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
+        logger.info(f"WebSocket connected. Total: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.discard(websocket)
-        logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
+        logger.info(f"WebSocket disconnected. Total: {len(self.active_connections)}")
 
     async def broadcast(self, message: Dict[str, Any]):
         """Broadcast message to all connected clients"""
@@ -70,7 +73,6 @@ class ConnectionManager:
                 logger.warning(f"Failed to send to WebSocket: {e}")
                 disconnected.add(connection)
 
-        # Clean up disconnected
         for conn in disconnected:
             self.active_connections.discard(conn)
 
@@ -100,15 +102,7 @@ class ConnectionManager:
 # Global instances
 connection_manager = ConnectionManager()
 container_manager = ContainerManager()
-
-# Data provider (can be swapped)
-_data_provider = None
-
-
-def set_data_provider(provider):
-    """Set the data provider for loading snapshots"""
-    global _data_provider
-    _data_provider = provider
+data_service = DataService(container_manager)
 
 
 def on_container_event(event: ContainerEvent):
@@ -123,26 +117,29 @@ container_manager.add_event_listener(on_container_event)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown"""
-    logger.info("Starting WebSocket server...")
+    logger.info("Starting Trading Grid WebSocket server...")
 
-    # Initial load if data provider is set
-    if _data_provider:
-        try:
-            snapshot = _data_provider.get_snapshot()
-            container_manager.load_from_snapshot(snapshot)
-            logger.info("Initial data loaded from provider")
-        except Exception as e:
-            logger.error(f"Failed to load initial data: {e}")
+    # Try to load from database on startup
+    try:
+        result = data_service.refresh_from_database()
+        if result.success:
+            logger.info(f"Loaded {result.positions_count} positions from database")
+            logger.info(f"Found {result.whatif_trades_count} what-if trades")
+        else:
+            logger.warning(f"No data in database: {result.error}")
+            logger.info("Connect to broker using /api/sync to load data")
+    except Exception as e:
+        logger.error(f"Failed to load from database: {e}")
 
     yield
 
-    logger.info("Shutting down WebSocket server...")
+    logger.info("Shutting down Trading Grid server...")
 
 
 # Create FastAPI app
 app = FastAPI(
     title="Trading Grid API",
-    description="Real-time trading grid with WebSocket cell updates",
+    description="Real-time trading grid with WebSocket updates - No mock data",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -163,11 +160,13 @@ async def root():
     return {
         "service": "Trading Grid API",
         "version": "2.0.0",
+        "broker_connected": data_service.is_connected,
         "websocket": "/ws",
         "endpoints": {
-            "data": "/api/data",
-            "refresh": "/api/refresh",
-            "health": "/health",
+            "data": "GET /api/data - Get current state",
+            "sync": "POST /api/sync - Sync from TastyTrade broker",
+            "refresh": "POST /api/refresh - Refresh from database",
+            "portfolios": "GET /api/portfolios - Get real + what-if portfolios",
         },
         "containers": {
             "initialized": container_manager.is_initialized,
@@ -182,51 +181,115 @@ async def health():
     """Health check"""
     return {
         "status": "healthy",
+        "broker_connected": data_service.is_connected,
         "timestamp": datetime.utcnow().isoformat(),
         "connections": len(connection_manager.active_connections),
     }
 
 
+@app.post("/api/sync")
+async def sync_from_broker():
+    """
+    Sync data from TastyTrade broker.
+
+    This will:
+    1. Connect to TastyTrade (if not connected)
+    2. Fetch positions with Greeks from DXLink streaming
+    3. Persist to SQLite database
+    4. Refresh containers
+    5. Push updates to all WebSocket clients
+    """
+    try:
+        result = data_service.sync_from_broker()
+
+        if result.success:
+            # Send full refresh to all clients
+            state = container_manager.get_full_state()
+            portfolios = data_service.get_portfolios_data()
+            state['portfolios'] = portfolios
+            await connection_manager.send_full_refresh(state)
+
+            return {
+                "status": "synced",
+                "portfolio_id": result.portfolio_id,
+                "positions": result.positions_count,
+                "whatif_trades": result.whatif_trades_count,
+                "timestamp": result.timestamp.isoformat(),
+            }
+        else:
+            raise HTTPException(status_code=500, detail=result.error)
+
+    except Exception as e:
+        logger.error(f"Sync failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/refresh")
+async def refresh_from_database():
+    """
+    Refresh containers from database.
+
+    Does NOT connect to broker - just reloads from SQLite.
+    Use this for quick refreshes when data is already synced.
+    """
+    try:
+        result = data_service.refresh_from_database()
+
+        if result.success:
+            # Send full refresh to all clients
+            state = container_manager.get_full_state()
+            portfolios = data_service.get_portfolios_data()
+            state['portfolios'] = portfolios
+            await connection_manager.send_full_refresh(state)
+
+            return {
+                "status": "refreshed",
+                "positions": result.positions_count,
+                "whatif_trades": result.whatif_trades_count,
+                "timestamp": result.timestamp.isoformat(),
+            }
+        else:
+            raise HTTPException(status_code=500, detail=result.error)
+
+    except Exception as e:
+        logger.error(f"Refresh failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/data")
 async def get_data():
     """
-    Get full current state for initial grid load.
-    Returns all data needed to populate grids.
+    Get full current state for grid display.
+
+    Returns:
+    - Portfolio summary
+    - Positions
+    - Risk factors by underlying
+    - Real + What-If portfolio views
     """
     try:
         state = container_manager.get_full_state()
+        portfolios = data_service.get_portfolios_data()
+        state['portfolios'] = portfolios
         return JSONResponse(content=json.loads(json_dumps(state)))
     except Exception as e:
         logger.error(f"Error getting data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/refresh")
-async def refresh_data():
+@app.get("/api/portfolios")
+async def get_portfolios():
     """
-    Trigger data refresh from source.
-    Broadcasts cell updates to all connected clients.
+    Get both real portfolio and what-if portfolio.
+
+    Real portfolio: Actual positions from broker
+    What-If portfolio: Aggregated from what-if trades in database
     """
     try:
-        if _data_provider:
-            snapshot = _data_provider.get_snapshot()
-            event = container_manager.load_from_snapshot(snapshot)
-        else:
-            # Try loading from mock data
-            event = container_manager.refresh()
-
-        # Also send full refresh to all clients
-        state = container_manager.get_full_state()
-        await connection_manager.send_full_refresh(state)
-
-        return {
-            "status": "refreshed",
-            "positions": container_manager.positions.count,
-            "cell_updates": len(event.cell_updates),
-            "timestamp": datetime.utcnow().isoformat(),
-        }
+        portfolios = data_service.get_portfolios_data()
+        return JSONResponse(content=json.loads(json_dumps(portfolios)))
     except Exception as e:
-        logger.error(f"Error refreshing data: {e}")
+        logger.error(f"Error getting portfolios: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -238,9 +301,10 @@ async def websocket_endpoint(websocket: WebSocket):
     Protocol:
     - Client connects
     - Server sends 'connected' message
-    - Server pushes 'cellUpdates' on changes
-    - Server pushes 'fullRefresh' on manual refresh
-    - Client can send 'refresh' to trigger reload
+    - Server sends 'fullRefresh' with current state
+    - Server pushes 'cellUpdates' on container changes
+    - Client can send 'refresh' to trigger database reload
+    - Client can send 'sync' to trigger broker sync
     """
     await connection_manager.connect(websocket)
 
@@ -248,11 +312,15 @@ async def websocket_endpoint(websocket: WebSocket):
         # Send initial connection confirmation
         await websocket.send_text(json_dumps({
             'type': 'connected',
+            'broker_connected': data_service.is_connected,
             'timestamp': datetime.utcnow().isoformat(),
         }))
 
         # Send current state
         state = container_manager.get_full_state()
+        portfolios = data_service.get_portfolios_data()
+        state['portfolios'] = portfolios
+
         await websocket.send_text(json_dumps({
             'type': 'fullRefresh',
             'data': state,
@@ -267,8 +335,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 msg_type = message.get('type')
 
                 if msg_type == 'refresh':
-                    # Client requested refresh
-                    await refresh_data()
+                    # Refresh from database
+                    await refresh_from_database()
+
+                elif msg_type == 'sync':
+                    # Full sync from broker
+                    await sync_from_broker()
 
                 elif msg_type == 'ping':
                     await websocket.send_text(json_dumps({
