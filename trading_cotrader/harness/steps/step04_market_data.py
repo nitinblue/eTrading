@@ -8,7 +8,7 @@ Shows instruments and risk factors.
 
 from collections import Counter
 from datetime import date
-from harness.base import (
+from trading_cotrader.harness.base import (
     TestStep, StepResult, rich_table, format_currency, format_greek,
     format_quantity
 )

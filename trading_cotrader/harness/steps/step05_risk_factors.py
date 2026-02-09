@@ -16,8 +16,8 @@ from typing import List, Dict, Any, Optional
 from tabulate import tabulate
 
 # Import our new modules
-from services.risk_factors import RiskFactorResolver, RiskFactorContainer
-from services.hedging import HedgeCalculator
+from trading_cotrader.services.risk_factors import RiskFactorResolver, RiskFactorContainer
+from trading_cotrader.services.hedging import HedgeCalculator
 
 logger = logging.getLogger(__name__)
 

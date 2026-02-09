@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import asyncio
 import logging
 
-from contracts import (
+from trading_cotrader.server.contracts import (
     MarketSnapshot, MarketContext, Quote, IndexQuote, RateQuote,
     FuturesQuote, VolatilityQuote, FXQuote, PositionWithMarket,
     PositionGreeks, RiskBucket, RiskLimit, LimitBreach,

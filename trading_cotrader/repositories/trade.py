@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 import logging
 
-from repositories.base import BaseRepository
-from repositories.position import SymbolRepository
-from core.database.schema import TradeORM, LegORM, StrategyORM
-import core.models.domain as dm
+from trading_cotrader.repositories.position import SymbolRepository
+from trading_cotrader.repositories.base import BaseRepository
+from trading_cotrader.core.database.schema import TradeORM, LegORM, StrategyORM
+import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
 

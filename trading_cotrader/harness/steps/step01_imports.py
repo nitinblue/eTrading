@@ -5,7 +5,7 @@ Step 1: Verify Imports
 Verifies all required modules can be imported.
 """
 
-from harness.base import TestStep, StepResult, rich_table, success, error, warning
+from trading_cotrader.harness.base import TestStep, StepResult, rich_table, success, error, warning
 
 
 class ImportStep(TestStep):

@@ -5,7 +5,7 @@ Step 2: Broker Connection
 Connect to TastyTrade and fetch account info.
 """
 
-from harness.base import (
+from trading_cotrader.harness.base import (
     TestStep, StepResult, rich_table, format_currency, format_percent,
     success, warning
 )

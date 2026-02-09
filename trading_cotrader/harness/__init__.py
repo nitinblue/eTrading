@@ -10,7 +10,7 @@ Usage:
     run_harness(use_mock=True)
 """
 
-from harness.base import TestStep, StepResult
-from harness.runner import run_harness
+from trading_cotrader.harness.base import TestStep, StepResult
+from trading_cotrader.harness.runner import run_harness
 
 __all__ = ['TestStep', 'StepResult', 'run_harness']
