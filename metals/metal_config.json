@@ -1,0 +1,30 @@
+{
+  "accounts": {
+    "ira": {
+      "total": 200000,
+      "invested": 0
+    },
+    "personal": {
+      "total": 30000,
+      "invested": 0
+    }
+  },
+    "max_trade_fraction": 0.05,
+    "max_metal_fraction": 0.33,
+    "max_strategy_fraction": 0.50,
+    "invested_per_metal": {
+        "Gold": 0,
+        "Silver": 0,
+        "Copper": 0
+    },
+    "invested_per_strategy": {
+        "call": 0,
+        "spread": 0
+    },
+    "email_alert": false,  
+    "email": {
+        "sender": "your@email.com",
+        "password": "app_password",
+        "receiver": "your@email.com"
+    }
+}
