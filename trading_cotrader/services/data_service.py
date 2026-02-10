@@ -89,7 +89,7 @@ class DataService:
             self._is_connected = False
             return False
 
-    def sync_from_broker(self) -> SyncResult:
+    async def sync_from_broker(self) -> SyncResult:
         """
         Full sync from TastyTrade broker to database.
 
@@ -128,7 +128,7 @@ class DataService:
                     logger.info(f"Balance synced: ${portfolio.cash_balance:,.2f}")
 
                 # Sync positions (Greeks come from DXLink streaming)
-                broker_positions = self.broker.get_positions()
+                broker_positions = await self.broker.get_positions()
                 logger.info(f"Got {len(broker_positions)} positions from broker")
 
                 position_sync = PositionSyncService(session)

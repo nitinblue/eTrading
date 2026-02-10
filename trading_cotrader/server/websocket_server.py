@@ -200,7 +200,7 @@ async def sync_from_broker():
     5. Push updates to all WebSocket clients
     """
     try:
-        result = data_service.sync_from_broker()
+        result = await data_service.sync_from_broker()
 
         if result.success:
             # Send full refresh to all clients

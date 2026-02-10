@@ -17,7 +17,7 @@ Shows:
 import logging
 from typing import Dict, Any, Optional
 from decimal import Decimal
-from harness.base import (
+from trading_cotrader.harness.base import (
     TestStep, StepResult, rich_table, format_currency, format_percent
 )
 logger = logging.getLogger(__name__)

@@ -6,7 +6,7 @@ Check current portfolio against risk limits.
 """
 
 from decimal import Decimal
-from harness.base import (
+from trading_cotrader.harness.base import (
     TestStep, StepResult, rich_table, format_currency, format_greek,
     format_percent
 )

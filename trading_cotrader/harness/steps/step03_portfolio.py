@@ -7,7 +7,7 @@ Sync portfolio from broker and display positions.
 
 from datetime import date
 from decimal import Decimal
-from harness.base import (
+from trading_cotrader.harness.base import (
     TestStep, StepResult, rich_table, format_currency, format_greek, 
     format_quantity, format_percent, warning
 )

@@ -892,7 +892,7 @@ class Position:
     market_value: Decimal = Decimal('0')
     
     # === GREEKS HISTORY (for P&L attribution) ===
-    greeks_history: List[Greeks] = field(default_factory=list)
+    greeks: List[Greeks] = field(default_factory=list)
     
     # === LINKS ===
     portfolio_id: Optional[str] = None
