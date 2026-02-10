@@ -19,21 +19,42 @@ op.multi_plotter(spot=105, spot_range=20, op_list=trade_details)
 # Max Loss: (5 - 2) = 3
 
 
-# Define the strategy data
-# Format: [Strategy, Market Outlook, Max Profit, Max Loss, Payoff Graph]
-options_cheatsheet = [
-    ["Long Call", "Bullish", "Unlimited", "Net Debit", "__/"],
-    ["Long Put", "Bearish", "Strike - Net Debit", "Net Debit", "\\__"],
-    ["Covered Call", "Neutral/Bullish", "Net Credit + (K - S0)", "S0 - Net Credit", "--/￣"],
-    ["Bull Call Spread", "Modestly Bullish", "Width - Net Debit", "Net Debit", "__/￣"],
-    ["Bear Put Spread", "Modestly Bearish", "Width - Net Debit", "Net Debit", "￣\\__"],
-    ["Long Straddle", "High Volatility", "Unlimited", "Net Debit", "\\ /"],
-    ["Short Straddle", "Low Volatility", "Net Credit", "Unlimited", "/ \\"],
-    ["Iron Condor", "Rangebound", "Net Credit", "Width - Net Credit", "__/￣\\__"],
-    ["Long Butterfly", "Target Price", "Width - Net Debit", "Net Debit", "_/\\_"]
+# Full set of 14 key strategies with safety-focused entry criteria
+options_data = [
+    # BULLISH STRATEGIES
+    ["Long Call", "Bullish", "Unlimited", "Net Debit", "__/", "IVR < 20, RSI < 30", "Low IV prevents overpaying for 'theta'"],
+    ["Bull Put Spread", "Bullish", "Net Credit", "Width - Cr", "__/￣", "IVR > 40, RSI 35-45", "Defined risk with high probability"],
+    ["Cash-Secured Put", "Bullish", "Net Credit", "Strike - Cr", "__/", "IVR > 30, RSI < 40", "Protects against small price drops"],
+    
+    # BEARISH STRATEGIES
+    ["Long Put", "Bearish", "K - Debit", "Net Debit", "\\__", "IVR < 20, RSI > 70", "Cheap premium for downside protection"],
+    ["Bear Call Spread", "Bearish", "Net Credit", "Width - Cr", "￣\\__", "IVR > 40, RSI 60-65", "Profit if stock stays flat or drops"],
+    
+    # NEUTRAL / RANGE-BOUND
+    ["Iron Condor", "Neutral", "Net Credit", "Width - Cr", "__/￣\\__", "IVR > 50, RSI 45-55", "Wide wings allow for error margin"],
+    ["Iron Butterfly", "Neutral", "Net Credit", "Width - Cr", "_/\\_", "IVR > 70, RSI ~50", "High credit offsets risk of pin"],
+    ["Covered Call", "Neutral/Bull", "K-S0 + Cr", "S0 - Cr", "--/￣", "IVR > 20, RSI ~50", "Stock ownership buffers the option"],
+    
+    # VOLATILITY / CALENDAR (SAFETY-FOCUSED)
+    ["Calendar Spread", "Neutral/Vol", "Variable", "Net Debit", "_/\\_", "IVR < 15, VIX < 16", "Buying low vol before expansion"],
+    ["Double Calendar", "Neutral/Vol", "Variable", "Net Debit", "_/\\_/\\_", "IVR < 20, VIX < 18", "Wider profit zone than single calendar"],
+    ["Diagonal Spread", "Trend + Vol", "Variable", "Net Debit", "_/￣", "IVR < 25, RSI ~45", "Uses time decay to subsidize a trend"],
+    
+    # ADVANCED / VOLATILITY
+    ["Long Straddle", "High Vol", "Unlimited", "Net Debit", "\\ /", "IVR < 10, Pre-Event", "Cheap 'lottery' for huge moves"],
+    ["Long Strangle", "High Vol", "Unlimited", "Net Debit", "\\___/", "IVR < 10, Pre-Event", "Cheaper entry than straddle"],
+    ["Ratio Put Spread", "Neutral/Bull", "Variable", "Net Credit*", "__/ \\_", "IVR > 50, RSI < 40", "Can result in zero cost if right strike"]
 ]
 
-headers = ["Strategy", "Market Outlook", "Max Profit", "Max Loss", "Payoff (Visual)"]
+headers = [
+    "Strategy", 
+    "Outlook", 
+    "Max Profit", 
+    "Max Loss", 
+    "Payoff", 
+    "Conservative Entry (IVR/RSI)", 
+    "Safety Reasoning"
+]
 
-# Generate the table using 'grid' format for a clean look
-print(tabulate(options_cheatsheet, headers=headers, tablefmt="grid"))
+# Print using grid format for best readability in terminal/apps
+print(tabulate(options_data, headers=headers, tablefmt="grid"))
