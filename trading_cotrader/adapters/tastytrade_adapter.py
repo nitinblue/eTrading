@@ -198,9 +198,10 @@ class TastytradeAdapter(BrokerAdapter):
                             streamer.get_event(DXGreeks),
                             timeout=2.0
                         )
+                        logger.info(f"Received Greeks event: {symbols_needed}")
 
                         # Extract symbol from event
-                        event_symbol = greeks_event.eventSymbol
+                        event_symbol = greeks_event.event_symbol
 
                         if event_symbol in symbols_needed:
                             greeks_map[event_symbol] = dm.Greeks(
@@ -212,7 +213,7 @@ class TastytradeAdapter(BrokerAdapter):
                                 timestamp=datetime.utcnow()
                             )
                             symbols_needed.remove(event_symbol)
-                            logger.debug(f"✓ Got Greeks for {event_symbol}: Δ={greeks_event.delta:.4f}")
+                            logger.info(f"✓ Got Greeks for {event_symbol}: Δ={greeks_event.delta:.4f}")
 
                     except asyncio.TimeoutError:
                         # Short timeout expired, continue if we still have time
@@ -265,6 +266,7 @@ class TastytradeAdapter(BrokerAdapter):
             for pos_data in positions_data:
                 try:
                     symbol = self._parse_symbol_from_position(pos_data)
+                    # logger.info(f"Found position Symbol: {symbol} ")
 
                     # Get signed quantity
                     raw_quantity = int(pos_data.quantity or 0)
@@ -280,7 +282,8 @@ class TastytradeAdapter(BrokerAdapter):
                     # Get broker position ID
                     broker_pos_id = str(pos_data.id) if hasattr(pos_data, 'id') else None
                     if not broker_pos_id:
-                        broker_pos_id = f"{self.account_id}_{symbol.ticker}"
+                        clean_symbol = "".join(pos_data.symbol.split())
+                        broker_pos_id = f"{self.account_id}_{clean_symbol}"
 
                     # Get current price
                     current_price = Decimal('0')
@@ -334,8 +337,7 @@ class TastytradeAdapter(BrokerAdapter):
                 logger.info(f"Fetching Greeks for {len(streamer_symbols)} option positions via DXLink...")
                 #greeks_map = asyncio.run(self._fetch_greeks_via_dxlink(streamer_symbols))
                 greeks_map = await self._fetch_greeks_via_dxlink(streamer_symbols)
-                #logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options")
-
+                logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options {greeks_map}")                
                 # Attach Greeks to positions
                 for streamer_symbol, greeks in greeks_map.items():
                     for position in symbol_to_positions[streamer_symbol]:

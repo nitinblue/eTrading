@@ -55,13 +55,13 @@ class PositionRepository(BaseRepository[dm.Position, PositionORM]):
             )
             
             # Add Greeks if available
-            if position.current_greeks:
-                position_orm.delta = position.current_greeks.delta
-                position_orm.gamma = position.current_greeks.gamma
-                position_orm.theta = position.current_greeks.theta
-                position_orm.vega = position.current_greeks.vega
-                position_orm.rho = position.current_greeks.rho
-                position_orm.greeks_updated_at = position.current_greeks.timestamp
+            if position.greeks:
+                position_orm.delta = position.greeks.delta
+                position_orm.gamma = position.greeks.gamma
+                position_orm.theta = position.greeks.theta
+                position_orm.vega = position.greeks.vega
+                position_orm.rho = position.greeks.rho
+                position_orm.greeks_updated_at = position.greeks.timestamp
             
             # Create
             created = self.create(position_orm)
