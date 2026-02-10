@@ -1,8 +1,7 @@
 """
-Tastytrade Broker Adapter - Fixed version with option chain Greeks
+Tastytrade Broker Adapter - DXLink Streaming for Greeks
 
-KEY FIX: Greeks are fetched via get_option_chain() which is more reliable
-than DXLink streaming for batch fetches.
+Uses DXLinkStreamer and DXGreeks for reliable Greeks fetching.
 """
 
 from typing import List, Dict, Any, Optional
@@ -12,10 +11,12 @@ import logging
 import yaml
 from pathlib import Path
 from collections import defaultdict
+import asyncio
 
 from tastytrade import Session, Account
 from tastytrade.instruments import Equity, Option
-from tastytrade import get_option_chain
+from tastytrade.streamer import DXLinkStreamer
+from tastytrade.dxfeed import Greeks as DXGreeks
 import os
 import re
 
@@ -42,7 +43,7 @@ class BrokerAdapter:
 
 
 class TastytradeAdapter(BrokerAdapter):
-    """Tastytrade broker integration with option chain Greeks"""
+    """Tastytrade broker integration with DXLink Greeks streaming"""
 
     def __init__(self, account_number: str = None, is_paper: bool = False):
         tastytrade_credential_file = "tastytrade_broker.yaml"
@@ -165,156 +166,100 @@ class TastytradeAdapter(BrokerAdapter):
         except Exception as e:
             logger.error(f"Failed to get account balance: {e}")
             return {}
-    
-    async def _fetch_greeks_for_symbol(self, streamer_symbol: str) -> Optional[dm.Greeks]:
+
+    async def _fetch_greeks_via_dxlink(self, streamer_symbols: List[str]) -> Dict[str, dm.Greeks]:
         """
-        Fetch Greeks for a single option using DXLink streaming
-        
-        Args:
-            streamer_symbol: DXLink symbol (e.g., ".QQQ260106C620")
-            
-        Returns:
-            Greeks domain model or None
-        """
-        try:
-            async with DXLinkStreamer(self.session) as streamer:
-                await streamer.subscribe(DXGreeks, [streamer_symbol])
-                
-                # Get one Greeks snapshot with timeout
-                try:
-                    greeks_event = await asyncio.wait_for(
-                        streamer.get_event(DXGreeks),
-                        timeout=5.0  # 5 second timeout
-                    )
-                    
-                    return dm.Greeks(
-                        delta=Decimal(str(greeks_event.delta or 0)),
-                        gamma=Decimal(str(greeks_event.gamma or 0)),
-                        theta=Decimal(str(greeks_event.theta or 0)),
-                        vega=Decimal(str(greeks_event.vega or 0)),
-                        rho=Decimal(str(greeks_event.rho or 0)),
-                        timestamp=datetime.utcnow()
-                    )
-                    
-                except asyncio.TimeoutError:
-                    logger.warning(f"Timeout fetching Greeks for {streamer_symbol}")
-                    return None
-                    
-        except Exception as e:
-            logger.error(f"Error fetching Greeks for {streamer_symbol}: {e}")
-            return None
-    
-    async def _fetch_greeks_batch(self, streamer_symbols: List[str]) -> Dict[str, dm.Greeks]:
-        """
-        Fetch Greeks for multiple options efficiently
-        
-        Args:
-            streamer_symbols: List of DXLink symbols
-            
-        Returns:
-            Dict mapping streamer_symbol to Greeks
+        Fetch Greeks for multiple options via DXLink streaming.
+
+        Subscribes to all symbols and collects events until we have all
+        or timeout is reached.
         """
         greeks_map = {}
-        
+
         if not streamer_symbols:
             return greeks_map
-        
+
+        symbols_needed = set(streamer_symbols)
+        timeout_seconds = 15  # Total timeout for all Greeks
+
         try:
             async with DXLinkStreamer(self.session) as streamer:
-                # Subscribe to all symbols at once
+                # Subscribe to Greeks for all symbols
                 await streamer.subscribe(DXGreeks, streamer_symbols)
-                
-                # Fetch Greeks for each symbol
-                # for symbol in streamer_symbols:
-                #     try:
-                #         greeks_event = await asyncio.wait_for(
-                #             streamer.get_event(DXGreeks),
-                #             timeout=2.0
-                #         )
-                        
-                #         greeks_map[symbol] = dm.Greeks(
-                #             delta=Decimal(str(greeks_event.delta or 0)),
-                #             gamma=Decimal(str(greeks_event.gamma or 0)),
-                #             theta=Decimal(str(greeks_event.theta or 0)),
-                #             vega=Decimal(str(greeks_event.vega or 0)),
-                #             rho=Decimal(str(greeks_event.rho or 0)),
-                #             timestamp=datetime.utcnow()
-                #         )
-            expected = set(streamer_symbols)
+                logger.info(f"Subscribed to Greeks for {len(streamer_symbols)} symbols")
 
-            while expected:
-                try:
-                    event = await asyncio.wait_for(
-                        streamer.get_event(DXGreeks),
-                        timeout=3.0
-                    )
+                start_time = asyncio.get_event_loop().time()
 
-                    symbol = event.event_symbol
-                    if symbol in expected:
-                        greeks_map[symbol] = dm.Greeks(
-                            delta=Decimal(str(event.delta or 0)),
-                            gamma=Decimal(str(event.gamma or 0)),
-                            theta=Decimal(str(event.theta or 0)),
-                            vega=Decimal(str(event.vega or 0)),
-                            rho=Decimal(str(event.rho or 0)),
-                            timestamp=datetime.utcnow()
+                # Collect events until we have all or timeout
+                while symbols_needed and (asyncio.get_event_loop().time() - start_time) < timeout_seconds:
+                    try:
+                        # Get next event with short timeout
+                        greeks_event = await asyncio.wait_for(
+                            streamer.get_event(DXGreeks),
+                            timeout=2.0
                         )
-                        expected.remove(symbol)
 
-                except asyncio.TimeoutError:
-                    logger.warning("Timeout waiting for Greeks batch")
-                    break
- 
-                   
-                        
+                        # Extract symbol from event
+                        event_symbol = greeks_event.eventSymbol
+
+                        if event_symbol in symbols_needed:
+                            greeks_map[event_symbol] = dm.Greeks(
+                                delta=Decimal(str(greeks_event.delta or 0)),
+                                gamma=Decimal(str(greeks_event.gamma or 0)),
+                                theta=Decimal(str(greeks_event.theta or 0)),
+                                vega=Decimal(str(greeks_event.vega or 0)),
+                                rho=Decimal(str(greeks_event.rho or 0)),
+                                timestamp=datetime.utcnow()
+                            )
+                            symbols_needed.remove(event_symbol)
+                            logger.debug(f"✓ Got Greeks for {event_symbol}: Δ={greeks_event.delta:.4f}")
+
+                    except asyncio.TimeoutError:
+                        # Short timeout expired, continue if we still have time
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Error getting Greeks event: {e}")
+                        continue
+
+                if symbols_needed:
+                    logger.warning(f"Timeout: Missing Greeks for {len(symbols_needed)} symbols: {list(symbols_needed)[:5]}...")
+                else:
+                    logger.info(f"✓ Got Greeks for all {len(greeks_map)} symbols")
+
         except Exception as e:
-            logger.error(f"Error in batch Greeks fetch: {e}")
-        
-        return greeks_map
-    
-    async def get_positions(self) -> List[dm.Position]:
-        """
-        Fetch positions with Greeks from option chain.
+            logger.error(f"DXLink streaming error: {e}")
+            logger.exception("Full error:")
 
-        This approach is more reliable than DXLink streaming:
-        1. Get positions with include_marks=True
-        2. Group options by underlying
-        3. Fetch option chain for each underlying (has Greeks)
-        4. Match positions to chain data
+        return greeks_map
+
+    def get_positions(self) -> List[dm.Position]:
+        """
+        Fetch positions with Greeks from DXLink streaming.
+
+        1. Get positions from broker
+        2. Convert OCC symbols to streamer symbols
+        3. Fetch Greeks via DXLink streaming
+        4. Attach Greeks to positions
         """
         try:
             if not self.account:
                 raise ValueError("Not authenticated")
-            
-            positions_data = self.account.get_positions(self.session)
-            
-            # First pass: collect all option streamer symbols
-            option_symbols_map = {}  # streamer_symbol -> position_data
-            equity_positions = []
-            
-            for pos_data in positions_data:
-                instrument_type = pos_data.instrument_type
-                
-                if instrument_type == 'Equity Option':
-                    # Construct streamer symbol from OCC symbol
-                    # OCC: "IWM   260123P00261000" -> Streamer: ".IWM260123P261"
-                    occ_symbol = pos_data.symbol
-                    streamer_symbol = self._occ_to_streamer_symbol(occ_symbol)
-                    if streamer_symbol:
-                        option_symbols_map[streamer_symbol] = pos_data
-                    else:
-                        logger.warning(f"Could not convert OCC symbol: {occ_symbol}")
-                else:
-                    equity_positions.append(pos_data)
-            
-            # Fetch Greeks for all options in batch
-            logger.info(f"Fetching Greeks for {len(option_symbols_map)} option positions...")
-            # greeks_map = asyncio.run(self._fetch_greeks_batch(list(option_symbols_map.keys())))
-            greeks_map =  await self._fetch_greeks_batch(list(option_symbols_map.keys()))
 
-            # logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options")
-            
-            # Second pass: create positions with Greeks
+            # Get positions with marks
+            positions_data = self.account.get_positions(
+                self.session,
+                include_marks=True
+            )
+
+            if not positions_data:
+                logger.info("No positions found")
+                return []
+
+            logger.info(f"Fetching {len(positions_data)} positions from Tastytrade...")
+
+            # Collect option streamer symbols and build position map
+            streamer_symbols = []
+            symbol_to_positions = defaultdict(list)  # streamer_symbol -> [position objects]
             positions = []
 
             for pos_data in positions_data:
@@ -372,8 +317,11 @@ class TastytradeAdapter(BrokerAdapter):
                         logger.debug(f"✓ Equity: {symbol.ticker} Δ={raw_quantity}")
 
                     elif symbol.asset_type == dm.AssetType.OPTION:
-                        # Options: fetch from chain
-                        option_positions_by_underlying[symbol.ticker].append(position)
+                        # Options: need to fetch Greeks via DXLink
+                        streamer_symbol = self._occ_to_streamer_symbol(pos_data.symbol)
+                        if streamer_symbol:
+                            streamer_symbols.append(streamer_symbol)
+                            symbol_to_positions[streamer_symbol].append(position)
 
                     positions.append(position)
 
@@ -381,100 +329,67 @@ class TastytradeAdapter(BrokerAdapter):
                     logger.warning(f"Skipping position due to error: {e}")
                     continue
 
-            # Fetch option chains and populate Greeks
-            if option_positions_by_underlying:
-                self._populate_greeks_from_chains(option_positions_by_underlying)
+            # Fetch Greeks for all options via DXLink
+            if streamer_symbols:
+                logger.info(f"Fetching Greeks for {len(streamer_symbols)} option positions via DXLink...")
+                greeks_map = asyncio.run(self._fetch_greeks_via_dxlink(streamer_symbols))
+                logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options")
+
+                # Attach Greeks to positions
+                for streamer_symbol, greeks in greeks_map.items():
+                    for position in symbol_to_positions[streamer_symbol]:
+                        # Greeks are per-contract, multiply by quantity for position-level
+                        position.greeks = dm.Greeks(
+                            delta=greeks.delta * abs(position.quantity),
+                            gamma=greeks.gamma * abs(position.quantity),
+                            theta=greeks.theta * abs(position.quantity),
+                            vega=greeks.vega * abs(position.quantity),
+                            rho=greeks.rho * abs(position.quantity),
+                            timestamp=greeks.timestamp
+                        )
+                        logger.debug(f"✓ Attached Greeks to {position.symbol.ticker}: Δ={position.greeks.delta:.2f}")
 
             # Filter out options without Greeks
-            positions = [p for p in positions if p.greeks is not None]
+            positions_with_greeks = [p for p in positions if p.greeks is not None]
+            missing_count = len(positions) - len(positions_with_greeks)
+            if missing_count > 0:
+                logger.warning(f"⚠️ {missing_count} positions missing Greeks")
 
-            logger.info(f"✓ Fetched {len(positions)} positions with Greeks")
-            return positions
+            logger.info(f"✓ Fetched {len(positions_with_greeks)} positions with Greeks")
+            return positions_with_greeks
 
         except Exception as e:
             logger.error(f"Failed to get positions: {e}")
             logger.exception("Full error:")
             return []
-   
-    def _run_async_blocking(self, coro):
-        """
-        Safely run async code from sync context and ALWAYS return result
-        """
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            # Running inside FastAPI / event loop → block safely
-            return asyncio.get_event_loop().run_until_complete(coro)
-        else:
-            return asyncio.run(coro)
-
 
     def _occ_to_streamer_symbol(self, occ_symbol: str) -> Optional[str]:
         """
-        Fetch option chains and populate Greeks for option positions.
+        Convert OCC symbol to DXLink streamer symbol.
 
-        This is the reliable method - option chains include Greeks data.
+        OCC:      "IWM   260213P00263000"
+        Streamer: ".IWM260213P263"
+
+        Format: .{TICKER}{YYMMDD}{C/P}{STRIKE}
         """
-        for underlying, positions in option_positions_by_underlying.items():
-            try:
-                logger.info(f"Fetching option chain for {underlying}...")
+        try:
+            # Clean up ticker (remove spaces)
+            ticker = occ_symbol[:6].strip()
+            exp_date = occ_symbol[6:12]  # YYMMDD
+            option_type = occ_symbol[12]  # C or P
+            strike_str = occ_symbol[13:21]  # 00263000
 
-                # Fetch option chain with Greeks
-                chain = get_option_chain(self.session, underlying)
+            # Convert strike: 00263000 -> 263
+            strike_int = int(strike_str) // 1000
 
-                if not chain:
-                    logger.warning(f"No option chain data for {underlying}")
-                    continue
+            # Build streamer symbol
+            streamer_symbol = f".{ticker}{exp_date}{option_type}{strike_int}"
 
-                # Build lookup: (strike, expiration, option_type) -> greeks
-                chain_lookup = {}
-                for option in chain:
-                    if hasattr(option, 'greeks') and option.greeks:
-                        key = (
-                            float(option.strike_price),
-                            option.expiration_date,
-                            option.option_type  # 'C' or 'P'
-                        )
-                        chain_lookup[key] = option.greeks
+            return streamer_symbol
 
-                logger.info(f"  Chain has {len(chain_lookup)} options with Greeks")
-
-                # Match positions to chain
-                for position in positions:
-                    try:
-                        key = (
-                            float(position.symbol.strike),
-                            position.symbol.expiration.date(),
-                            'C' if position.symbol.option_type == dm.OptionType.CALL else 'P'
-                        )
-
-                        greeks = chain_lookup.get(key)
-
-                        if greeks:
-                            # Greeks from chain are PER CONTRACT
-                            # Multiply by quantity for POSITION-LEVEL Greeks
-                            position.greeks = dm.Greeks(
-                                delta=Decimal(str(greeks.delta or 0)) * abs(position.quantity),
-                                gamma=Decimal(str(greeks.gamma or 0)) * abs(position.quantity),
-                                theta=Decimal(str(greeks.theta or 0)) * abs(position.quantity),
-                                vega=Decimal(str(greeks.vega or 0)) * abs(position.quantity),
-                                rho=Decimal(str(greeks.rho or 0)) * abs(position.quantity) if hasattr(greeks, 'rho') else Decimal('0'),
-                                timestamp=datetime.utcnow()
-                            )
-                            logger.debug(f"✓ Greeks: {position.symbol.ticker} ${position.symbol.strike} Δ={position.greeks.delta:.2f}")
-                        else:
-                            logger.warning(f"⚠️  No Greeks in chain for {position.symbol.ticker} ${position.symbol.strike}")
-
-                    except Exception as e:
-                        logger.error(f"Error matching position to chain: {e}")
-                        continue
-
-            except Exception as e:
-                logger.error(f"Failed to fetch option chain for {underlying}: {e}")
-                continue
+        except Exception as e:
+            logger.error(f"Error converting OCC to streamer symbol: {occ_symbol} - {e}")
+            return None
 
     def _parse_symbol_from_position(self, pos_data) -> dm.Symbol:
         """Parse symbol from position data"""
@@ -550,18 +465,17 @@ class TastytradeAdapter(BrokerAdapter):
                 asset_type=dm.AssetType.EQUITY,
                 multiplier=1
             )
-            
-async def main():
+
+
+if __name__ == "__main__":
     adapter = TastytradeAdapter()
     adapter.authenticate()
 
-    positions = await adapter.get_positions()
+    positions = adapter.get_positions()
     if positions:
-        pos = positions[0]
-        print(f"Position: {pos.symbol.ticker}")
-        print(f"Has Greeks: {pos.greeks is not None}")
-        if pos.greeks:
-            print(f"Delta: {pos.greeks.delta}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        print(f"\nFetched {len(positions)} positions:")
+        for pos in positions:
+            if pos.greeks:
+                print(f"  {pos.symbol.ticker}: qty={pos.quantity}, Δ={pos.greeks.delta:.2f}, Θ={pos.greeks.theta:.2f}")
+            else:
+                print(f"  {pos.symbol.ticker}: qty={pos.quantity}, NO GREEKS")
