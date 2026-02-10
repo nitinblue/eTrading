@@ -46,7 +46,7 @@ class PositionRepository(BaseRepository[dm.Position, PositionORM]):
                 portfolio_id=portfolio_id,
                 symbol_id=symbol_orm.id,
                 quantity=position.quantity,
-                entry_price=position.entry_underlying_price,
+                entry_price=position.entry_price,
                 total_cost=position.total_cost,
                 current_price=position.current_price,
                 market_value=position.market_value,
@@ -188,14 +188,14 @@ class PositionRepository(BaseRepository[dm.Position, PositionORM]):
             id=position_orm.id,
             symbol=symbol,
             quantity=position_orm.quantity,
-            average_price=position_orm.average_price,
+            entry_price=position_orm.entry_price,
             total_cost=position_orm.total_cost,
             current_price=position_orm.current_price,
-            market_value=position_orm.market_value,
-            greeks=greeks,
+            market_value=position_orm.market_value,         
             trade_ids=position_orm.trade_ids or [],
             broker_position_id=position_orm.broker_position_id,
-            last_updated=position_orm.last_updated
+            last_updated=position_orm.last_updated,
+            greeks=greeks
         )
 
 

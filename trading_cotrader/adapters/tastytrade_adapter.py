@@ -229,32 +229,54 @@ class TastytradeAdapter(BrokerAdapter):
                 await streamer.subscribe(DXGreeks, streamer_symbols)
                 
                 # Fetch Greeks for each symbol
-                for symbol in streamer_symbols:
-                    try:
-                        greeks_event = await asyncio.wait_for(
-                            streamer.get_event(DXGreeks),
-                            timeout=2.0
-                        )
+                # for symbol in streamer_symbols:
+                #     try:
+                #         greeks_event = await asyncio.wait_for(
+                #             streamer.get_event(DXGreeks),
+                #             timeout=2.0
+                #         )
                         
+                #         greeks_map[symbol] = dm.Greeks(
+                #             delta=Decimal(str(greeks_event.delta or 0)),
+                #             gamma=Decimal(str(greeks_event.gamma or 0)),
+                #             theta=Decimal(str(greeks_event.theta or 0)),
+                #             vega=Decimal(str(greeks_event.vega or 0)),
+                #             rho=Decimal(str(greeks_event.rho or 0)),
+                #             timestamp=datetime.utcnow()
+                #         )
+            expected = set(streamer_symbols)
+
+            while expected:
+                try:
+                    event = await asyncio.wait_for(
+                        streamer.get_event(DXGreeks),
+                        timeout=3.0
+                    )
+
+                    symbol = event.event_symbol
+                    if symbol in expected:
                         greeks_map[symbol] = dm.Greeks(
-                            delta=Decimal(str(greeks_event.delta or 0)),
-                            gamma=Decimal(str(greeks_event.gamma or 0)),
-                            theta=Decimal(str(greeks_event.theta or 0)),
-                            vega=Decimal(str(greeks_event.vega or 0)),
-                            rho=Decimal(str(greeks_event.rho or 0)),
+                            delta=Decimal(str(event.delta or 0)),
+                            gamma=Decimal(str(event.gamma or 0)),
+                            theta=Decimal(str(event.theta or 0)),
+                            vega=Decimal(str(event.vega or 0)),
+                            rho=Decimal(str(event.rho or 0)),
                             timestamp=datetime.utcnow()
                         )
-                        
-                    except asyncio.TimeoutError:
-                        logger.warning(f"Timeout fetching Greeks for {symbol}")
-                        continue
+                        expected.remove(symbol)
+
+                except asyncio.TimeoutError:
+                    logger.warning("Timeout waiting for Greeks batch")
+                    break
+ 
+                   
                         
         except Exception as e:
             logger.error(f"Error in batch Greeks fetch: {e}")
         
         return greeks_map
     
-    def get_positions(self) -> List[dm.Position]:
+    async def get_positions(self) -> List[dm.Position]:
         """
         Fetch positions with Greeks from DXLink streaming
         
@@ -287,8 +309,10 @@ class TastytradeAdapter(BrokerAdapter):
             
             # Fetch Greeks for all options in batch
             logger.info(f"Fetching Greeks for {len(option_symbols_map)} option positions...")
-            greeks_map = asyncio.run(self._fetch_greeks_batch(list(option_symbols_map.keys())))
-            logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options")
+            # greeks_map = asyncio.run(self._fetch_greeks_batch(list(option_symbols_map.keys())))
+            greeks_map =  await self._fetch_greeks_batch(list(option_symbols_map.keys()))
+
+            # logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options")
             
             # Second pass: create positions with Greeks
             positions = []
@@ -384,7 +408,23 @@ class TastytradeAdapter(BrokerAdapter):
             logger.error(f"Failed to get positions: {e}")
             logger.exception("Full error:")
             return []
-        
+   
+    def _run_async_blocking(self, coro):
+        """
+        Safely run async code from sync context and ALWAYS return result
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # Running inside FastAPI / event loop → block safely
+            return asyncio.get_event_loop().run_until_complete(coro)
+        else:
+            return asyncio.run(coro)
+
+
     def _occ_to_streamer_symbol(self, occ_symbol: str) -> Optional[str]:
         """
         Convert OCC symbol to DXLink streamer symbol
@@ -488,14 +528,17 @@ class TastytradeAdapter(BrokerAdapter):
                 multiplier=1
             )
             
-if __name__ == "__main__":
+async def main():
     adapter = TastytradeAdapter()
     adapter.authenticate()
 
-    positions = adapter.get_positions()
+    positions = await adapter.get_positions()
     if positions:
         pos = positions[0]
         print(f"Position: {pos.symbol.ticker}")
         print(f"Has Greeks: {pos.greeks is not None}")
         if pos.greeks:
             print(f"Delta: {pos.greeks.delta}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
