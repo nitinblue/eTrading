@@ -1,7 +1,8 @@
 """
-Tastytrade Broker Adapter - FIXED VERSION with DXLink Greeks Streaming
+Tastytrade Broker Adapter - Fixed version with option chain Greeks
 
-KEY FIX: Greeks are fetched via DXLink streamer, not REST API
+KEY FIX: Greeks are fetched via get_option_chain() which is more reliable
+than DXLink streaming for batch fetches.
 """
 
 from typing import List, Dict, Any, Optional
@@ -10,13 +11,11 @@ from datetime import datetime
 import logging
 import yaml
 from pathlib import Path
-import asyncio
+from collections import defaultdict
 
 from tastytrade import Session, Account
-from tastytrade.instruments import Equity, Option, get_option_chain
-from tastytrade.streamer import DXLinkStreamer
-#from tastytrade.dxfeed import EventType as DXEventType, Greeks as DXGreeks
-from tastytrade.dxfeed import Greeks as DXGreeks
+from tastytrade.instruments import Equity, Option
+from tastytrade import get_option_chain
 import os
 import re
 
@@ -27,35 +26,34 @@ logger = logging.getLogger(__name__)
 
 class BrokerAdapter:
     """Base class for broker adapters"""
-    
+
     def __init__(self, account_id: str, credentials: str):
         self.account_id = account_id
         self.credentials = credentials
-    
+
     def authenticate(self) -> bool:
         raise NotImplementedError
-    
+
     def get_account_balance(self) -> Dict[str, Decimal]:
         raise NotImplementedError
-    
+
     def get_positions(self) -> List[dm.Position]:
         raise NotImplementedError
 
 
 class TastytradeAdapter(BrokerAdapter):
-    """Tastytrade broker integration with proper Greeks streaming"""
-    
+    """Tastytrade broker integration with option chain Greeks"""
+
     def __init__(self, account_number: str = None, is_paper: bool = False):
         tastytrade_credential_file = "tastytrade_broker.yaml"
         super().__init__(account_number or "", tastytrade_credential_file)
-        
+
         self.is_paper = is_paper
         self.session = None
         self.account = None
         self.accounts = {}
         self._account_number = account_number
-        self._dxlink_streamer = None
-        
+
         # Load credentials
         self._load_credentials()
 
@@ -68,70 +66,68 @@ class TastytradeAdapter(BrokerAdapter):
                 Path(__file__).parent.parent / self.credentials,
                 Path(__file__).parent.parent.parent / self.credentials,
             ]
-            
+
             cred_path = None
             for path in possible_paths:
-                logger.info("possible paths", path)
                 if path.exists():
                     cred_path = path
                     logger.info(f"Found credentials file at: {path.absolute()}")
                     break
-            
+
             if not cred_path:
                 raise FileNotFoundError(f"Credentials file '{self.credentials}' not found")
-            
+
             logger.info(f"Loading credentials from: {cred_path}")
-            
+
             with open(cred_path, 'r') as f:
                 creds = yaml.safe_load(f)
-            
+
             mode = 'paper' if self.is_paper else 'live'
             mode_secret = creds["broker"][mode]['client_secret']
             mode_token = creds["broker"][mode]['refresh_token']
-            
+
             self.client_secret = self._resolve_credential(mode_secret)
             self.refresh_token = self._resolve_credential(mode_token)
-            
+
             logger.info(f"✓ Loaded credentials for {mode} mode (secret length: {len(self.client_secret)})")
-            
+
         except Exception as e:
             logger.error(f"Failed to load credentials: {e}")
             raise
 
     def _resolve_credential(self, value: str) -> str:
         """Resolve credential value from environment variable"""
-        
         if not value:
             return value
-        
+
         env_pattern = r'\$\{?([A-Z_]+)\}?'
         match = re.match(env_pattern, value)
-        
+
         if match:
             env_var = match.group(1)
             resolved = os.getenv(env_var)
             if not resolved:
                 raise ValueError(f"Environment variable {env_var} not found")
             return resolved
-        
+
         return value
-    
+
     def authenticate(self) -> bool:
         """Authenticate with Tastytrade"""
         try:
             logger.info(f"Connecting to Tastytrade | {'PAPER' if self.is_paper else 'LIVE'}")
-            
+
             self.session = Session(
                 self.client_secret,
                 self.refresh_token,
                 is_test=self.is_paper
             )
-            
+
             accounts = Account.get(self.session)
             self.accounts = {a.account_number: a for a in accounts}
-            
+
             logger.info(f"Loaded {len(self.accounts)} account(s): {list(self.accounts.keys())}")
-            
+
             if self._account_number:
                 if self._account_number not in self.accounts:
                     raise ValueError(f"Account {self._account_number} not found")
@@ -141,23 +137,23 @@ class TastytradeAdapter(BrokerAdapter):
                 self.account = list(self.accounts.values())[0]
                 self.account_id = self.account.account_number
                 logger.info(f"Using account: {self.account_id}")
-            
+
             logger.info("✓ Authenticated successfully with Tastytrade")
             return True
-            
+
         except Exception as e:
             logger.error(f"Authentication failed: {e}")
             logger.exception("Full error:")
             return False
-    
+
     def get_account_balance(self) -> Dict[str, Decimal]:
         """Get account balances"""
         try:
             if not self.account:
                 raise ValueError("Not authenticated")
-            
+
             balance_data = self.account.get_balances(self.session)
-            
+
             return {
                 'cash_balance': Decimal(str(balance_data.cash_balance or 0)),
                 'buying_power': Decimal(str(balance_data.derivative_buying_power or 0)),
@@ -165,7 +161,7 @@ class TastytradeAdapter(BrokerAdapter):
                 'maintenance_excess': Decimal(str(balance_data.maintenance_excess or 0)),
                 'equity_buying_power': Decimal(str(balance_data.equity_buying_power or 0))
             }
-            
+
         except Exception as e:
             logger.error(f"Failed to get account balance: {e}")
             return {}
@@ -278,9 +274,13 @@ class TastytradeAdapter(BrokerAdapter):
     
     async def get_positions(self) -> List[dm.Position]:
         """
-        Fetch positions with Greeks from DXLink streaming
-        
-        FIXED: Now properly fetches Greeks via streaming
+        Fetch positions with Greeks from option chain.
+
+        This approach is more reliable than DXLink streaming:
+        1. Get positions with include_marks=True
+        2. Group options by underlying
+        3. Fetch option chain for each underlying (has Greeks)
+        4. Match positions to chain data
         """
         try:
             if not self.account:
@@ -316,94 +316,81 @@ class TastytradeAdapter(BrokerAdapter):
             
             # Second pass: create positions with Greeks
             positions = []
-            
-            # Process options with Greeks
-            for streamer_symbol, pos_data in option_symbols_map.items():
+
+            for pos_data in positions_data:
                 try:
                     symbol = self._parse_symbol_from_position(pos_data)
+
+                    # Get signed quantity
                     raw_quantity = int(pos_data.quantity or 0)
-                    
                     if hasattr(pos_data, 'quantity_direction'):
                         if pos_data.quantity_direction == 'Short':
                             raw_quantity = -abs(raw_quantity)
                         else:
                             raw_quantity = abs(raw_quantity)
-                    
+
                     if raw_quantity == 0:
                         continue
-                    
+
+                    # Get broker position ID
                     broker_pos_id = str(pos_data.id) if hasattr(pos_data, 'id') else None
                     if not broker_pos_id:
-                        broker_pos_id = f"{self.account_id}_{streamer_symbol}"
-                    
+                        broker_pos_id = f"{self.account_id}_{symbol.ticker}"
+
+                    # Get current price
+                    current_price = Decimal('0')
+                    if hasattr(pos_data, 'mark_price') and pos_data.mark_price:
+                        current_price = Decimal(str(pos_data.mark_price))
+                    elif hasattr(pos_data, 'close_price') and pos_data.close_price:
+                        current_price = Decimal(str(pos_data.close_price))
+
+                    # Calculate market value
+                    market_value = current_price * abs(raw_quantity) * symbol.multiplier
+
+                    # Create position
                     position = dm.Position(
                         symbol=symbol,
                         quantity=raw_quantity,
                         entry_price=Decimal(str(pos_data.average_open_price or 0)),
-                        current_price=Decimal(str(pos_data.close_price or 0)),
-                        market_value=Decimal(str(pos_data.mark or 0)) * abs(raw_quantity) * symbol.multiplier,
+                        current_price=current_price,
+                        market_value=market_value,
                         total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(raw_quantity) * symbol.multiplier,
                         broker_position_id=broker_pos_id,
                     )
-                    
-                    # Attach Greeks from streaming data
-                    if streamer_symbol in greeks_map:
-                        greeks = greeks_map[streamer_symbol]
-                        # Multiply by quantity for position-level Greeks
+
+                    # Handle by asset type
+                    if symbol.asset_type == dm.AssetType.EQUITY:
+                        # Stock: delta = quantity
                         position.greeks = dm.Greeks(
-                            delta=greeks.delta * abs(raw_quantity),
-                            gamma=greeks.gamma * abs(raw_quantity),
-                            theta=greeks.theta * abs(raw_quantity),
-                            vega=greeks.vega * abs(raw_quantity),
-                            rho=greeks.rho * abs(raw_quantity),
-                            timestamp=greeks.timestamp
-                        )
-                        logger.debug(f"✓ {symbol.ticker}: qty={raw_quantity}, Δ={position.greeks.delta:.2f}")
-                    else:
-                        logger.warning(f"No Greeks fetched for {streamer_symbol}")
-                        # Don't add positions without Greeks - they'll fail validation
-                        continue
-                    
-                    positions.append(position)
-                    
-                except Exception as e:
-                    logger.error(f"Error processing option position: {e}")
-                    continue
-            
-            # Process equity positions (simple delta = quantity)
-            for pos_data in equity_positions:
-                try:
-                    symbol = self._parse_symbol_from_position(pos_data)
-                    raw_quantity = int(pos_data.quantity or 0)
-                    
-                    if raw_quantity == 0:
-                        continue
-                    
-                    broker_pos_id = str(pos_data.id) if hasattr(pos_data, 'id') else f"{self.account_id}_{symbol.ticker}"
-                    
-                    position = dm.Position(
-                        symbol=symbol,
-                        quantity=raw_quantity,
-                        entry_price=Decimal(str(pos_data.average_open_price or 0)),
-                        current_price=Decimal(str(pos_data.close_price or 0)),
-                        market_value=Decimal(str(pos_data.mark or 0)) * abs(raw_quantity),
-                        total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(raw_quantity),
-                        broker_position_id=broker_pos_id,
-                        current_greeks=dm.Greeks(
-                            delta=Decimal(str(raw_quantity)),  # Stock delta = quantity
+                            delta=Decimal(str(raw_quantity)),
+                            gamma=Decimal('0'),
+                            theta=Decimal('0'),
+                            vega=Decimal('0'),
+                            rho=Decimal('0'),
                             timestamp=datetime.utcnow()
                         )
-                    )
-                    
+                        logger.debug(f"✓ Equity: {symbol.ticker} Δ={raw_quantity}")
+
+                    elif symbol.asset_type == dm.AssetType.OPTION:
+                        # Options: fetch from chain
+                        option_positions_by_underlying[symbol.ticker].append(position)
+
                     positions.append(position)
-                    
+
                 except Exception as e:
-                    logger.error(f"Error processing equity position: {e}")
+                    logger.warning(f"Skipping position due to error: {e}")
                     continue
-            
+
+            # Fetch option chains and populate Greeks
+            if option_positions_by_underlying:
+                self._populate_greeks_from_chains(option_positions_by_underlying)
+
+            # Filter out options without Greeks
+            positions = [p for p in positions if p.greeks is not None]
+
             logger.info(f"✓ Fetched {len(positions)} positions with Greeks")
             return positions
-            
+
         except Exception as e:
             logger.error(f"Failed to get positions: {e}")
             logger.exception("Full error:")
@@ -427,38 +414,74 @@ class TastytradeAdapter(BrokerAdapter):
 
     def _occ_to_streamer_symbol(self, occ_symbol: str) -> Optional[str]:
         """
-        Convert OCC symbol to DXLink streamer symbol
-        
-        OCC:      "IWM   260123P00261000"
-        Streamer: ".IWM260123P261"
-        
-        Format: .{TICKER}{YYMMDD}{C/P}{STRIKE}
+        Fetch option chains and populate Greeks for option positions.
+
+        This is the reliable method - option chains include Greeks data.
         """
-        try:
-            # Clean up ticker (remove spaces)
-            ticker = occ_symbol[:6].strip()
-            exp_date = occ_symbol[6:12]  # YYMMDD
-            option_type = occ_symbol[12]  # C or P
-            strike_str = occ_symbol[13:21]  # 00261000
-            
-            # Convert strike: 00261000 -> 261
-            strike_int = int(strike_str) // 1000
-            
-            # Build streamer symbol
-            streamer_symbol = f".{ticker}{exp_date}{option_type}{strike_int}"
-            
-            return streamer_symbol
-            
-        except Exception as e:
-            logger.error(f"Error converting OCC to streamer symbol: {occ_symbol} - {e}")
-            return None
-        
+        for underlying, positions in option_positions_by_underlying.items():
+            try:
+                logger.info(f"Fetching option chain for {underlying}...")
+
+                # Fetch option chain with Greeks
+                chain = get_option_chain(self.session, underlying)
+
+                if not chain:
+                    logger.warning(f"No option chain data for {underlying}")
+                    continue
+
+                # Build lookup: (strike, expiration, option_type) -> greeks
+                chain_lookup = {}
+                for option in chain:
+                    if hasattr(option, 'greeks') and option.greeks:
+                        key = (
+                            float(option.strike_price),
+                            option.expiration_date,
+                            option.option_type  # 'C' or 'P'
+                        )
+                        chain_lookup[key] = option.greeks
+
+                logger.info(f"  Chain has {len(chain_lookup)} options with Greeks")
+
+                # Match positions to chain
+                for position in positions:
+                    try:
+                        key = (
+                            float(position.symbol.strike),
+                            position.symbol.expiration.date(),
+                            'C' if position.symbol.option_type == dm.OptionType.CALL else 'P'
+                        )
+
+                        greeks = chain_lookup.get(key)
+
+                        if greeks:
+                            # Greeks from chain are PER CONTRACT
+                            # Multiply by quantity for POSITION-LEVEL Greeks
+                            position.greeks = dm.Greeks(
+                                delta=Decimal(str(greeks.delta or 0)) * abs(position.quantity),
+                                gamma=Decimal(str(greeks.gamma or 0)) * abs(position.quantity),
+                                theta=Decimal(str(greeks.theta or 0)) * abs(position.quantity),
+                                vega=Decimal(str(greeks.vega or 0)) * abs(position.quantity),
+                                rho=Decimal(str(greeks.rho or 0)) * abs(position.quantity) if hasattr(greeks, 'rho') else Decimal('0'),
+                                timestamp=datetime.utcnow()
+                            )
+                            logger.debug(f"✓ Greeks: {position.symbol.ticker} ${position.symbol.strike} Δ={position.greeks.delta:.2f}")
+                        else:
+                            logger.warning(f"⚠️  No Greeks in chain for {position.symbol.ticker} ${position.symbol.strike}")
+
+                    except Exception as e:
+                        logger.error(f"Error matching position to chain: {e}")
+                        continue
+
+            except Exception as e:
+                logger.error(f"Failed to fetch option chain for {underlying}: {e}")
+                continue
+
     def _parse_symbol_from_position(self, pos_data) -> dm.Symbol:
         """Parse symbol from position data"""
         try:
             instrument_type = pos_data.instrument_type
             symbol_str = pos_data.symbol
-            
+
             if instrument_type == 'Equity':
                 return dm.Symbol(
                     ticker=symbol_str,
@@ -480,36 +503,36 @@ class TastytradeAdapter(BrokerAdapter):
                     multiplier=1
                 )
             else:
-                logger.warning(f"Unknown instrument type: {instrument_type}, defaulting to equity")
+                logger.warning(f"Unknown instrument type: {instrument_type}")
                 return dm.Symbol(
                     ticker=symbol_str,
                     asset_type=dm.AssetType.EQUITY,
                     multiplier=1
                 )
-                
+
         except Exception as e:
-            logger.warning(f"Error parsing symbol: {e}, defaulting to {symbol_str}")
+            logger.warning(f"Error parsing symbol: {e}")
             return dm.Symbol(
-                ticker=symbol_str,
+                ticker=pos_data.symbol,
                 asset_type=dm.AssetType.EQUITY,
                 multiplier=1
             )
-    
+
     def _parse_occ_symbol(self, symbol_str: str) -> dm.Symbol:
         """Parse OCC format option symbol"""
         try:
             if len(symbol_str) < 21:
                 raise ValueError(f"Invalid OCC symbol length: {symbol_str}")
-            
+
             ticker = symbol_str[:6].strip()
             exp_str = symbol_str[6:12]
             opt_type_char = symbol_str[12]
             strike_str = symbol_str[13:21]
-            
+
             expiration = datetime.strptime(exp_str, "%y%m%d")
             option_type = dm.OptionType.CALL if opt_type_char == 'C' else dm.OptionType.PUT
             strike = Decimal(strike_str) / 1000
-            
+
             return dm.Symbol(
                 ticker=ticker,
                 asset_type=dm.AssetType.OPTION,
@@ -518,7 +541,7 @@ class TastytradeAdapter(BrokerAdapter):
                 expiration=expiration,
                 multiplier=100
             )
-            
+
         except Exception as e:
             logger.error(f"Failed to parse OCC symbol {symbol_str}: {e}")
             ticker = symbol_str[:6].strip() if len(symbol_str) >= 6 else symbol_str
