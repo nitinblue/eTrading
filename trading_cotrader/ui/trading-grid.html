@@ -443,6 +443,8 @@
         <div class="tab" data-tab="risk">Risk Matrix</div>
         <div class="tab" data-tab="events">Events</div>
         <div class="tab" data-tab="aiml">AI/ML</div>
+         <div class="tab" data-tab="strategies">Strategies</div>
+    </li>
     </div>
 
     <!-- Loading -->
@@ -570,8 +572,19 @@
                 </div>
             </div>
         </div>
+        <!-- STRATEGIES TAB -->
+        <div class="tab-content" id="tab-strategies">
+            <div class="split-h">
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">Options Strategy Cheat Sheet</div>
+                    <div class="panel-body">
+                        <div id="strategiesGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-
+    
     <!-- AG Grid JS -->
     <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
 
@@ -667,6 +680,148 @@
             { field: 'delta', headerName: 'New Δ', cellRenderer: numFmt, width: 80 },
         ];
 
+       const strategyCols = [
+        { field: 'strategy', headerName: 'Strategy', pinned: 'left', width: 140 },
+        { field: 'outlook', headerName: 'Outlook', width: 110 },
+        { field: 'max_profit', headerName: 'Max Profit', width: 110 },
+        { field: 'max_loss', headerName: 'Max Loss', width: 110 },
+        { field: 'payoff', headerName: 'Payoff', width: 90 },
+        { field: 'entry', headerName: 'Conservative Entry', width: 200 },
+        { field: 'reason', headerName: 'Safety Reasoning', flex: 1 }
+
+        ];
+
+
+        const strategyData = [
+    {
+        strategy: "Long Call",
+        outlook: "Bullish",
+        max_profit: "Unlimited",
+        max_loss: "Net Debit",
+        payoff: "__/",
+        entry: "IVR < 20, RSI < 30",
+        reason: "Low IV prevents overpaying for theta"
+    },
+    {
+        strategy: "Bull Put Spread",
+        outlook: "Bullish",
+        max_profit: "Net Credit",
+        max_loss: "Width - Cr",
+        payoff: "__/￣",
+        entry: "IVR > 40, RSI 35–45",
+        reason: "Defined risk with high probability"
+    },
+    {
+        strategy: "Cash-Secured Put",
+        outlook: "Bullish",
+        max_profit: "Net Credit",
+        max_loss: "Strike - Cr",
+        payoff: "__/",
+        entry: "IVR > 30, RSI < 40",
+        reason: "Protects against small price drops"
+    },
+    {
+        strategy: "Long Put",
+        outlook: "Bearish",
+        max_profit: "K - Debit",
+        max_loss: "Net Debit",
+        payoff: "\\__",
+        entry: "IVR < 20, RSI > 70",
+        reason: "Cheap premium for downside protection"
+    },
+    {
+        strategy: "Bear Call Spread",
+        outlook: "Bearish",
+        max_profit: "Net Credit",
+        max_loss: "Width - Cr",
+        payoff: "￣\\__",
+        entry: "IVR > 40, RSI 60–65",
+        reason: "Profit if stock stays flat or drops"
+    },
+    {
+        strategy: "Iron Condor",
+        outlook: "Neutral",
+        max_profit: "Net Credit",
+        max_loss: "Width - Cr",
+        payoff: "__/￣\\__",
+        entry: "IVR > 50, RSI 45–55",
+        reason: "Wide wings allow for error margin"
+    },
+    {
+        strategy: "Iron Butterfly",
+        outlook: "Neutral",
+        max_profit: "Net Credit",
+        max_loss: "Width - Cr",
+        payoff: "_/\\_",
+        entry: "IVR > 70, RSI ~50",
+        reason: "High credit offsets risk of pin"
+    },
+    {
+        strategy: "Covered Call",
+        outlook: "Neutral/Bull",
+        max_profit: "K - S0 + Cr",
+        max_loss: "S0 - Cr",
+        payoff: "--/￣",
+        entry: "IVR > 20, RSI ~50",
+        reason: "Stock ownership buffers the option"
+    },
+    {
+        strategy: "Calendar Spread",
+        outlook: "Neutral/Vol",
+        max_profit: "Variable",
+        max_loss: "Net Debit",
+        payoff: "_/\\_",
+        entry: "IVR < 15, VIX < 16",
+        reason: "Buying low vol before expansion"
+    },   
+    {
+        strategy: "Double Calendar",
+        outlook: "Neutral / Volatility",
+        max_profit: "Variable",
+        max_loss: "Net Debit",
+        payoff: "_/\\_/\\_",
+        entry: "IVR < 20, VIX < 18",
+        reason: "Wider profit zone than single calendar"
+    },
+    {
+        strategy: "Diagonal Spread",
+        outlook: "Trend + Volatility",
+        max_profit: "Variable",
+        max_loss: "Net Debit",
+        payoff: "_/￣",
+        entry: "IVR < 25, RSI ≈ 45",
+        reason: "Uses time decay to subsidize directional bias"
+    },
+    {
+        strategy: "Long Straddle",
+        outlook: "High Volatility",
+        max_profit: "Unlimited",
+        max_loss: "Net Debit",
+        payoff: "\\ /",
+        entry: "IVR < 10, Pre-Event",
+        reason: "Cheap convex bet on large price expansion"
+    },
+    {
+        strategy: "Long Strangle",
+        outlook: "High Volatility",
+        max_profit: "Unlimited",
+        max_loss: "Net Debit",
+        payoff: "\\___/",
+        entry: "IVR < 10, Pre-Event",
+        reason: "Lower cost volatility expansion than straddle"
+    },
+    {
+        strategy: "Ratio Put Spread",
+        outlook: "Neutral / Bullish",
+        max_profit: "Variable",
+        max_loss: "Net Credit*",
+        payoff: "__/ \\_",
+        entry: "IVR > 50, RSI < 40",
+        reason: "High IV allows zero-cost or credit structure with downside tail risk"
+    }
+
+];
+
         // Initialize Grids
         function initGrids() {
             const defaultOpts = {
@@ -703,6 +858,15 @@
             scenarioGridApi = agGrid.createGrid(document.getElementById('scenarioGrid'), {
                 ...defaultOpts, columnDefs: scenarioCols, rowData: getScenarioData(), getRowId: p => p.data.scenario
             });
+
+            strategyGridApi = agGrid.createGrid(document.getElementById('strategiesGrid'),{
+            animateRows: true,
+            columnDefs: strategyCols,
+            rowData: strategyData,
+            suppressCellFocus: true,
+            defaultColDef: { sortable: true, resizable: true }
+        }
+    );
         }
 
         // Mock scenario data
