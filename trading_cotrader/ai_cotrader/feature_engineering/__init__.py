@@ -4,7 +4,7 @@ Feature Engineering Module
 Extracts ML features from trade events, positions, and market data.
 """
 
-from ai_cotrader.feature_engineering.feature_extractor import (
+from trading_cotrader.ai_cotrader.feature_engineering.feature_extractor import (
     FeatureExtractor,
     MarketFeatures,
     PositionFeatures,

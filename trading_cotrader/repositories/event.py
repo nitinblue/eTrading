@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import logging
 
-from repositories.base import BaseRepository
-from core.database.schema import TradeEventORM, RecognizedPatternORM
-import core.models.events as events
+from trading_cotrader.repositories.base import BaseRepository
+from trading_cotrader.core.database.schema import TradeEventORM, RecognizedPatternORM
+import trading_cotrader.core.models.events as events
 
 logger = logging.getLogger(__name__)
 

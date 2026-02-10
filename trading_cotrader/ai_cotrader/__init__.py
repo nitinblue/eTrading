@@ -27,7 +27,7 @@ Usage:
     print(f"Confidence: {recommendation['confidence']}")
 """
 
-from ai_cotrader.feature_engineering.feature_extractor import (
+from trading_cotrader.ai_cotrader.feature_engineering.feature_extractor import (
     FeatureExtractor,
     MarketFeatures,
     PositionFeatures,
@@ -37,14 +37,14 @@ from ai_cotrader.feature_engineering.feature_extractor import (
     TrainingExample,
 )
 
-from ai_cotrader.learning.supervised import (
+from trading_cotrader.ai_cotrader.learning.supervised import (
     PatternRecognizer,
     PatternMatch,
     ActionLabels,
     SimpleDecisionTree,
 )
 
-from ai_cotrader.learning.reinforcement import (
+from trading_cotrader.ai_cotrader.learning.reinforcement import (
     QLearningAgent,
     DQNAgent,
     TradingAdvisor,

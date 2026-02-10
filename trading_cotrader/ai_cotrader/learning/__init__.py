@@ -6,14 +6,14 @@ Contains ML models for trading decisions:
 - Reinforcement: Optimize based on outcomes
 """
 
-from ai_cotrader.learning.supervised import (
+from trading_cotrader.ai_cotrader.learning.supervised import (
     PatternRecognizer,
     PatternMatch,
     ActionLabels,
     SimpleDecisionTree,
 )
 
-from ai_cotrader.learning.reinforcement import (
+from trading_cotrader.ai_cotrader.learning.reinforcement import (
     QLearningAgent,
     DQNAgent,
     TradingAdvisor,

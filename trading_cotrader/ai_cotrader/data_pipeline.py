@@ -28,7 +28,17 @@ from typing import List, Dict, Optional, Tuple
 import numpy as np
 
 from sqlalchemy.orm import Session
+from trading_cotrader.repositories.portfolio import PortfolioRepository
+from trading_cotrader.config.settings import setup_logging
+from trading_cotrader.core.database.session import session_scope
+from trading_cotrader.core.database.schema import DailyPerformanceORM, TradeEventORM
 
+from trading_cotrader.ai_cotrader.feature_engineering import FeatureExtractor, DatasetBuilder
+from trading_cotrader.repositories.event import EventRepository
+import trading_cotrader.core.models.events as events
+from trading_cotrader.core.database.schema import GreeksHistoryORM
+from trading_cotrader.ai_cotrader.learning.supervised import ActionLabels
+from trading_cotrader.services.snapshot_service import SnapshotService
 logger = logging.getLogger(__name__)
 
 
@@ -68,11 +78,11 @@ class MLDataPipeline:
         try:
             # Step 1: Ensure daily snapshot exists (from your SnapshotService)
             # This is probably already being called - just verify
-            from services.snapshot_service import SnapshotService
+
             snapshot_svc = SnapshotService(self.session)
             
             # Check if today's snapshot exists
-            from core.database.schema import DailyPerformanceORM
+
             today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             
             existing = self.session.query(DailyPerformanceORM).filter_by(
@@ -99,7 +109,7 @@ class MLDataPipeline:
     def get_sample_count(self) -> int:
         """Get number of training samples available"""
         try:
-            from core.database.schema import DailyPerformanceORM, TradeEventORM
+            
             
             snapshots = self.session.query(DailyPerformanceORM).count()
             events = self.session.query(TradeEventORM).count()
@@ -130,10 +140,7 @@ class MLDataPipeline:
             y: Labels (n_samples,) - action taken or outcome
         """
         try:
-            from ai_cotrader.feature_engineering import FeatureExtractor, DatasetBuilder
-            from core.database.schema import TradeEventORM, DailyPerformanceORM
-            from repositories.event import EventRepository
-            import core.models.events as events
+
             
             # Get events with outcomes
             event_repo = EventRepository(self.session)
@@ -181,7 +188,7 @@ class MLDataPipeline:
         Returns list of daily feature snapshots.
         """
         try:
-            from core.database.schema import DailyPerformanceORM
+            
             
             cutoff = datetime.utcnow() - timedelta(days=days)
             
@@ -219,7 +226,6 @@ class MLDataPipeline:
         Get position Greek history for analysis.
         """
         try:
-            from core.database.schema import GreeksHistoryORM
             
             cutoff = datetime.utcnow() - timedelta(days=days)
             
@@ -247,8 +253,7 @@ class MLDataPipeline:
     
     def _event_to_action_label(self, event) -> int:
         """Convert event type to action label for supervised learning"""
-        from ai_cotrader.learning.supervised import ActionLabels
-        import core.models.events as events
+
         
         event_type = event.event_type
         
@@ -273,7 +278,7 @@ class MLDataPipeline:
     def get_ml_status(self) -> Dict:
         """Get current ML data status"""
         try:
-            from core.database.schema import DailyPerformanceORM, TradeEventORM
+
             
             snapshots = self.session.query(DailyPerformanceORM).count()
             total_events = self.session.query(TradeEventORM).count()
@@ -353,8 +358,7 @@ def add_ml_step_to_autotrader():
 # =============================================================================
 
 if __name__ == "__main__":
-    from config.settings import setup_logging
-    from core.database.session import session_scope
+
     
     setup_logging()
     
@@ -373,7 +377,7 @@ if __name__ == "__main__":
             print(f"  {key}: {value}")
         
         # Get portfolio features
-        from repositories.portfolio import PortfolioRepository
+
         repo = PortfolioRepository(session)
         portfolios = repo.get_all_portfolios()
         
