@@ -3,250 +3,384 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Grid - Real-Time Portfolio Monitor</title>
+    <title>Trading Terminal - Institutional Grade</title>
 
     <!-- AG Grid CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-balham-dark.css">
 
     <style>
         :root {
-            --bg-primary: #0d1117;
-            --bg-secondary: #161b22;
-            --bg-tertiary: #21262d;
-            --text-primary: #c9d1d9;
-            --text-secondary: #8b949e;
-            --border-color: #30363d;
-            --accent-blue: #58a6ff;
-            --accent-green: #3fb950;
-            --accent-red: #f85149;
-            --accent-yellow: #d29922;
-            --accent-purple: #a371f7;
+            --bg-0: #0a0a0a;
+            --bg-1: #111111;
+            --bg-2: #1a1a1a;
+            --bg-3: #222222;
+            --border: #333333;
+            --text-0: #ffffff;
+            --text-1: #cccccc;
+            --text-2: #888888;
+            --green: #00d26a;
+            --red: #ff4757;
+            --yellow: #ffa502;
+            --blue: #1e90ff;
+            --purple: #9b59b6;
+            --cyan: #00bcd4;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            min-height: 100vh;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: var(--bg-0);
+            color: var(--text-1);
+            font-size: 12px;
+            overflow: hidden;
+            height: 100vh;
         }
 
-        .header {
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-color);
-            padding: 12px 24px;
+        /* Top Header Bar */
+        .header-bar {
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--border);
+            height: 36px;
             display: flex;
+            align-items: center;
             justify-content: space-between;
-            align-items: center;
+            padding: 0 12px;
         }
 
-        .header h1 { font-size: 20px; font-weight: 600; }
-
-        .header-controls {
+        .header-left {
             display: flex;
+            align-items: center;
             gap: 16px;
-            align-items: center;
         }
 
-        .status-indicator {
+        .logo {
+            color: var(--cyan);
+            font-weight: bold;
+            font-size: 14px;
+            letter-spacing: 1px;
+        }
+
+        .market-time {
+            color: var(--text-2);
+            font-size: 11px;
+        }
+
+        .header-right {
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            color: var(--text-secondary);
+            gap: 12px;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: var(--bg-2);
+            border-radius: 12px;
+            font-size: 10px;
         }
 
         .status-dot {
-            width: 8px;
-            height: 8px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
-            background: var(--accent-red);
+            background: var(--red);
         }
 
-        .status-dot.connected { background: var(--accent-green); }
-        .status-dot.broker-connected { background: var(--accent-blue); }
+        .status-dot.active { background: var(--green); }
 
         .btn {
-            padding: 8px 16px;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            font-size: 13px;
+            padding: 4px 12px;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            background: var(--bg-2);
+            color: var(--text-1);
+            font-size: 11px;
             cursor: pointer;
-            transition: all 0.15s;
+            font-family: inherit;
         }
 
-        .btn:hover { background: var(--border-color); }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn:hover { background: var(--bg-3); }
 
         .btn-primary {
-            background: var(--accent-blue);
-            border-color: var(--accent-blue);
-            color: #fff;
+            background: var(--blue);
+            border-color: var(--blue);
+            color: white;
         }
 
-        .btn-primary:hover { background: #4c9aed; }
+        .btn-primary:hover { background: #1a7fd4; }
 
-        .btn-sync {
-            background: var(--accent-green);
-            border-color: var(--accent-green);
-            color: #fff;
-        }
-
-        .btn-sync:hover { background: #2ea043; }
-
-        .container {
-            padding: 24px;
+        /* Tabs */
+        .tabs-bar {
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--border);
             display: flex;
-            flex-direction: column;
-            gap: 24px;
-            height: calc(100vh - 60px);
+            height: 28px;
         }
 
-        .grid-section {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            overflow: hidden;
+        .tab {
+            padding: 0 16px;
             display: flex;
-            flex-direction: column;
-        }
-
-        .grid-header {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            justify-content: space-between;
             align-items: center;
+            color: var(--text-2);
+            cursor: pointer;
+            border-right: 1px solid var(--border);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
-        .grid-title { font-size: 14px; font-weight: 600; }
-        .grid-subtitle { font-size: 12px; color: var(--text-secondary); }
+        .tab:hover { background: var(--bg-2); color: var(--text-1); }
 
-        .grid-container { flex: 1; min-height: 200px; }
+        .tab.active {
+            background: var(--bg-0);
+            color: var(--cyan);
+            border-bottom: 2px solid var(--cyan);
+        }
 
-        /* Portfolio cards row */
-        .portfolio-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
+        /* Main Content */
+        .main-content {
+            height: calc(100vh - 64px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tab-content {
+            display: none;
+            height: 100%;
+        }
+
+        .tab-content.active { display: flex; flex-direction: column; }
+
+        /* Widget Grid Layout */
+        .widget-row {
+            display: flex;
+            border-bottom: 1px solid var(--border);
             flex-shrink: 0;
         }
 
-        .portfolio-card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 16px;
+        .widget {
+            background: var(--bg-1);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
         }
 
-        .portfolio-card.real { border-left: 3px solid var(--accent-green); }
-        .portfolio-card.whatif { border-left: 3px solid var(--accent-purple); }
-
-        .portfolio-card-header {
+        .widget-header {
+            background: var(--bg-2);
+            padding: 4px 8px;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-2);
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
         }
 
-        .portfolio-card-title {
-            font-size: 14px;
-            font-weight: 600;
+        .widget-body {
+            flex: 1;
+            padding: 6px 8px;
+            overflow: auto;
         }
 
-        .portfolio-card-badge {
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 10px;
+        /* Metric Cards */
+        .metrics-row {
+            display: flex;
+            gap: 2px;
+        }
+
+        .metric-card {
+            flex: 1;
+            background: var(--bg-2);
+            padding: 6px 8px;
+            text-align: center;
+            border-radius: 2px;
+        }
+
+        .metric-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--text-0);
+        }
+
+        .metric-value.positive { color: var(--green); }
+        .metric-value.negative { color: var(--red); }
+
+        .metric-label {
+            font-size: 9px;
+            color: var(--text-2);
             text-transform: uppercase;
-            font-weight: 600;
+            margin-top: 2px;
         }
 
-        .portfolio-card-badge.real {
-            background: rgba(63, 185, 80, 0.2);
-            color: var(--accent-green);
+        /* Greeks Display */
+        .greeks-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px;
         }
 
-        .portfolio-card-badge.whatif {
-            background: rgba(163, 113, 247, 0.2);
-            color: var(--accent-purple);
+        .greek-item {
+            background: var(--bg-2);
+            padding: 4px 6px;
+            text-align: center;
+            border-radius: 2px;
+        }
+
+        .greek-symbol {
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .greek-value {
+            font-size: 12px;
+            color: var(--text-0);
+        }
+
+        /* Portfolio Cards */
+        .portfolio-cards {
+            display: flex;
+            gap: 8px;
+            padding: 8px;
+        }
+
+        .portfolio-card {
+            flex: 1;
+            background: var(--bg-2);
+            border-radius: 4px;
+            padding: 8px 12px;
+            border-left: 3px solid var(--green);
+        }
+
+        .portfolio-card.whatif {
+            border-left-color: var(--purple);
+        }
+
+        .portfolio-title {
+            font-size: 11px;
+            color: var(--text-2);
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .portfolio-badge {
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: rgba(0, 210, 106, 0.2);
+            color: var(--green);
+        }
+
+        .portfolio-card.whatif .portfolio-badge {
+            background: rgba(155, 89, 182, 0.2);
+            color: var(--purple);
         }
 
         .portfolio-metrics {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
+            gap: 8px;
         }
 
-        .metric {
+        .p-metric {
             text-align: center;
         }
 
-        .metric-value {
-            font-size: 18px;
-            font-weight: 600;
-            font-family: monospace;
+        .p-metric-value {
+            font-size: 14px;
+            font-weight: bold;
         }
 
-        .metric-label {
+        .p-metric-label {
+            font-size: 9px;
+            color: var(--text-2);
+        }
+
+        /* Grid Container */
+        .grid-wrapper {
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* AG Grid Theme Overrides */
+        .ag-theme-balham-dark {
+            --ag-background-color: var(--bg-1);
+            --ag-header-background-color: var(--bg-2);
+            --ag-odd-row-background-color: var(--bg-1);
+            --ag-row-hover-color: var(--bg-3);
+            --ag-border-color: var(--border);
+            --ag-header-foreground-color: var(--text-2);
+            --ag-foreground-color: var(--text-1);
+            --ag-row-height: 24px;
+            --ag-header-height: 28px;
+            font-family: 'Consolas', monospace;
             font-size: 11px;
-            color: var(--text-secondary);
-            margin-top: 4px;
         }
 
-        .metric-value.positive { color: var(--accent-green); }
-        .metric-value.negative { color: var(--accent-red); }
-
-        /* Risk row */
-        .risk-row {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 24px;
-            flex-shrink: 0;
+        .ag-theme-balham-dark .ag-cell {
+            padding: 0 6px;
         }
 
-        /* Bottom positions */
-        .bottom-section { flex: 1; min-height: 0; }
+        /* Cell Colors */
+        .cell-green { color: var(--green) !important; }
+        .cell-red { color: var(--red) !important; }
+        .cell-yellow { color: var(--yellow) !important; }
+        .cell-blue { color: var(--blue) !important; }
 
-        /* AG Grid Dark Theme */
-        .ag-theme-alpine-dark {
-            --ag-background-color: var(--bg-secondary);
-            --ag-header-background-color: var(--bg-tertiary);
-            --ag-odd-row-background-color: var(--bg-secondary);
-            --ag-row-hover-color: var(--bg-tertiary);
-            --ag-border-color: var(--border-color);
-            --ag-header-foreground-color: var(--text-secondary);
-            --ag-foreground-color: var(--text-primary);
-            --ag-selected-row-background-color: rgba(88, 166, 255, 0.1);
+        /* Risk Indicator */
+        .risk-indicator {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 2px;
+            font-size: 9px;
+            font-weight: bold;
         }
 
-        .cell-positive { color: var(--accent-green); }
-        .cell-negative { color: var(--accent-red); }
+        .risk-ok { background: rgba(0, 210, 106, 0.2); color: var(--green); }
+        .risk-warn { background: rgba(255, 165, 2, 0.2); color: var(--yellow); }
+        .risk-breach { background: rgba(255, 71, 87, 0.2); color: var(--red); }
 
-        .status-badge {
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
+        /* Split Panels */
+        .split-h {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .panel {
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+        }
+
+        .panel:last-child { border-right: none; }
+
+        .panel-header {
+            background: var(--bg-2);
+            padding: 4px 8px;
+            font-size: 10px;
             text-transform: uppercase;
+            color: var(--text-2);
+            border-bottom: 1px solid var(--border);
         }
 
-        .status-ok { background: rgba(63, 185, 80, 0.2); color: var(--accent-green); }
-        .status-warning { background: rgba(210, 153, 34, 0.2); color: var(--accent-yellow); }
-        .status-breach { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
+        .panel-body {
+            flex: 1;
+            min-height: 0;
+        }
 
-        /* Loading overlay */
+        /* Loading */
         .loading-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(13, 17, 23, 0.9);
+            inset: 0;
+            background: rgba(10, 10, 10, 0.95);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -255,139 +389,185 @@
 
         .loading-overlay.hidden { display: none; }
 
-        .loading-content {
-            text-align: center;
-        }
-
-        .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid var(--border-color);
-            border-top-color: var(--accent-blue);
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 2px solid var(--border);
+            border-top-color: var(--cyan);
             border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 16px;
+            animation: spin 0.8s linear infinite;
         }
 
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Event Log */
+        .event-log {
+            font-size: 10px;
+            line-height: 1.6;
+        }
+
+        .event-item {
+            padding: 4px 8px;
+            border-bottom: 1px solid var(--bg-3);
+        }
+
+        .event-time { color: var(--text-2); }
+        .event-type { color: var(--cyan); font-weight: bold; }
+        .event-data { color: var(--text-1); }
     </style>
 </head>
 <body>
-    <header class="header">
-        <h1>Trading Grid</h1>
-        <div class="header-controls">
-            <div class="status-indicator">
-                <div class="status-dot" id="wsStatus"></div>
-                <span id="wsStatusText">Disconnected</span>
-            </div>
-            <div class="status-indicator">
-                <div class="status-dot" id="brokerStatus"></div>
-                <span id="brokerStatusText">Broker: Not Connected</span>
-            </div>
-            <button class="btn btn-sync" id="syncBtn">Sync Broker</button>
-            <button class="btn btn-primary" id="refreshBtn">Refresh</button>
+    <!-- Header Bar -->
+    <div class="header-bar">
+        <div class="header-left">
+            <span class="logo">TRADING TERMINAL</span>
+            <span class="market-time" id="marketTime">--:--:-- UTC</span>
         </div>
-    </header>
-
-    <!-- Loading Overlay -->
-    <div class="loading-overlay hidden" id="loadingOverlay">
-        <div class="loading-content">
-            <div class="loading-spinner"></div>
-            <div id="loadingText">Connecting to TastyTrade...</div>
+        <div class="header-right">
+            <div class="status-pill">
+                <span class="status-dot" id="wsStatus"></span>
+                <span id="wsStatusText">WS: --</span>
+            </div>
+            <div class="status-pill">
+                <span class="status-dot" id="brokerStatus"></span>
+                <span id="brokerStatusText">BROKER: --</span>
+            </div>
+            <button class="btn btn-primary" id="syncBtn">SYNC</button>
+            <button class="btn" id="refreshBtn">REFRESH</button>
         </div>
     </div>
 
-    <div class="container">
-        <!-- Portfolio Cards -->
-        <div class="portfolio-row">
-            <div class="portfolio-card real" id="realPortfolio">
-                <div class="portfolio-card-header">
-                    <span class="portfolio-card-title">Real Portfolio</span>
-                    <span class="portfolio-card-badge real">LIVE</span>
+    <!-- Tabs -->
+    <div class="tabs-bar">
+        <div class="tab active" data-tab="positions">Positions</div>
+        <div class="tab" data-tab="risk">Risk Matrix</div>
+        <div class="tab" data-tab="events">Events</div>
+        <div class="tab" data-tab="aiml">AI/ML</div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-overlay hidden" id="loading">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- POSITIONS TAB -->
+        <div class="tab-content active" id="tab-positions">
+            <!-- Portfolio Summary Row -->
+            <div class="portfolio-cards">
+                <div class="portfolio-card" id="realPortfolio">
+                    <div class="portfolio-title">
+                        <span>REAL PORTFOLIO</span>
+                        <span class="portfolio-badge">LIVE</span>
+                    </div>
+                    <div class="portfolio-metrics">
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="realEquity">--</div>
+                            <div class="p-metric-label">Equity</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="realDelta">--</div>
+                            <div class="p-metric-label">Delta</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="realTheta">--</div>
+                            <div class="p-metric-label">Theta</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="realVega">--</div>
+                            <div class="p-metric-label">Vega</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="portfolio-metrics">
-                    <div class="metric">
-                        <div class="metric-value" id="realEquity">--</div>
-                        <div class="metric-label">Equity</div>
+                <div class="portfolio-card whatif" id="whatifPortfolio">
+                    <div class="portfolio-title">
+                        <span>WHAT-IF PORTFOLIO</span>
+                        <span class="portfolio-badge">SIM</span>
                     </div>
-                    <div class="metric">
-                        <div class="metric-value" id="realDelta">--</div>
-                        <div class="metric-label">Delta</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value" id="realTheta">--</div>
-                        <div class="metric-label">Theta</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value" id="realPositions">--</div>
-                        <div class="metric-label">Positions</div>
+                    <div class="portfolio-metrics">
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="whatifDelta">--</div>
+                            <div class="p-metric-label">Delta</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="whatifGamma">--</div>
+                            <div class="p-metric-label">Gamma</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="whatifTheta">--</div>
+                            <div class="p-metric-label">Theta</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="whatifTrades">--</div>
+                            <div class="p-metric-label">Trades</div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div class="portfolio-card whatif" id="whatifPortfolio">
-                <div class="portfolio-card-header">
-                    <span class="portfolio-card-title">What-If Portfolio</span>
-                    <span class="portfolio-card-badge whatif">SIMULATED</span>
+            <!-- Split Panels: Risk Factors + Positions -->
+            <div class="split-h">
+                <div class="panel" style="width: 35%;">
+                    <div class="panel-header">Risk Factors by Underlying</div>
+                    <div class="panel-body">
+                        <div id="riskGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
                 </div>
-                <div class="portfolio-metrics">
-                    <div class="metric">
-                        <div class="metric-value" id="whatifDelta">--</div>
-                        <div class="metric-label">Delta</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value" id="whatifGamma">--</div>
-                        <div class="metric-label">Gamma</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value" id="whatifTheta">--</div>
-                        <div class="metric-label">Theta</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value" id="whatifTrades">--</div>
-                        <div class="metric-label">Trades</div>
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">Positions <span id="positionsCount" style="color: var(--text-2);">(0)</span></div>
+                    <div class="panel-body">
+                        <div id="positionsGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Risk Factors Row -->
-        <div class="risk-row">
-            <div class="grid-section">
-                <div class="grid-header">
-                    <div>
-                        <div class="grid-title">Risk Factors by Underlying</div>
-                        <div class="grid-subtitle">Aggregated Greeks from TastyTrade</div>
+        <!-- RISK MATRIX TAB -->
+        <div class="tab-content" id="tab-risk">
+            <div class="split-h">
+                <div class="panel" style="width: 30%;">
+                    <div class="panel-header">What-If Trades</div>
+                    <div class="panel-body">
+                        <div id="whatifGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
                     </div>
                 </div>
-                <div class="grid-container">
-                    <div id="riskGrid" class="ag-theme-alpine-dark" style="height: 100%; width: 100%;"></div>
-                </div>
-            </div>
-
-            <div class="grid-section">
-                <div class="grid-header">
-                    <div>
-                        <div class="grid-title">What-If Trades</div>
-                        <div class="grid-subtitle">Pending trade ideas from database</div>
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">Scenario Analysis</div>
+                    <div class="panel-body">
+                        <div id="scenarioGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
                     </div>
-                </div>
-                <div class="grid-container">
-                    <div id="whatifGrid" class="ag-theme-alpine-dark" style="height: 100%; width: 100%;"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Positions Grid -->
-        <div class="grid-section bottom-section">
-            <div class="grid-header">
-                <div>
-                    <div class="grid-title">Positions</div>
-                    <div class="grid-subtitle" id="positionsCount">0 positions from TastyTrade</div>
+        <!-- EVENTS TAB -->
+        <div class="tab-content" id="tab-events">
+            <div class="split-h">
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">Trade Events</div>
+                    <div class="panel-body">
+                        <div id="eventsGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
                 </div>
             </div>
-            <div class="grid-container">
-                <div id="positionsGrid" class="ag-theme-alpine-dark" style="height: 100%; width: 100%;"></div>
+        </div>
+
+        <!-- AI/ML TAB -->
+        <div class="tab-content" id="tab-aiml">
+            <div class="split-h">
+                <div class="panel" style="width: 40%;">
+                    <div class="panel-header">Recognized Patterns</div>
+                    <div class="panel-body">
+                        <div id="patternsGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">ML Predictions</div>
+                    <div class="panel-body">
+                        <div id="predictionsGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -396,236 +576,243 @@
     <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
 
     <script>
-        // Configuration
         const WS_URL = 'ws://localhost:8000/ws';
         const API_URL = 'http://localhost:8000';
 
-        // Grid instances
-        let riskGridApi = null;
-        let positionsGridApi = null;
-        let whatifGridApi = null;
+        // Grid APIs
+        let riskGridApi, positionsGridApi, whatifGridApi, eventsGridApi, patternsGridApi, predictionsGridApi, scenarioGridApi;
         let ws = null;
-        let reconnectAttempts = 0;
-        let brokerConnected = false;
 
-        // Cell Renderers
-        function numberRenderer(params) {
-            if (params.value == null) return '';
-            return parseFloat(params.value).toLocaleString('en-US', {
-                minimumFractionDigits: 2, maximumFractionDigits: 2
-            });
-        }
+        // Renderers
+        const numFmt = (p) => p.value != null ? parseFloat(p.value).toFixed(2) : '';
+        const pnlFmt = (p) => {
+            if (p.value == null) return '';
+            const v = parseFloat(p.value);
+            return `<span class="${v >= 0 ? 'cell-green' : 'cell-red'}">${v >= 0 ? '+' : ''}${v.toFixed(2)}</span>`;
+        };
+        const riskFmt = (p) => {
+            if (!p.value) return '';
+            const s = p.value.toLowerCase();
+            const cls = s === 'ok' ? 'risk-ok' : s === 'warning' ? 'risk-warn' : 'risk-breach';
+            return `<span class="risk-indicator ${cls}">${p.value}</span>`;
+        };
 
-        function pnlRenderer(params) {
-            if (params.value == null) return '';
-            const val = parseFloat(params.value);
-            const className = val >= 0 ? 'cell-positive' : 'cell-negative';
-            const sign = val >= 0 ? '+' : '';
-            return `<span class="${className}">${sign}${val.toFixed(2)}</span>`;
-        }
-
-        function greekRenderer(params) {
-            if (params.value == null) return '';
-            return parseFloat(params.value).toFixed(2);
-        }
-
-        function percentRenderer(params) {
-            if (params.value == null) return '';
-            const val = parseFloat(params.value);
-            const className = val >= 0 ? 'cell-positive' : 'cell-negative';
-            return `<span class="${className}">${val.toFixed(1)}%</span>`;
-        }
-
-        function statusRenderer(params) {
-            if (!params.value) return '';
-            const status = params.value.toLowerCase();
-            let className = 'status-ok';
-            if (status === 'warning') className = 'status-warning';
-            if (status === 'breach' || status === 'critical') className = 'status-breach';
-            return `<span class="status-badge ${className}">${params.value}</span>`;
-        }
-
-        // Grid Column Definitions
-        const riskColumnDefs = [
-            { field: 'underlying', headerName: 'Underlying', width: 100, pinned: 'left' },
-            { field: 'delta', headerName: 'Delta', cellRenderer: greekRenderer, width: 90 },
-            { field: 'gamma', headerName: 'Gamma', cellRenderer: greekRenderer, width: 90 },
-            { field: 'theta', headerName: 'Theta', cellRenderer: greekRenderer, width: 90 },
-            { field: 'vega', headerName: 'Vega', cellRenderer: greekRenderer, width: 90 },
-            { field: 'positions', headerName: 'Pos', width: 60 },
-            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlRenderer, width: 100 },
-            { field: 'status', headerName: 'Status', cellRenderer: statusRenderer, width: 90 },
+        // Column Definitions
+        const riskCols = [
+            { field: 'underlying', headerName: 'UL', width: 70, pinned: 'left' },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 70 },
+            { field: 'gamma', headerName: 'Γ', cellRenderer: numFmt, width: 70 },
+            { field: 'theta', headerName: 'Θ', cellRenderer: numFmt, width: 70 },
+            { field: 'vega', headerName: 'V', cellRenderer: numFmt, width: 70 },
+            { field: 'positions', headerName: '#', width: 50 },
+            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlFmt, width: 80 },
+            { field: 'status', headerName: 'Risk', cellRenderer: riskFmt, width: 70 },
         ];
 
-        const whatifColumnDefs = [
-            { field: 'underlying', headerName: 'Underlying', width: 100 },
+        const posCols = [
+            { field: 'symbol', headerName: 'Symbol', width: 150, pinned: 'left' },
+            { field: 'underlying', headerName: 'UL', width: 60 },
+            { field: 'type', headerName: 'Type', width: 50 },
+            { field: 'strike', headerName: 'K', cellRenderer: numFmt, width: 60 },
+            { field: 'expiry', headerName: 'Exp', width: 80 },
+            { field: 'dte', headerName: 'DTE', width: 45 },
+            { field: 'qty', headerName: 'Qty', width: 45 },
+            { field: 'entry', headerName: 'Entry', cellRenderer: numFmt, width: 60 },
+            { field: 'mark', headerName: 'Mark', cellRenderer: numFmt, width: 60 },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 60 },
+            { field: 'gamma', headerName: 'Γ', cellRenderer: numFmt, width: 60 },
+            { field: 'theta', headerName: 'Θ', cellRenderer: numFmt, width: 60 },
+            { field: 'vega', headerName: 'V', cellRenderer: numFmt, width: 60 },
+            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlFmt, width: 80 },
+        ];
+
+        const whatifCols = [
+            { field: 'underlying', headerName: 'UL', width: 70 },
             { field: 'status', headerName: 'Status', width: 80 },
-            { field: 'delta', headerName: 'Delta', cellRenderer: greekRenderer, width: 80 },
-            { field: 'theta', headerName: 'Theta', cellRenderer: greekRenderer, width: 80 },
-            { field: 'legs_count', headerName: 'Legs', width: 60 },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 70 },
+            { field: 'theta', headerName: 'Θ', cellRenderer: numFmt, width: 70 },
+            { field: 'legs_count', headerName: 'Legs', width: 50 },
         ];
 
-        const positionsColumnDefs = [
-            { field: 'symbol', headerName: 'Symbol', width: 180, pinned: 'left' },
-            { field: 'underlying', headerName: 'Underlying', width: 100 },
-            { field: 'type', headerName: 'Type', width: 70 },
-            { field: 'strike', headerName: 'Strike', cellRenderer: numberRenderer, width: 80 },
-            { field: 'expiry', headerName: 'Expiry', width: 100 },
-            { field: 'dte', headerName: 'DTE', width: 60 },
-            { field: 'qty', headerName: 'Qty', width: 60 },
-            { field: 'entry', headerName: 'Entry', cellRenderer: numberRenderer, width: 80 },
-            { field: 'mark', headerName: 'Mark', cellRenderer: numberRenderer, width: 80 },
-            { field: 'delta', headerName: 'Delta', cellRenderer: greekRenderer, width: 80 },
-            { field: 'gamma', headerName: 'Gamma', cellRenderer: greekRenderer, width: 80 },
-            { field: 'theta', headerName: 'Theta', cellRenderer: greekRenderer, width: 80 },
-            { field: 'vega', headerName: 'Vega', cellRenderer: greekRenderer, width: 80 },
-            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlRenderer, width: 100 },
+        const eventsCols = [
+            { field: 'timestamp', headerName: 'Time', width: 140 },
+            { field: 'event_type', headerName: 'Type', width: 100 },
+            { field: 'underlying', headerName: 'UL', width: 70 },
+            { field: 'action', headerName: 'Action', width: 100 },
+            { field: 'details', headerName: 'Details', flex: 1 },
+        ];
+
+        const patternsCols = [
+            { field: 'timestamp', headerName: 'Time', width: 140 },
+            { field: 'pattern_type', headerName: 'Pattern', width: 120 },
+            { field: 'underlying', headerName: 'UL', width: 70 },
+            { field: 'confidence', headerName: 'Conf', width: 70 },
+            { field: 'description', headerName: 'Description', flex: 1 },
+        ];
+
+        const predictionsCols = [
+            { field: 'timestamp', headerName: 'Time', width: 140 },
+            { field: 'model', headerName: 'Model', width: 100 },
+            { field: 'underlying', headerName: 'UL', width: 70 },
+            { field: 'prediction', headerName: 'Prediction', width: 100 },
+            { field: 'probability', headerName: 'Prob', width: 70 },
+            { field: 'horizon', headerName: 'Horizon', width: 80 },
+        ];
+
+        const scenarioCols = [
+            { field: 'scenario', headerName: 'Scenario', width: 150 },
+            { field: 'spot_change', headerName: 'Spot Δ%', width: 80 },
+            { field: 'iv_change', headerName: 'IV Δ%', width: 80 },
+            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlFmt, width: 100 },
+            { field: 'delta', headerName: 'New Δ', cellRenderer: numFmt, width: 80 },
         ];
 
         // Initialize Grids
         function initGrids() {
-            const riskGridDiv = document.getElementById('riskGrid');
-            riskGridApi = agGrid.createGrid(riskGridDiv, {
-                columnDefs: riskColumnDefs,
-                rowData: [],
-                getRowId: params => params.data.id,
+            const defaultOpts = {
                 animateRows: true,
-                domLayout: 'autoHeight',
+                rowSelection: 'single',
+                suppressCellFocus: true,
+                defaultColDef: { sortable: true, resizable: true },
+            };
+
+            riskGridApi = agGrid.createGrid(document.getElementById('riskGrid'), {
+                ...defaultOpts, columnDefs: riskCols, rowData: [], getRowId: p => p.data.id
             });
 
-            const whatifGridDiv = document.getElementById('whatifGrid');
-            whatifGridApi = agGrid.createGrid(whatifGridDiv, {
-                columnDefs: whatifColumnDefs,
-                rowData: [],
-                getRowId: params => params.data.id,
-                animateRows: true,
-                domLayout: 'autoHeight',
+            positionsGridApi = agGrid.createGrid(document.getElementById('positionsGrid'), {
+                ...defaultOpts, columnDefs: posCols, rowData: [], getRowId: p => p.data.id
             });
 
-            const positionsGridDiv = document.getElementById('positionsGrid');
-            positionsGridApi = agGrid.createGrid(positionsGridDiv, {
-                columnDefs: positionsColumnDefs,
-                rowData: [],
-                getRowId: params => params.data.id,
-                animateRows: true,
-                defaultColDef: { sortable: true, filter: true, resizable: true },
+            whatifGridApi = agGrid.createGrid(document.getElementById('whatifGrid'), {
+                ...defaultOpts, columnDefs: whatifCols, rowData: [], getRowId: p => p.data.id
+            });
+
+            eventsGridApi = agGrid.createGrid(document.getElementById('eventsGrid'), {
+                ...defaultOpts, columnDefs: eventsCols, rowData: [], getRowId: p => p.data.id
+            });
+
+            patternsGridApi = agGrid.createGrid(document.getElementById('patternsGrid'), {
+                ...defaultOpts, columnDefs: patternsCols, rowData: [], getRowId: p => p.data.id
+            });
+
+            predictionsGridApi = agGrid.createGrid(document.getElementById('predictionsGrid'), {
+                ...defaultOpts, columnDefs: predictionsCols, rowData: [], getRowId: p => p.data.id
+            });
+
+            scenarioGridApi = agGrid.createGrid(document.getElementById('scenarioGrid'), {
+                ...defaultOpts, columnDefs: scenarioCols, rowData: getScenarioData(), getRowId: p => p.data.scenario
             });
         }
 
-        // WebSocket Connection
-        function connectWebSocket() {
-            if (ws && ws.readyState === WebSocket.OPEN) return;
+        // Mock scenario data
+        function getScenarioData() {
+            return [
+                { scenario: 'Base Case', spot_change: 0, iv_change: 0, pnl: 0, delta: 0 },
+                { scenario: 'Spot +5%', spot_change: 5, iv_change: 0, pnl: 0, delta: 0 },
+                { scenario: 'Spot -5%', spot_change: -5, iv_change: 0, pnl: 0, delta: 0 },
+                { scenario: 'IV +10%', spot_change: 0, iv_change: 10, pnl: 0, delta: 0 },
+                { scenario: 'IV -10%', spot_change: 0, iv_change: -10, pnl: 0, delta: 0 },
+                { scenario: 'Crash -10%/+30% IV', spot_change: -10, iv_change: 30, pnl: 0, delta: 0 },
+            ];
+        }
 
+        // Tab handling
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+            });
+        });
+
+        // WebSocket
+        function connectWS() {
             ws = new WebSocket(WS_URL);
 
             ws.onopen = () => {
-                console.log('WebSocket connected');
-                reconnectAttempts = 0;
-                updateConnectionStatus(true);
+                updateStatus('wsStatus', 'wsStatusText', true, 'WS: CONNECTED');
             };
 
             ws.onclose = () => {
-                console.log('WebSocket disconnected');
-                updateConnectionStatus(false);
-                scheduleReconnect();
+                updateStatus('wsStatus', 'wsStatusText', false, 'WS: DISCONNECTED');
+                setTimeout(connectWS, 3000);
             };
 
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
-
-            ws.onmessage = (event) => {
+            ws.onmessage = (e) => {
                 try {
-                    handleMessage(JSON.parse(event.data));
-                } catch (e) {
-                    console.error('Failed to parse message:', e);
+                    handleMessage(JSON.parse(e.data));
+                } catch (err) {
+                    console.error('Parse error:', err);
                 }
             };
         }
 
-        function scheduleReconnect() {
-            if (reconnectAttempts >= 10) return;
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-            reconnectAttempts++;
-            setTimeout(connectWebSocket, delay);
+        function updateStatus(dotId, textId, active, text) {
+            const dot = document.getElementById(dotId);
+            const txt = document.getElementById(textId);
+            dot.classList.toggle('active', active);
+            txt.textContent = text;
         }
 
-        function updateConnectionStatus(connected) {
-            const dot = document.getElementById('wsStatus');
-            const text = document.getElementById('wsStatusText');
-            dot.classList.toggle('connected', connected);
-            text.textContent = connected ? 'Connected' : 'Disconnected';
-        }
-
-        function updateBrokerStatus(connected) {
-            brokerConnected = connected;
-            const dot = document.getElementById('brokerStatus');
-            const text = document.getElementById('brokerStatusText');
-            dot.classList.toggle('broker-connected', connected);
-            text.textContent = connected ? 'Broker: Connected' : 'Broker: Not Connected';
-        }
-
-        // Message Handling
-        function handleMessage(message) {
-            switch (message.type) {
+        function handleMessage(msg) {
+            switch (msg.type) {
                 case 'connected':
-                    updateBrokerStatus(message.broker_connected);
+                    updateStatus('brokerStatus', 'brokerStatusText', msg.broker_connected,
+                        msg.broker_connected ? 'BROKER: CONNECTED' : 'BROKER: --');
                     break;
 
                 case 'fullRefresh':
-                    handleFullRefresh(message.data);
+                    handleFullRefresh(msg.data);
                     break;
 
                 case 'cellUpdates':
-                    handleCellUpdates(message.updates);
+                    handleCellUpdates(msg.updates);
                     break;
             }
         }
 
         function handleFullRefresh(data) {
-            console.log('Full refresh:', data);
-
-            // Update Risk Grid
             if (data.riskFactors) {
                 riskGridApi.setGridOption('rowData', data.riskFactors);
             }
 
-            // Update Positions Grid
             if (data.positions) {
                 positionsGridApi.setGridOption('rowData', data.positions);
-                document.getElementById('positionsCount').textContent =
-                    `${data.positions.length} positions from TastyTrade`;
+                document.getElementById('positionsCount').textContent = `(${data.positions.length})`;
             }
 
-            // Update Portfolios
             if (data.portfolios) {
-                updatePortfolioCards(data.portfolios);
-
-                // Update what-if trades grid
+                updatePortfolios(data.portfolios);
                 if (data.portfolios.whatif_trades) {
                     whatifGridApi.setGridOption('rowData', data.portfolios.whatif_trades);
                 }
             }
-        }
 
-        function updatePortfolioCards(portfolios) {
-            // Real portfolio
-            if (portfolios.real_portfolio) {
-                const p = portfolios.real_portfolio;
-                document.getElementById('realEquity').textContent =
-                    '$' + (p.total_equity || 0).toLocaleString('en-US', {maximumFractionDigits: 0});
-                document.getElementById('realDelta').textContent = (p.delta || 0).toFixed(1);
-                document.getElementById('realTheta').textContent = (p.theta || 0).toFixed(1);
-                document.getElementById('realPositions').textContent = p.position_count || 0;
-
-                // Color delta
-                const deltaEl = document.getElementById('realDelta');
-                deltaEl.classList.remove('positive', 'negative');
-                if (p.delta > 0) deltaEl.classList.add('positive');
-                if (p.delta < 0) deltaEl.classList.add('negative');
+            // Load events if available
+            if (data.events) {
+                eventsGridApi.setGridOption('rowData', data.events);
             }
 
-            // What-if portfolio
+            // Load patterns if available
+            if (data.patterns) {
+                patternsGridApi.setGridOption('rowData', data.patterns);
+            }
+        }
+
+        function updatePortfolios(portfolios) {
+            if (portfolios.real_portfolio) {
+                const p = portfolios.real_portfolio;
+                document.getElementById('realEquity').textContent = '$' + (p.total_equity || 0).toLocaleString('en-US', {maximumFractionDigits: 0});
+                document.getElementById('realDelta').textContent = (p.delta || 0).toFixed(1);
+                document.getElementById('realTheta').textContent = (p.theta || 0).toFixed(1);
+                document.getElementById('realVega').textContent = (p.vega || 0).toFixed(1);
+
+                const deltaEl = document.getElementById('realDelta');
+                deltaEl.style.color = p.delta >= 0 ? 'var(--green)' : 'var(--red)';
+            }
+
             if (portfolios.whatif_portfolio) {
                 const p = portfolios.whatif_portfolio;
                 document.getElementById('whatifDelta').textContent = (p.delta || 0).toFixed(1);
@@ -637,70 +824,62 @@
 
         function handleCellUpdates(updates) {
             if (!updates) return;
-            updates.forEach(update => {
-                const { grid, rowId, column, newValue } = update;
-                let gridApi = grid === 'positions' ? positionsGridApi :
-                              grid === 'risk_factors' ? riskGridApi : null;
-                if (!gridApi) return;
-
-                const rowNode = gridApi.getRowNode(rowId);
-                if (rowNode) {
-                    const data = { ...rowNode.data };
-                    data[column] = newValue;
-                    rowNode.setData(data);
-                    gridApi.flashCells({ rowNodes: [rowNode], columns: [column] });
+            updates.forEach(u => {
+                const api = u.grid === 'positions' ? positionsGridApi :
+                           u.grid === 'risk_factors' ? riskGridApi : null;
+                if (!api) return;
+                const node = api.getRowNode(u.rowId);
+                if (node) {
+                    const data = { ...node.data };
+                    data[u.column] = u.newValue;
+                    node.setData(data);
+                    api.flashCells({ rowNodes: [node], columns: [u.column] });
                 }
             });
         }
 
         // Actions
-        function showLoading(text) {
-            document.getElementById('loadingText').textContent = text;
-            document.getElementById('loadingOverlay').classList.remove('hidden');
-        }
-
-        function hideLoading() {
-            document.getElementById('loadingOverlay').classList.add('hidden');
-        }
-
         async function syncBroker() {
-            showLoading('Connecting to TastyTrade and fetching positions...');
-
+            document.getElementById('loading').classList.remove('hidden');
             try {
-                const response = await fetch(`${API_URL}/api/sync`, { method: 'POST' });
-                const result = await response.json();
-
-                if (response.ok) {
-                    console.log('Sync result:', result);
-                    updateBrokerStatus(true);
+                const res = await fetch(`${API_URL}/api/sync`, { method: 'POST' });
+                const result = await res.json();
+                if (res.ok) {
+                    updateStatus('brokerStatus', 'brokerStatusText', true, 'BROKER: CONNECTED');
                 } else {
                     alert('Sync failed: ' + (result.detail || 'Unknown error'));
                 }
             } catch (e) {
-                console.error('Sync failed:', e);
-                alert('Sync failed: Could not connect to server');
+                alert('Sync failed: ' + e.message);
             } finally {
-                hideLoading();
+                document.getElementById('loading').classList.add('hidden');
             }
         }
 
         async function refreshData() {
             try {
-                const response = await fetch(`${API_URL}/api/refresh`, { method: 'POST' });
-                const result = await response.json();
-                console.log('Refresh result:', result);
+                await fetch(`${API_URL}/api/refresh`, { method: 'POST' });
             } catch (e) {
                 console.error('Refresh failed:', e);
             }
         }
 
+        // Update time
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('marketTime').textContent = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             initGrids();
-            connectWebSocket();
+            connectWS();
 
             document.getElementById('syncBtn').addEventListener('click', syncBroker);
             document.getElementById('refreshBtn').addEventListener('click', refreshData);
+
+            setInterval(updateTime, 1000);
+            updateTime();
 
             // Heartbeat
             setInterval(() => {
