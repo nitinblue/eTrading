@@ -18,6 +18,7 @@ import sys
 import argparse
 import logging
 from pathlib import Path
+import asyncio # Ensure this is imported at the top
 
 # Setup logging
 logging.basicConfig(
@@ -43,7 +44,8 @@ def main():
     # Auto-sync from broker if requested
     if args.auto_sync:
         logger.info("Auto-sync enabled - connecting to TastyTrade broker...")
-        result = data_service.sync_from_broker()
+        # result = data_service.sync_from_broker()
+        result = asyncio.run(data_service.sync_from_broker())
         if result.success:
             logger.info(f"Synced {result.positions_count} positions from broker")
         else:

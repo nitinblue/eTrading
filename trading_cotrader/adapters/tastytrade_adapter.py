@@ -38,7 +38,7 @@ class BrokerAdapter:
     def get_account_balance(self) -> Dict[str, Decimal]:
         raise NotImplementedError
 
-    def get_positions(self) -> List[dm.Position]:
+    async def get_positions(self) -> List[dm.Position]:
         raise NotImplementedError
 
 
@@ -232,7 +232,7 @@ class TastytradeAdapter(BrokerAdapter):
 
         return greeks_map
 
-    def get_positions(self) -> List[dm.Position]:
+    async def get_positions(self) -> List[dm.Position]:
         """
         Fetch positions with Greeks from DXLink streaming.
 
@@ -332,8 +332,9 @@ class TastytradeAdapter(BrokerAdapter):
             # Fetch Greeks for all options via DXLink
             if streamer_symbols:
                 logger.info(f"Fetching Greeks for {len(streamer_symbols)} option positions via DXLink...")
-                greeks_map = asyncio.run(self._fetch_greeks_via_dxlink(streamer_symbols))
-                logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options")
+                #greeks_map = asyncio.run(self._fetch_greeks_via_dxlink(streamer_symbols))
+                greeks_map = await self._fetch_greeks_via_dxlink(streamer_symbols)
+                #logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options")
 
                 # Attach Greeks to positions
                 for streamer_symbol, greeks in greeks_map.items():
