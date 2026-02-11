@@ -1,0 +1,1825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Terminal - Institutional Grade</title>
+
+    <!-- AG Grid CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-balham-dark.css">
+
+    <style>
+        :root {
+            --bg-0: #0a0a0a;
+            --bg-1: #111111;
+            --bg-2: #1a1a1a;
+            --bg-3: #222222;
+            --bg-4: #2a2a2a;
+            --border: #333333;
+            --border-light: #444444;
+            --text-0: #ffffff;
+            --text-1: #cccccc;
+            --text-2: #888888;
+            --text-3: #666666;
+            --green: #00d26a;
+            --green-dim: rgba(0, 210, 106, 0.15);
+            --red: #ff4757;
+            --red-dim: rgba(255, 71, 87, 0.15);
+            --yellow: #ffa502;
+            --yellow-dim: rgba(255, 165, 2, 0.15);
+            --blue: #1e90ff;
+            --blue-dim: rgba(30, 144, 255, 0.15);
+            --purple: #9b59b6;
+            --purple-dim: rgba(155, 89, 182, 0.15);
+            --cyan: #00bcd4;
+            --cyan-dim: rgba(0, 188, 212, 0.15);
+            --orange: #ff6b35;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: var(--bg-0);
+            color: var(--text-1);
+            font-size: 12px;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* Top Header Bar */
+        .header-bar {
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--border);
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+        }
+
+        .header-left { display: flex; align-items: center; gap: 20px; }
+
+        .logo {
+            color: var(--cyan);
+            font-weight: bold;
+            font-size: 15px;
+            letter-spacing: 2px;
+        }
+
+        .market-time { color: var(--text-2); font-size: 11px; }
+
+        .header-center {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-right { display: flex; align-items: center; gap: 12px; }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: var(--bg-2);
+            border-radius: 12px;
+            font-size: 10px;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--red);
+        }
+
+        .status-dot.active { background: var(--green); animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn {
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg-2);
+            color: var(--text-1);
+            font-size: 11px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+
+        .btn:hover { background: var(--bg-3); border-color: var(--border-light); }
+
+        .btn-primary { background: var(--blue); border-color: var(--blue); color: white; }
+        .btn-primary:hover { background: #1a7fd4; }
+
+        .btn-success { background: var(--green); border-color: var(--green); color: white; }
+        .btn-danger { background: var(--red); border-color: var(--red); color: white; }
+
+        .btn-icon {
+            padding: 6px 8px;
+            font-size: 14px;
+        }
+
+        /* Tabs */
+        .tabs-bar {
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            height: 32px;
+        }
+
+        .tab {
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-2);
+            cursor: pointer;
+            border-right: 1px solid var(--border);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.15s;
+        }
+
+        .tab:hover { background: var(--bg-2); color: var(--text-1); }
+
+        .tab.active {
+            background: var(--bg-0);
+            color: var(--cyan);
+            border-bottom: 2px solid var(--cyan);
+        }
+
+        .tab-badge {
+            font-size: 9px;
+            padding: 1px 5px;
+            border-radius: 8px;
+            background: var(--cyan-dim);
+            color: var(--cyan);
+        }
+
+        /* Main Content */
+        .main-content {
+            height: calc(100vh - 72px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tab-content {
+            display: none;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .tab-content.active { display: flex; flex-direction: column; }
+
+        /* Portfolio Section */
+        .portfolios-section {
+            display: flex;
+            gap: 1px;
+            background: var(--border);
+            flex-shrink: 0;
+        }
+
+        .portfolio-panel {
+            flex: 1;
+            background: var(--bg-1);
+            padding: 12px 16px;
+        }
+
+        .portfolio-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .portfolio-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .portfolio-name {
+            font-size: 13px;
+            font-weight: bold;
+            color: var(--text-0);
+        }
+
+        .portfolio-badge {
+            font-size: 9px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .badge-live { background: var(--green-dim); color: var(--green); }
+        .badge-whatif { background: var(--purple-dim); color: var(--purple); }
+
+        .portfolio-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .portfolio-metrics {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+        }
+
+        .p-metric {
+            background: var(--bg-2);
+            padding: 8px 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .p-metric-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--text-0);
+        }
+
+        .p-metric-value.positive { color: var(--green); }
+        .p-metric-value.negative { color: var(--red); }
+
+        .p-metric-label {
+            font-size: 9px;
+            color: var(--text-2);
+            text-transform: uppercase;
+            margin-top: 2px;
+        }
+
+        .p-metric-greek {
+            font-size: 14px;
+            margin-right: 2px;
+        }
+
+        /* Split Panels */
+        .split-h {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .split-v {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .panel {
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .panel:last-child { border-right: none; }
+
+        .panel-header {
+            background: var(--bg-2);
+            padding: 6px 12px;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-2);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .panel-body {
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        /* Grid Container */
+        .grid-wrapper {
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* AG Grid Theme Overrides */
+        .ag-theme-balham-dark {
+            --ag-background-color: var(--bg-1);
+            --ag-header-background-color: var(--bg-2);
+            --ag-odd-row-background-color: var(--bg-1);
+            --ag-row-hover-color: var(--bg-3);
+            --ag-border-color: var(--border);
+            --ag-header-foreground-color: var(--text-2);
+            --ag-foreground-color: var(--text-1);
+            --ag-row-height: 26px;
+            --ag-header-height: 30px;
+            font-family: 'Consolas', monospace;
+            font-size: 11px;
+        }
+
+        /* Cell Colors */
+        .cell-green { color: var(--green) !important; }
+        .cell-red { color: var(--red) !important; }
+        .cell-yellow { color: var(--yellow) !important; }
+        .cell-blue { color: var(--blue) !important; }
+        .cell-purple { color: var(--purple) !important; }
+
+        /* Order Builder */
+        .order-builder {
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 16px;
+            display: none;
+        }
+
+        .order-builder.visible { display: block; }
+
+        .ob-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .ob-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: var(--text-0);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ob-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .ob-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .ob-group label {
+            font-size: 9px;
+            color: var(--text-2);
+            text-transform: uppercase;
+        }
+
+        .ob-input {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 6px 10px;
+            color: var(--text-1);
+            font-family: inherit;
+            font-size: 12px;
+            min-width: 100px;
+        }
+
+        .ob-input:focus {
+            outline: none;
+            border-color: var(--cyan);
+        }
+
+        .ob-select {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 6px 10px;
+            color: var(--text-1);
+            font-family: inherit;
+            font-size: 12px;
+            min-width: 140px;
+            cursor: pointer;
+        }
+
+        /* Strategy Templates */
+        .strategy-templates {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .strategy-chip {
+            padding: 6px 12px;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.15s;
+        }
+
+        .strategy-chip:hover {
+            border-color: var(--cyan);
+            background: var(--cyan-dim);
+        }
+
+        .strategy-chip.selected {
+            background: var(--cyan-dim);
+            border-color: var(--cyan);
+            color: var(--cyan);
+        }
+
+        .strategy-chip.defined { border-left: 3px solid var(--green); }
+        .strategy-chip.undefined { border-left: 3px solid var(--red); }
+
+        /* Legs Builder */
+        .legs-container {
+            background: var(--bg-2);
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 12px;
+        }
+
+        .leg-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            padding: 6px 8px;
+            background: var(--bg-3);
+            border-radius: 4px;
+            margin-bottom: 4px;
+        }
+
+        .leg-row:last-child { margin-bottom: 0; }
+
+        .leg-action {
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+        }
+
+        .leg-action.buy { background: var(--green-dim); color: var(--green); }
+        .leg-action.sell { background: var(--red-dim); color: var(--red); }
+
+        .leg-type {
+            font-size: 11px;
+            min-width: 40px;
+        }
+
+        .leg-strike {
+            font-weight: bold;
+            min-width: 60px;
+        }
+
+        .leg-qty {
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .leg-greeks {
+            display: flex;
+            gap: 12px;
+            margin-left: auto;
+            font-size: 10px;
+            color: var(--text-2);
+        }
+
+        .leg-remove {
+            color: var(--red);
+            cursor: pointer;
+            padding: 2px 6px;
+        }
+
+        /* Payoff Graph */
+        .payoff-container {
+            background: var(--bg-2);
+            border-radius: 4px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+
+        .payoff-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .payoff-title {
+            font-size: 11px;
+            color: var(--text-2);
+            text-transform: uppercase;
+        }
+
+        .payoff-canvas {
+            width: 100%;
+            height: 150px;
+            background: var(--bg-3);
+            border-radius: 4px;
+        }
+
+        .payoff-metrics {
+            display: flex;
+            gap: 16px;
+            margin-top: 8px;
+            font-size: 10px;
+        }
+
+        .payoff-metric {
+            display: flex;
+            gap: 4px;
+        }
+
+        .payoff-metric-label { color: var(--text-2); }
+        .payoff-metric-value { color: var(--text-0); font-weight: bold; }
+
+        /* Strategy Cheatsheet */
+        .strategy-card {
+            background: var(--bg-2);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+
+        .strategy-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .strategy-card-name {
+            font-size: 13px;
+            font-weight: bold;
+            color: var(--text-0);
+        }
+
+        .strategy-card-type {
+            font-size: 9px;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .strategy-card-body {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        .strategy-info {
+            font-size: 10px;
+        }
+
+        .strategy-info-label { color: var(--text-2); }
+        .strategy-info-value { color: var(--text-1); }
+
+        /* What-If Trade Card */
+        .whatif-trade-card {
+            background: var(--bg-2);
+            border-left: 3px solid var(--purple);
+            border-radius: 4px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+        }
+
+        .whatif-trade-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .whatif-trade-name {
+            font-weight: bold;
+            color: var(--text-0);
+        }
+
+        .whatif-trade-status {
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: var(--purple-dim);
+            color: var(--purple);
+        }
+
+        .whatif-trade-greeks {
+            display: flex;
+            gap: 16px;
+            font-size: 11px;
+        }
+
+        .whatif-trade-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        /* Loading */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 10, 10, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .loading-overlay.hidden { display: none; }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .loading-text {
+            margin-top: 12px;
+            color: var(--text-2);
+            font-size: 12px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.visible { display: flex; }
+
+        .modal {
+            background: var(--bg-1);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            min-width: 500px;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            background: var(--bg-2);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--text-0);
+        }
+
+        .modal-close {
+            color: var(--text-2);
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .modal-body {
+            padding: 16px;
+            overflow-y: auto;
+            max-height: 60vh;
+        }
+
+        .modal-footer {
+            background: var(--bg-2);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+
+        .toast {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast-success { border-left: 3px solid var(--green); }
+        .toast-error { border-left: 3px solid var(--red); }
+        .toast-warning { border-left: 3px solid var(--yellow); }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-1); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+    </style>
+</head>
+<body>
+    <!-- Header Bar -->
+    <div class="header-bar">
+        <div class="header-left">
+            <span class="logo">COTRADER</span>
+            <span class="market-time" id="marketTime">--:--:-- UTC</span>
+        </div>
+        <div class="header-center">
+            <button class="btn btn-primary" id="newTradeBtn">+ NEW TRADE</button>
+        </div>
+        <div class="header-right">
+            <div class="status-pill">
+                <span class="status-dot" id="wsStatus"></span>
+                <span id="wsStatusText">WS</span>
+            </div>
+            <div class="status-pill">
+                <span class="status-dot" id="brokerStatus"></span>
+                <span id="brokerStatusText">BROKER</span>
+            </div>
+            <button class="btn btn-primary" id="syncBtn">SYNC</button>
+            <button class="btn" id="refreshBtn">REFRESH</button>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs-bar">
+        <div class="tab active" data-tab="portfolio">Portfolio</div>
+        <div class="tab" data-tab="trades">Trades <span class="tab-badge" id="tradesCount">0</span></div>
+        <div class="tab" data-tab="whatif">What-If</div>
+        <div class="tab" data-tab="events">Events</div>
+        <div class="tab" data-tab="strategies">Strategies</div>
+        <div class="tab" data-tab="aiml">AI/ML</div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-overlay hidden" id="loading">
+        <div class="spinner"></div>
+        <div class="loading-text">Loading...</div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Order Builder (toggleable) -->
+        <div class="order-builder" id="orderBuilder">
+            <div class="ob-header">
+                <div class="ob-title">
+                    <span>Order Builder</span>
+                    <span class="portfolio-badge badge-whatif">WHAT-IF</span>
+                </div>
+                <button class="btn" id="closeOrderBuilder">×</button>
+            </div>
+
+            <!-- Strategy Templates -->
+            <div class="strategy-templates" id="strategyTemplates">
+                <div class="strategy-chip defined" data-strategy="vertical_spread">Vertical</div>
+                <div class="strategy-chip defined" data-strategy="iron_condor">Iron Condor</div>
+                <div class="strategy-chip defined" data-strategy="iron_butterfly">Iron Butterfly</div>
+                <div class="strategy-chip defined" data-strategy="butterfly">Butterfly</div>
+                <div class="strategy-chip undefined" data-strategy="straddle">Straddle</div>
+                <div class="strategy-chip undefined" data-strategy="strangle">Strangle</div>
+                <div class="strategy-chip defined" data-strategy="calendar_spread">Calendar</div>
+                <div class="strategy-chip defined" data-strategy="covered_call">Covered Call</div>
+                <div class="strategy-chip undefined" data-strategy="jade_lizard">Jade Lizard</div>
+                <div class="strategy-chip" data-strategy="custom">Custom</div>
+            </div>
+
+            <div class="ob-row">
+                <div class="ob-group">
+                    <label>Underlying</label>
+                    <input type="text" class="ob-input" id="obUnderlying" placeholder="SPY" value="SPY">
+                </div>
+                <div class="ob-group">
+                    <label>Expiration</label>
+                    <select class="ob-select" id="obExpiry">
+                        <option>2026-02-14 (3 DTE)</option>
+                        <option>2026-02-21 (10 DTE)</option>
+                        <option>2026-02-28 (17 DTE)</option>
+                        <option>2026-03-21 (38 DTE)</option>
+                    </select>
+                </div>
+                <div class="ob-group">
+                    <label>Quantity</label>
+                    <input type="number" class="ob-input" id="obQty" value="1" min="1" style="width: 70px;">
+                </div>
+                <div class="ob-group">
+                    <label>Trade Type</label>
+                    <select class="ob-select" id="obTradeType">
+                        <option value="what_if" selected>What-If</option>
+                        <option value="real">Real (Live)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Legs -->
+            <div class="legs-container" id="legsContainer">
+                <div class="leg-row">
+                    <span class="leg-action sell">SELL</span>
+                    <span class="leg-type">PUT</span>
+                    <span class="leg-strike">$580</span>
+                    <span class="leg-qty">×1</span>
+                    <div class="leg-greeks">
+                        <span>Δ -0.15</span>
+                        <span>Θ +0.12</span>
+                        <span>V 0.08</span>
+                    </div>
+                    <span class="leg-remove">×</span>
+                </div>
+                <div class="leg-row">
+                    <span class="leg-action buy">BUY</span>
+                    <span class="leg-type">PUT</span>
+                    <span class="leg-strike">$575</span>
+                    <span class="leg-qty">×1</span>
+                    <div class="leg-greeks">
+                        <span>Δ -0.10</span>
+                        <span>Θ +0.08</span>
+                        <span>V 0.05</span>
+                    </div>
+                    <span class="leg-remove">×</span>
+                </div>
+            </div>
+
+            <button class="btn" id="addLegBtn">+ Add Leg</button>
+
+            <!-- Payoff Graph -->
+            <div class="payoff-container">
+                <div class="payoff-header">
+                    <span class="payoff-title">Payoff at Expiration</span>
+                </div>
+                <canvas class="payoff-canvas" id="payoffCanvas"></canvas>
+                <div class="payoff-metrics">
+                    <div class="payoff-metric">
+                        <span class="payoff-metric-label">Max Profit:</span>
+                        <span class="payoff-metric-value cell-green" id="obMaxProfit">$124</span>
+                    </div>
+                    <div class="payoff-metric">
+                        <span class="payoff-metric-label">Max Loss:</span>
+                        <span class="payoff-metric-value cell-red" id="obMaxLoss">-$376</span>
+                    </div>
+                    <div class="payoff-metric">
+                        <span class="payoff-metric-label">Breakeven:</span>
+                        <span class="payoff-metric-value" id="obBreakeven">$578.76</span>
+                    </div>
+                    <div class="payoff-metric">
+                        <span class="payoff-metric-label">Net Δ:</span>
+                        <span class="payoff-metric-value" id="obNetDelta">-5.0</span>
+                    </div>
+                    <div class="payoff-metric">
+                        <span class="payoff-metric-label">Net Θ:</span>
+                        <span class="payoff-metric-value cell-green" id="obNetTheta">+4.0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end;">
+                <button class="btn" id="resetTradeBtn">Reset</button>
+                <button class="btn" id="saveWhatIfBtn">Save What-If</button>
+                <button class="btn btn-success" id="submitTradeBtn">Submit Trade</button>
+            </div>
+        </div>
+
+        <!-- PORTFOLIO TAB -->
+        <div class="tab-content active" id="tab-portfolio">
+            <!-- Portfolio Summary -->
+            <div class="portfolios-section">
+                <div class="portfolio-panel">
+                    <div class="portfolio-header">
+                        <div class="portfolio-title">
+                            <span class="portfolio-name">Real Portfolio</span>
+                            <span class="portfolio-badge badge-live">LIVE</span>
+                        </div>
+                        <div class="portfolio-actions">
+                            <button class="btn btn-icon" title="Refresh">↻</button>
+                        </div>
+                    </div>
+                    <div class="portfolio-metrics">
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="realEquity">$--</div>
+                            <div class="p-metric-label">Net Liq</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="realBP">$--</div>
+                            <div class="p-metric-label">Buying Power</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="realDelta">--</div>
+                            <div class="p-metric-label"><span class="p-metric-greek">Δ</span>Delta</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="realTheta">--</div>
+                            <div class="p-metric-label"><span class="p-metric-greek">Θ</span>Theta</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="realVega">--</div>
+                            <div class="p-metric-label"><span class="p-metric-greek">V</span>Vega</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="realPnL">--</div>
+                            <div class="p-metric-label">Day P&L</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="portfolio-panel">
+                    <div class="portfolio-header">
+                        <div class="portfolio-title">
+                            <span class="portfolio-name">What-If Portfolio</span>
+                            <span class="portfolio-badge badge-whatif">SIMULATION</span>
+                        </div>
+                        <div class="portfolio-actions">
+                            <button class="btn" id="mergeToRealBtn" title="Add to Real">+ Add to Real</button>
+                        </div>
+                    </div>
+                    <div class="portfolio-metrics">
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="whatifTrades">0</div>
+                            <div class="p-metric-label">Trades</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="whatifDelta">0</div>
+                            <div class="p-metric-label"><span class="p-metric-greek">Δ</span>Delta</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="whatifGamma">0</div>
+                            <div class="p-metric-label"><span class="p-metric-greek">Γ</span>Gamma</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="whatifTheta">0</div>
+                            <div class="p-metric-label"><span class="p-metric-greek">Θ</span>Theta</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="whatifVega">0</div>
+                            <div class="p-metric-label"><span class="p-metric-greek">V</span>Vega</div>
+                        </div>
+                        <div class="p-metric">
+                            <div class="p-metric-value" id="combinedDelta">0</div>
+                            <div class="p-metric-label">Combined Δ</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Positions Grid -->
+            <div class="split-h">
+                <div class="panel" style="width: 30%;">
+                    <div class="panel-header">
+                        <span>Risk by Underlying</span>
+                    </div>
+                    <div class="panel-body">
+                        <div id="riskGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">
+                        <span>Positions <span id="positionsCount" style="color: var(--text-3);">(0)</span></span>
+                    </div>
+                    <div class="panel-body">
+                        <div id="positionsGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TRADES TAB -->
+        <div class="tab-content" id="tab-trades">
+            <div class="split-h">
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">
+                        <span>Open Trades</span>
+                    </div>
+                    <div class="panel-body">
+                        <div id="openTradesGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- WHAT-IF TAB -->
+        <div class="tab-content" id="tab-whatif">
+            <div class="split-h">
+                <div class="panel" style="width: 50%;">
+                    <div class="panel-header">
+                        <span>What-If Trades</span>
+                        <button class="btn" id="newWhatIfBtn">+ New What-If</button>
+                    </div>
+                    <div class="panel-body" style="padding: 12px;">
+                        <div id="whatifTradesContainer">
+                            <!-- What-If trade cards will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">
+                        <span>Impact Analysis</span>
+                    </div>
+                    <div class="panel-body">
+                        <div id="impactGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EVENTS TAB -->
+        <div class="tab-content" id="tab-events">
+            <div class="split-h">
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">
+                        <span>Trade Events</span>
+                    </div>
+                    <div class="panel-body">
+                        <div id="eventsGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STRATEGIES TAB -->
+        <div class="tab-content" id="tab-strategies">
+            <div class="split-h">
+                <div class="panel" style="width: 50%;">
+                    <div class="panel-header">
+                        <span>Strategy Cheatsheet</span>
+                    </div>
+                    <div class="panel-body" style="padding: 12px; overflow-y: auto;">
+                        <!-- Defined Risk Strategies -->
+                        <h4 style="color: var(--green); margin-bottom: 8px; font-size: 11px; text-transform: uppercase;">Defined Risk</h4>
+
+                        <div class="strategy-card">
+                            <div class="strategy-card-header">
+                                <span class="strategy-card-name">Iron Condor</span>
+                                <span class="strategy-card-type" style="background: var(--green-dim); color: var(--green);">NEUTRAL</span>
+                            </div>
+                            <div class="strategy-card-body">
+                                <div class="strategy-info"><span class="strategy-info-label">Outlook:</span> <span class="strategy-info-value">Range-bound</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Max Profit:</span> <span class="strategy-info-value">Credit received</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Max Loss:</span> <span class="strategy-info-value">Width - Credit</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Best IV:</span> <span class="strategy-info-value">High (sell)</span></div>
+                            </div>
+                            <div style="margin-top: 8px; font-size: 10px; color: var(--text-2);">
+                                <strong>Structure:</strong> Sell OTM Put Spread + Sell OTM Call Spread
+                            </div>
+                            <button class="btn" style="margin-top: 8px;" onclick="applyStrategy('iron_condor')">Use Template</button>
+                        </div>
+
+                        <div class="strategy-card">
+                            <div class="strategy-card-header">
+                                <span class="strategy-card-name">Vertical Spread</span>
+                                <span class="strategy-card-type" style="background: var(--blue-dim); color: var(--blue);">DIRECTIONAL</span>
+                            </div>
+                            <div class="strategy-card-body">
+                                <div class="strategy-info"><span class="strategy-info-label">Outlook:</span> <span class="strategy-info-value">Bullish/Bearish</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Max Profit:</span> <span class="strategy-info-value">Width - Debit</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Max Loss:</span> <span class="strategy-info-value">Debit paid</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Best IV:</span> <span class="strategy-info-value">Low (buy)</span></div>
+                            </div>
+                            <div style="margin-top: 8px; font-size: 10px; color: var(--text-2);">
+                                <strong>Structure:</strong> Buy strike A + Sell strike B (same exp)
+                            </div>
+                            <button class="btn" style="margin-top: 8px;" onclick="applyStrategy('vertical_spread')">Use Template</button>
+                        </div>
+
+                        <div class="strategy-card">
+                            <div class="strategy-card-header">
+                                <span class="strategy-card-name">Butterfly</span>
+                                <span class="strategy-card-type" style="background: var(--green-dim); color: var(--green);">NEUTRAL</span>
+                            </div>
+                            <div class="strategy-card-body">
+                                <div class="strategy-info"><span class="strategy-info-label">Outlook:</span> <span class="strategy-info-value">Pin to strike</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Max Profit:</span> <span class="strategy-info-value">Width - Debit</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Max Loss:</span> <span class="strategy-info-value">Debit paid</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Best IV:</span> <span class="strategy-info-value">Any</span></div>
+                            </div>
+                            <div style="margin-top: 8px; font-size: 10px; color: var(--text-2);">
+                                <strong>Structure:</strong> Buy 1 ITM + Sell 2 ATM + Buy 1 OTM
+                            </div>
+                            <button class="btn" style="margin-top: 8px;" onclick="applyStrategy('butterfly')">Use Template</button>
+                        </div>
+
+                        <!-- Undefined Risk Strategies -->
+                        <h4 style="color: var(--red); margin: 16px 0 8px; font-size: 11px; text-transform: uppercase;">Undefined Risk</h4>
+
+                        <div class="strategy-card">
+                            <div class="strategy-card-header">
+                                <span class="strategy-card-name">Short Straddle</span>
+                                <span class="strategy-card-type" style="background: var(--red-dim); color: var(--red);">HIGH RISK</span>
+                            </div>
+                            <div class="strategy-card-body">
+                                <div class="strategy-info"><span class="strategy-info-label">Outlook:</span> <span class="strategy-info-value">Low volatility</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Max Profit:</span> <span class="strategy-info-value">Credit received</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Max Loss:</span> <span class="strategy-info-value">Unlimited</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Best IV:</span> <span class="strategy-info-value">Very High</span></div>
+                            </div>
+                            <div style="margin-top: 8px; font-size: 10px; color: var(--text-2);">
+                                <strong>Structure:</strong> Sell ATM Call + Sell ATM Put
+                            </div>
+                            <button class="btn" style="margin-top: 8px;" onclick="applyStrategy('straddle')">Use Template</button>
+                        </div>
+
+                        <div class="strategy-card">
+                            <div class="strategy-card-header">
+                                <span class="strategy-card-name">Strangle</span>
+                                <span class="strategy-card-type" style="background: var(--red-dim); color: var(--red);">HIGH RISK</span>
+                            </div>
+                            <div class="strategy-card-body">
+                                <div class="strategy-info"><span class="strategy-info-label">Outlook:</span> <span class="strategy-info-value">Range-bound</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Max Profit:</span> <span class="strategy-info-value">Credit received</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Max Loss:</span> <span class="strategy-info-value">Unlimited</span></div>
+                                <div class="strategy-info"><span class="strategy-info-label">Best IV:</span> <span class="strategy-info-value">High</span></div>
+                            </div>
+                            <div style="margin-top: 8px; font-size: 10px; color: var(--text-2);">
+                                <strong>Structure:</strong> Sell OTM Call + Sell OTM Put
+                            </div>
+                            <button class="btn" style="margin-top: 8px;" onclick="applyStrategy('strangle')">Use Template</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">
+                        <span>Strategy Performance</span>
+                    </div>
+                    <div class="panel-body">
+                        <div id="strategyPerfGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI/ML TAB -->
+        <div class="tab-content" id="tab-aiml">
+            <div class="split-h">
+                <div class="panel" style="width: 40%;">
+                    <div class="panel-header">
+                        <span>Recognized Patterns</span>
+                    </div>
+                    <div class="panel-body">
+                        <div id="patternsGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+                <div class="panel" style="flex: 1;">
+                    <div class="panel-header">
+                        <span>ML Predictions</span>
+                    </div>
+                    <div class="panel-body">
+                        <div id="predictionsGrid" class="ag-theme-balham-dark" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- AG Grid JS -->
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
+
+    <script>
+        // Configuration
+        const WS_URL = 'ws://localhost:8000/ws';
+        const API_URL = 'http://localhost:8000';
+
+        // State
+        let ws = null;
+        let whatIfTrades = [];
+        let selectedStrategy = null;
+
+        // Grid APIs
+        let grids = {};
+
+        // Formatters
+        const numFmt = (p) => p.value != null ? parseFloat(p.value).toFixed(2) : '';
+        const pnlFmt = (p) => {
+            if (p.value == null) return '';
+            const v = parseFloat(p.value);
+            return `<span class="${v >= 0 ? 'cell-green' : 'cell-red'}">${v >= 0 ? '+' : ''}${v.toFixed(2)}</span>`;
+        };
+        const currencyFmt = (p) => {
+            if (p.value == null) return '';
+            const v = parseFloat(p.value);
+            return `$${v.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+        };
+
+        // Column Definitions
+        const riskCols = [
+            { field: 'underlying', headerName: 'UL', width: 70, pinned: 'left' },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 70 },
+            { field: 'gamma', headerName: 'Γ', cellRenderer: numFmt, width: 70 },
+            { field: 'theta', headerName: 'Θ', cellRenderer: numFmt, width: 70 },
+            { field: 'vega', headerName: 'V', cellRenderer: numFmt, width: 70 },
+            { field: 'positions', headerName: '#', width: 50 },
+            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlFmt, width: 80 },
+        ];
+
+        const posCols = [
+            { field: 'symbol', headerName: 'Symbol', width: 160, pinned: 'left' },
+            { field: 'underlying', headerName: 'UL', width: 60 },
+            { field: 'type', headerName: 'Type', width: 50 },
+            { field: 'strike', headerName: 'K', cellRenderer: numFmt, width: 60 },
+            { field: 'expiry', headerName: 'Exp', width: 90 },
+            { field: 'dte', headerName: 'DTE', width: 50 },
+            { field: 'qty', headerName: 'Qty', width: 50 },
+            { field: 'entry', headerName: 'Entry', cellRenderer: numFmt, width: 65 },
+            { field: 'mark', headerName: 'Mark', cellRenderer: numFmt, width: 65 },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 60 },
+            { field: 'gamma', headerName: 'Γ', cellRenderer: numFmt, width: 60 },
+            { field: 'theta', headerName: 'Θ', cellRenderer: numFmt, width: 60 },
+            { field: 'vega', headerName: 'V', cellRenderer: numFmt, width: 60 },
+            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlFmt, width: 85 },
+        ];
+
+        const tradesCols = [
+            { field: 'underlying', headerName: 'UL', width: 70 },
+            { field: 'strategy', headerName: 'Strategy', width: 120 },
+            { field: 'status', headerName: 'Status', width: 90 },
+            { field: 'legs', headerName: 'Legs', width: 50 },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 70 },
+            { field: 'theta', headerName: 'Θ', cellRenderer: numFmt, width: 70 },
+            { field: 'entry_price', headerName: 'Entry', cellRenderer: numFmt, width: 80 },
+            { field: 'current_price', headerName: 'Mark', cellRenderer: numFmt, width: 80 },
+            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlFmt, width: 90 },
+            { field: 'dte', headerName: 'DTE', width: 50 },
+        ];
+
+        const eventsCols = [
+            { field: 'timestamp', headerName: 'Time', width: 150 },
+            { field: 'event_type', headerName: 'Type', width: 110 },
+            { field: 'underlying', headerName: 'UL', width: 70 },
+            { field: 'action', headerName: 'Action', width: 110 },
+            { field: 'details', headerName: 'Details', flex: 1 },
+        ];
+
+        const patternsCols = [
+            { field: 'pattern_type', headerName: 'Pattern', width: 130 },
+            { field: 'underlying', headerName: 'UL', width: 70 },
+            { field: 'confidence', headerName: 'Conf', width: 70 },
+            { field: 'occurrences', headerName: 'Count', width: 70 },
+            { field: 'success_rate', headerName: 'Win %', width: 70 },
+            { field: 'description', headerName: 'Description', flex: 1 },
+        ];
+
+        const predictionsCols = [
+            { field: 'model', headerName: 'Model', width: 110 },
+            { field: 'underlying', headerName: 'UL', width: 70 },
+            { field: 'prediction', headerName: 'Prediction', width: 110 },
+            { field: 'probability', headerName: 'Prob', width: 70 },
+            { field: 'horizon', headerName: 'Horizon', width: 90 },
+            { field: 'timestamp', headerName: 'Time', width: 130 },
+        ];
+
+        const impactCols = [
+            { field: 'metric', headerName: 'Metric', width: 140 },
+            { field: 'real', headerName: 'Real', width: 100 },
+            { field: 'whatif', headerName: 'What-If', width: 100 },
+            { field: 'combined', headerName: 'Combined', width: 100 },
+            { field: 'change', headerName: 'Change', cellRenderer: pnlFmt, width: 100 },
+        ];
+
+        const strategyPerfCols = [
+            { field: 'strategy', headerName: 'Strategy', width: 130 },
+            { field: 'trades', headerName: 'Trades', width: 70 },
+            { field: 'wins', headerName: 'Wins', width: 60 },
+            { field: 'losses', headerName: 'Losses', width: 70 },
+            { field: 'win_rate', headerName: 'Win %', width: 70 },
+            { field: 'avg_pnl', headerName: 'Avg P&L', cellRenderer: pnlFmt, width: 90 },
+            { field: 'total_pnl', headerName: 'Total P&L', cellRenderer: pnlFmt, width: 100 },
+        ];
+
+        // Initialize Grids
+        function initGrids() {
+            const defaultOpts = {
+                animateRows: true,
+                rowSelection: 'single',
+                suppressCellFocus: true,
+                defaultColDef: { sortable: true, resizable: true },
+            };
+
+            grids.risk = agGrid.createGrid(document.getElementById('riskGrid'), {
+                ...defaultOpts, columnDefs: riskCols, rowData: [], getRowId: p => p.data.id || p.data.underlying
+            });
+
+            grids.positions = agGrid.createGrid(document.getElementById('positionsGrid'), {
+                ...defaultOpts, columnDefs: posCols, rowData: [], getRowId: p => p.data.id
+            });
+
+            grids.openTrades = agGrid.createGrid(document.getElementById('openTradesGrid'), {
+                ...defaultOpts, columnDefs: tradesCols, rowData: [], getRowId: p => p.data.id
+            });
+
+            grids.events = agGrid.createGrid(document.getElementById('eventsGrid'), {
+                ...defaultOpts, columnDefs: eventsCols, rowData: [], getRowId: p => p.data.id || p.data.event_id
+            });
+
+            grids.patterns = agGrid.createGrid(document.getElementById('patternsGrid'), {
+                ...defaultOpts, columnDefs: patternsCols, rowData: [], getRowId: p => p.data.pattern_id
+            });
+
+            grids.predictions = agGrid.createGrid(document.getElementById('predictionsGrid'), {
+                ...defaultOpts, columnDefs: predictionsCols, rowData: [], getRowId: p => p.data.id
+            });
+
+            grids.impact = agGrid.createGrid(document.getElementById('impactGrid'), {
+                ...defaultOpts, columnDefs: impactCols, rowData: getImpactData(), getRowId: p => p.data.metric
+            });
+
+            grids.strategyPerf = agGrid.createGrid(document.getElementById('strategyPerfGrid'), {
+                ...defaultOpts, columnDefs: strategyPerfCols, rowData: getStrategyPerfData(), getRowId: p => p.data.strategy
+            });
+        }
+
+        // Sample Data
+        function getImpactData() {
+            return [
+                { metric: 'Portfolio Delta', real: 45, whatif: -5, combined: 40, change: -5 },
+                { metric: 'Portfolio Gamma', real: 2.5, whatif: 0.3, combined: 2.8, change: 0.3 },
+                { metric: 'Portfolio Theta', real: -15, whatif: 4, combined: -11, change: 4 },
+                { metric: 'Portfolio Vega', real: 120, whatif: -20, combined: 100, change: -20 },
+                { metric: 'Buying Power Used', real: 15000, whatif: 500, combined: 15500, change: 500 },
+                { metric: 'Max Risk', real: 5000, whatif: 376, combined: 5376, change: 376 },
+            ];
+        }
+
+        function getStrategyPerfData() {
+            return [
+                { strategy: 'Iron Condor', trades: 45, wins: 32, losses: 13, win_rate: '71%', avg_pnl: 85, total_pnl: 3825 },
+                { strategy: 'Vertical Spread', trades: 28, wins: 18, losses: 10, win_rate: '64%', avg_pnl: 120, total_pnl: 3360 },
+                { strategy: 'Strangle', trades: 15, wins: 10, losses: 5, win_rate: '67%', avg_pnl: 210, total_pnl: 3150 },
+                { strategy: 'Butterfly', trades: 8, wins: 5, losses: 3, win_rate: '63%', avg_pnl: 95, total_pnl: 760 },
+            ];
+        }
+
+        // Tab handling
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+            });
+        });
+
+        // Order Builder
+        function showOrderBuilder() {
+            document.getElementById('orderBuilder').classList.add('visible');
+            drawPayoffGraph();
+        }
+
+        function hideOrderBuilder() {
+            document.getElementById('orderBuilder').classList.remove('visible');
+        }
+
+        function applyStrategy(strategyType) {
+            showOrderBuilder();
+            selectedStrategy = strategyType;
+
+            // Update strategy chips
+            document.querySelectorAll('.strategy-chip').forEach(chip => {
+                chip.classList.toggle('selected', chip.dataset.strategy === strategyType);
+            });
+
+            // Update legs based on strategy template
+            updateLegsForStrategy(strategyType);
+            drawPayoffGraph();
+        }
+
+        function updateLegsForStrategy(strategyType) {
+            const legsContainer = document.getElementById('legsContainer');
+            const underlying = document.getElementById('obUnderlying').value || 'SPY';
+
+            let legsHtml = '';
+
+            switch(strategyType) {
+                case 'vertical_spread':
+                    legsHtml = `
+                        <div class="leg-row">
+                            <span class="leg-action sell">SELL</span>
+                            <span class="leg-type">PUT</span>
+                            <span class="leg-strike">$580</span>
+                            <span class="leg-qty">×1</span>
+                            <div class="leg-greeks"><span>Δ -0.15</span><span>Θ +0.12</span></div>
+                            <span class="leg-remove">×</span>
+                        </div>
+                        <div class="leg-row">
+                            <span class="leg-action buy">BUY</span>
+                            <span class="leg-type">PUT</span>
+                            <span class="leg-strike">$575</span>
+                            <span class="leg-qty">×1</span>
+                            <div class="leg-greeks"><span>Δ -0.10</span><span>Θ +0.08</span></div>
+                            <span class="leg-remove">×</span>
+                        </div>`;
+                    break;
+                case 'iron_condor':
+                    legsHtml = `
+                        <div class="leg-row">
+                            <span class="leg-action buy">BUY</span>
+                            <span class="leg-type">PUT</span>
+                            <span class="leg-strike">$570</span>
+                            <span class="leg-qty">×1</span>
+                            <div class="leg-greeks"><span>Δ -0.08</span><span>Θ +0.06</span></div>
+                            <span class="leg-remove">×</span>
+                        </div>
+                        <div class="leg-row">
+                            <span class="leg-action sell">SELL</span>
+                            <span class="leg-type">PUT</span>
+                            <span class="leg-strike">$575</span>
+                            <span class="leg-qty">×1</span>
+                            <div class="leg-greeks"><span>Δ -0.12</span><span>Θ +0.10</span></div>
+                            <span class="leg-remove">×</span>
+                        </div>
+                        <div class="leg-row">
+                            <span class="leg-action sell">SELL</span>
+                            <span class="leg-type">CALL</span>
+                            <span class="leg-strike">$610</span>
+                            <span class="leg-qty">×1</span>
+                            <div class="leg-greeks"><span>Δ +0.12</span><span>Θ +0.10</span></div>
+                            <span class="leg-remove">×</span>
+                        </div>
+                        <div class="leg-row">
+                            <span class="leg-action buy">BUY</span>
+                            <span class="leg-type">CALL</span>
+                            <span class="leg-strike">$615</span>
+                            <span class="leg-qty">×1</span>
+                            <div class="leg-greeks"><span>Δ +0.08</span><span>Θ +0.06</span></div>
+                            <span class="leg-remove">×</span>
+                        </div>`;
+                    break;
+                case 'straddle':
+                    legsHtml = `
+                        <div class="leg-row">
+                            <span class="leg-action sell">SELL</span>
+                            <span class="leg-type">CALL</span>
+                            <span class="leg-strike">$590</span>
+                            <span class="leg-qty">×1</span>
+                            <div class="leg-greeks"><span>Δ +0.50</span><span>Θ +0.25</span></div>
+                            <span class="leg-remove">×</span>
+                        </div>
+                        <div class="leg-row">
+                            <span class="leg-action sell">SELL</span>
+                            <span class="leg-type">PUT</span>
+                            <span class="leg-strike">$590</span>
+                            <span class="leg-qty">×1</span>
+                            <div class="leg-greeks"><span>Δ -0.50</span><span>Θ +0.25</span></div>
+                            <span class="leg-remove">×</span>
+                        </div>`;
+                    break;
+                default:
+                    legsHtml = `<div style="padding: 12px; color: var(--text-2); text-align: center;">Click + Add Leg to build your trade</div>`;
+            }
+
+            legsContainer.innerHTML = legsHtml;
+        }
+
+        // Payoff Graph
+        function drawPayoffGraph() {
+            const canvas = document.getElementById('payoffCanvas');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            const width = canvas.offsetWidth;
+            const height = canvas.offsetHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            // Clear
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-3');
+            ctx.fillRect(0, 0, width, height);
+
+            // Sample payoff data for a put credit spread
+            const strikes = [560, 570, 575, 580, 590, 600, 610];
+            const payoffs = [-376, -376, -126, 124, 124, 124, 124]; // Example payoff
+
+            const minPayoff = Math.min(...payoffs);
+            const maxPayoff = Math.max(...payoffs);
+            const range = maxPayoff - minPayoff || 1;
+
+            // Draw zero line
+            const zeroY = height - ((0 - minPayoff) / range) * (height - 40) - 20;
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(0, zeroY);
+            ctx.lineTo(width, zeroY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw payoff line
+            ctx.strokeStyle = '#00d26a';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            strikes.forEach((strike, i) => {
+                const x = (i / (strikes.length - 1)) * (width - 40) + 20;
+                const y = height - ((payoffs[i] - minPayoff) / range) * (height - 40) - 20;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+
+            ctx.stroke();
+
+            // Fill profit area
+            ctx.fillStyle = 'rgba(0, 210, 106, 0.1)';
+            ctx.beginPath();
+            ctx.moveTo(20, zeroY);
+
+            strikes.forEach((strike, i) => {
+                const x = (i / (strikes.length - 1)) * (width - 40) + 20;
+                const y = height - ((payoffs[i] - minPayoff) / range) * (height - 40) - 20;
+                if (payoffs[i] > 0) {
+                    ctx.lineTo(x, y);
+                } else {
+                    ctx.lineTo(x, zeroY);
+                }
+            });
+
+            ctx.lineTo(width - 20, zeroY);
+            ctx.closePath();
+            ctx.fill();
+
+            // Fill loss area
+            ctx.fillStyle = 'rgba(255, 71, 87, 0.1)';
+            ctx.beginPath();
+            ctx.moveTo(20, zeroY);
+
+            strikes.forEach((strike, i) => {
+                const x = (i / (strikes.length - 1)) * (width - 40) + 20;
+                const y = height - ((payoffs[i] - minPayoff) / range) * (height - 40) - 20;
+                if (payoffs[i] < 0) {
+                    ctx.lineTo(x, y);
+                } else {
+                    ctx.lineTo(x, zeroY);
+                }
+            });
+
+            ctx.lineTo(width - 20, zeroY);
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw strike labels
+            ctx.fillStyle = '#888';
+            ctx.font = '10px Consolas';
+            ctx.textAlign = 'center';
+            strikes.forEach((strike, i) => {
+                const x = (i / (strikes.length - 1)) * (width - 40) + 20;
+                ctx.fillText('$' + strike, x, height - 5);
+            });
+        }
+
+        // WebSocket
+        function connectWS() {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                updateStatus('wsStatus', 'wsStatusText', true, 'WS');
+            };
+
+            ws.onclose = () => {
+                updateStatus('wsStatus', 'wsStatusText', false, 'WS');
+                setTimeout(connectWS, 3000);
+            };
+
+            ws.onmessage = (e) => {
+                try {
+                    handleMessage(JSON.parse(e.data));
+                } catch (err) {
+                    console.error('Parse error:', err);
+                }
+            };
+        }
+
+        function updateStatus(dotId, textId, active, text) {
+            const dot = document.getElementById(dotId);
+            const txt = document.getElementById(textId);
+            if (dot) dot.classList.toggle('active', active);
+            if (txt) txt.textContent = text;
+        }
+
+        function handleMessage(msg) {
+            switch (msg.type) {
+                case 'connected':
+                    updateStatus('brokerStatus', 'brokerStatusText', msg.broker_connected, 'BROKER');
+                    break;
+                case 'fullRefresh':
+                    handleFullRefresh(msg.data);
+                    break;
+                case 'cellUpdates':
+                    handleCellUpdates(msg.updates);
+                    break;
+            }
+        }
+
+        function handleFullRefresh(data) {
+            if (data.riskFactors && grids.risk) {
+                grids.risk.setGridOption('rowData', data.riskFactors);
+            }
+
+            if (data.positions && grids.positions) {
+                grids.positions.setGridOption('rowData', data.positions);
+                document.getElementById('positionsCount').textContent = `(${data.positions.length})`;
+            }
+
+            if (data.portfolios) {
+                updatePortfolios(data.portfolios);
+            }
+
+            if (data.events && grids.events) {
+                grids.events.setGridOption('rowData', data.events);
+            }
+
+            if (data.patterns && grids.patterns) {
+                grids.patterns.setGridOption('rowData', data.patterns);
+            }
+        }
+
+        function updatePortfolios(portfolios) {
+            if (portfolios.real_portfolio) {
+                const p = portfolios.real_portfolio;
+                updateEl('realEquity', '$' + formatNumber(p.total_equity || 0));
+                updateEl('realBP', '$' + formatNumber(p.buying_power || 0));
+                updateEl('realDelta', formatDecimal(p.delta));
+                updateEl('realTheta', formatDecimal(p.theta));
+                updateEl('realVega', formatDecimal(p.vega));
+                updateEl('realPnL', formatPnL(p.total_pnl));
+
+                colorizeValue('realDelta', p.delta);
+                colorizeValue('realPnL', p.total_pnl);
+            }
+
+            if (portfolios.whatif_portfolio) {
+                const p = portfolios.whatif_portfolio;
+                updateEl('whatifTrades', p.trade_count || 0);
+                updateEl('whatifDelta', formatDecimal(p.delta));
+                updateEl('whatifGamma', formatDecimal(p.gamma, 3));
+                updateEl('whatifTheta', formatDecimal(p.theta));
+                updateEl('whatifVega', formatDecimal(p.vega));
+
+                // Calculate combined delta
+                const realDelta = portfolios.real_portfolio?.delta || 0;
+                const combinedDelta = realDelta + (p.delta || 0);
+                updateEl('combinedDelta', formatDecimal(combinedDelta));
+                colorizeValue('combinedDelta', combinedDelta);
+            }
+        }
+
+        function handleCellUpdates(updates) {
+            if (!updates) return;
+            updates.forEach(u => {
+                const grid = u.grid === 'positions' ? grids.positions :
+                            u.grid === 'risk_factors' ? grids.risk : null;
+                if (!grid) return;
+                const node = grid.getRowNode(u.rowId);
+                if (node) {
+                    const data = { ...node.data };
+                    data[u.column] = u.newValue;
+                    node.setData(data);
+                    grid.flashCells({ rowNodes: [node], columns: [u.column] });
+                }
+            });
+        }
+
+        // Helper functions
+        function updateEl(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        }
+
+        function formatNumber(n) {
+            return n.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+        }
+
+        function formatDecimal(n, decimals = 1) {
+            if (n == null) return '0';
+            return parseFloat(n).toFixed(decimals);
+        }
+
+        function formatPnL(n) {
+            if (n == null) return '$0';
+            const v = parseFloat(n);
+            return (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+        }
+
+        function colorizeValue(id, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.remove('positive', 'negative');
+            if (value > 0) el.classList.add('positive');
+            else if (value < 0) el.classList.add('negative');
+        }
+
+        // API calls
+        async function syncBroker() {
+            showLoading('Syncing with broker...');
+            try {
+                const res = await fetch(`${API_URL}/api/sync`, { method: 'POST' });
+                const result = await res.json();
+                if (res.ok) {
+                    updateStatus('brokerStatus', 'brokerStatusText', true, 'BROKER');
+                    showToast('Sync completed successfully', 'success');
+                } else {
+                    showToast('Sync failed: ' + (result.detail || 'Unknown error'), 'error');
+                }
+            } catch (e) {
+                showToast('Sync failed: ' + e.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function refreshData() {
+            try {
+                await fetch(`${API_URL}/api/refresh`, { method: 'POST' });
+                showToast('Data refreshed', 'success');
+            } catch (e) {
+                console.error('Refresh failed:', e);
+            }
+        }
+
+        // UI Helpers
+        function showLoading(text = 'Loading...') {
+            document.querySelector('.loading-text').textContent = text;
+            document.getElementById('loading').classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.add('hidden');
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        // Update time
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('marketTime').textContent = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initGrids();
+            connectWS();
+
+            // Event listeners
+            document.getElementById('syncBtn').addEventListener('click', syncBroker);
+            document.getElementById('refreshBtn').addEventListener('click', refreshData);
+            document.getElementById('newTradeBtn').addEventListener('click', showOrderBuilder);
+            document.getElementById('closeOrderBuilder').addEventListener('click', hideOrderBuilder);
+            document.getElementById('newWhatIfBtn')?.addEventListener('click', showOrderBuilder);
+
+            // Strategy chips
+            document.querySelectorAll('.strategy-chip').forEach(chip => {
+                chip.addEventListener('click', () => applyStrategy(chip.dataset.strategy));
+            });
+
+            // Time update
+            setInterval(updateTime, 1000);
+            updateTime();
+
+            // WebSocket heartbeat
+            setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 30000);
+
+            // Draw payoff graph on resize
+            window.addEventListener('resize', drawPayoffGraph);
+        });
+    </script>
+</body>
+</html>

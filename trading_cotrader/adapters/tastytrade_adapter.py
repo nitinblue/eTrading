@@ -2,6 +2,7 @@
 Tastytrade Broker Adapter - DXLink Streaming for Greeks
 
 Uses DXLinkStreamer and DXGreeks for reliable Greeks fetching.
+Supports both sync and async contexts (FastAPI, standalone scripts).
 """
 
 from typing import List, Dict, Any, Optional
@@ -12,6 +13,7 @@ import yaml
 from pathlib import Path
 from collections import defaultdict
 import asyncio
+import concurrent.futures
 
 from tastytrade import Session, Account
 from tastytrade.instruments import Equity, Option
@@ -23,6 +25,9 @@ import re
 import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
+
+# Thread pool for running async code from sync context
+_thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 
 class BrokerAdapter:
@@ -232,6 +237,25 @@ class TastytradeAdapter(BrokerAdapter):
 
         return greeks_map
 
+    def _run_async(self, coro):
+        """
+        Run an async coroutine from sync context.
+        Handles both standalone and FastAPI (already in event loop) scenarios.
+        """
+        try:
+            # Check if we're in an existing event loop
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # We're inside an event loop (FastAPI), run in thread pool
+            future = _thread_pool.submit(asyncio.run, coro)
+            return future.result(timeout=30)
+        else:
+            # No event loop, create one
+            return asyncio.run(coro)
+
     def get_positions(self) -> List[dm.Position]:
         """
         Fetch positions with Greeks from DXLink streaming.
@@ -240,6 +264,8 @@ class TastytradeAdapter(BrokerAdapter):
         2. Convert OCC symbols to streamer symbols
         3. Fetch Greeks via DXLink streaming
         4. Attach Greeks to positions
+
+        Works in both sync and async contexts.
         """
         try:
             if not self.account:
@@ -332,7 +358,7 @@ class TastytradeAdapter(BrokerAdapter):
             # Fetch Greeks for all options via DXLink
             if streamer_symbols:
                 logger.info(f"Fetching Greeks for {len(streamer_symbols)} option positions via DXLink...")
-                greeks_map = asyncio.run(self._fetch_greeks_via_dxlink(streamer_symbols))
+                greeks_map = self._run_async(self._fetch_greeks_via_dxlink(streamer_symbols))
                 logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options")
 
                 # Attach Greeks to positions
