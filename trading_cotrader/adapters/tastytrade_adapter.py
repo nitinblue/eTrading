@@ -205,7 +205,7 @@ class TastytradeAdapter(BrokerAdapter):
                         )
 
                         # Extract symbol from event
-                        event_symbol = greeks_event.eventSymbol
+                        event_symbol = greeks_event.event_symbol
 
                         if event_symbol in symbols_needed:
                             greeks_map[event_symbol] = dm.Greeks(
@@ -319,7 +319,8 @@ class TastytradeAdapter(BrokerAdapter):
                     # Get broker position ID
                     broker_pos_id = str(pos_data.id) if hasattr(pos_data, 'id') else None
                     if not broker_pos_id:
-                        broker_pos_id = f"{self.account_id}_{symbol.ticker}"
+                        clean_symbol = "".join(pos_data.symbol.split())
+                        broker_pos_id = f"{self.account_id}_{clean_symbol}"
 
                     # Get current price
                     current_price = Decimal('0')
@@ -384,11 +385,11 @@ class TastytradeAdapter(BrokerAdapter):
                         # Example: Short call has negative delta for the portfolio
                         qty = position.quantity  # Already signed based on cost_effect
                         position.greeks = dm.Greeks(
-                            delta=greeks.delta * qty,
-                            gamma=greeks.gamma * abs(qty),  # Gamma is always positive magnitude
-                            theta=greeks.theta * qty,       # Short options = positive theta (collect decay)
-                            vega=greeks.vega * qty,         # Short options = negative vega (hurt by IV rise)
-                            rho=greeks.rho * qty,
+                            delta=greeks.delta * raw_quantity,  # Delta is linear with quantity
+                            gamma=greeks.gamma * abs(raw_quantity),  # Gamma is always positive magnitude
+                            theta=greeks.theta * raw_quantity,       # Short options = positive theta (collect decay)
+                            vega=greeks.vega * raw_quantity,         # Short options = negative vega (hurt by IV rise)
+                            rho=greeks.rho * raw_quantity,
                             timestamp=greeks.timestamp
                         )
                         direction = "SHORT" if qty < 0 else "LONG"
