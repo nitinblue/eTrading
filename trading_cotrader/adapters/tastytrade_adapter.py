@@ -293,12 +293,25 @@ class TastytradeAdapter(BrokerAdapter):
                     symbol = self._parse_symbol_from_position(pos_data)
 
                     # Get signed quantity
+                    # Tastytrade uses cost_effect: Credit = short, Debit = long
                     raw_quantity = int(pos_data.quantity or 0)
-                    if hasattr(pos_data, 'quantity_direction'):
-                        if pos_data.quantity_direction == 'Short':
-                            raw_quantity = -abs(raw_quantity)
-                        else:
-                            raw_quantity = abs(raw_quantity)
+
+                    # Determine direction from cost_effect (primary) or quantity_direction (fallback)
+                    is_short = False
+                    if hasattr(pos_data, 'cost_effect') and pos_data.cost_effect:
+                        # Credit means you received money = short position
+                        # Debit means you paid money = long position
+                        cost_effect = str(pos_data.cost_effect).lower()
+                        is_short = cost_effect == 'credit'
+                        logger.debug(f"Position {pos_data.symbol}: cost_effect={cost_effect}, is_short={is_short}")
+                    elif hasattr(pos_data, 'quantity_direction'):
+                        is_short = pos_data.quantity_direction == 'Short'
+
+                    # Apply sign based on direction
+                    if is_short:
+                        raw_quantity = -abs(raw_quantity)
+                    else:
+                        raw_quantity = abs(raw_quantity)
 
                     if raw_quantity == 0:
                         continue
@@ -364,16 +377,22 @@ class TastytradeAdapter(BrokerAdapter):
                 # Attach Greeks to positions
                 for streamer_symbol, greeks in greeks_map.items():
                     for position in symbol_to_positions[streamer_symbol]:
-                        # Greeks are per-contract, multiply by quantity for position-level
+                        # Greeks are per-contract from DXLink
+                        # Multiply by signed quantity for position-level Greeks:
+                        # - Long (qty > 0): Greeks keep their sign
+                        # - Short (qty < 0): Greeks are inverted
+                        # Example: Short call has negative delta for the portfolio
+                        qty = position.quantity  # Already signed based on cost_effect
                         position.greeks = dm.Greeks(
-                            delta=greeks.delta * abs(position.quantity),
-                            gamma=greeks.gamma * abs(position.quantity),
-                            theta=greeks.theta * abs(position.quantity),
-                            vega=greeks.vega * abs(position.quantity),
-                            rho=greeks.rho * abs(position.quantity),
+                            delta=greeks.delta * qty,
+                            gamma=greeks.gamma * abs(qty),  # Gamma is always positive magnitude
+                            theta=greeks.theta * qty,       # Short options = positive theta (collect decay)
+                            vega=greeks.vega * qty,         # Short options = negative vega (hurt by IV rise)
+                            rho=greeks.rho * qty,
                             timestamp=greeks.timestamp
                         )
-                        logger.debug(f"✓ Attached Greeks to {position.symbol.ticker}: Δ={position.greeks.delta:.2f}")
+                        direction = "SHORT" if qty < 0 else "LONG"
+                        logger.debug(f"✓ {direction} {position.symbol.ticker}: Δ={position.greeks.delta:.2f}, Θ={position.greeks.theta:.2f}")
 
             # Filter out options without Greeks
             positions_with_greeks = [p for p in positions if p.greeks is not None]
