@@ -167,6 +167,10 @@ async def root():
             "sync": "POST /api/sync - Sync from TastyTrade broker",
             "refresh": "POST /api/refresh - Refresh from database",
             "portfolios": "GET /api/portfolios - Get real + what-if portfolios",
+            "whatif": "POST /api/whatif - Create what-if trade",
+            "events": "GET /api/events - Get trade events (event sourcing)",
+            "ai_status": "GET /api/ai/status - AI/ML learning status",
+            "ai_recommendations": "GET /api/ai/recommendations - AI suggestions",
         },
         "containers": {
             "initialized": container_manager.is_initialized,
@@ -290,6 +294,178 @@ async def get_portfolios():
         return JSONResponse(content=json.loads(json_dumps(portfolios)))
     except Exception as e:
         logger.error(f"Error getting portfolios: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== WHAT-IF TRADE ENDPOINTS ====================
+
+@app.post("/api/whatif")
+async def create_whatif_trade(request: dict):
+    """
+    Create a what-if trade.
+
+    Request body:
+    {
+        "underlying": "SPY",
+        "strategy_type": "vertical",
+        "legs": [
+            {"option_type": "PUT", "strike": 580, "expiry": "2025-02-21", "quantity": -1},
+            {"option_type": "PUT", "strike": 575, "expiry": "2025-02-21", "quantity": 1}
+        ],
+        "notes": "Bull put spread"
+    }
+
+    Response includes Greeks fetched from broker and mid price as entry.
+    """
+    try:
+        underlying = request.get('underlying')
+        strategy_type = request.get('strategy_type', 'custom')
+        legs = request.get('legs', [])
+        notes = request.get('notes', '')
+
+        if not underlying or not legs:
+            raise HTTPException(status_code=400, detail="Missing underlying or legs")
+
+        result = data_service.create_whatif_trade(
+            underlying=underlying,
+            strategy_type=strategy_type,
+            legs=legs,
+            notes=notes,
+        )
+
+        if 'error' in result:
+            raise HTTPException(status_code=500, detail=result['error'])
+
+        # Broadcast update to all clients
+        state = container_manager.get_full_state()
+        portfolios = data_service.get_portfolios_data()
+        state['portfolios'] = portfolios
+        await connection_manager.send_full_refresh(state)
+
+        return JSONResponse(content=json.loads(json_dumps(result)))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating what-if trade: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/whatif/{trade_id}")
+async def delete_whatif_trade(trade_id: str):
+    """Remove a what-if trade"""
+    try:
+        result = data_service.remove_whatif_trade(trade_id)
+
+        if 'error' in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+
+        # Broadcast update to all clients
+        state = container_manager.get_full_state()
+        portfolios = data_service.get_portfolios_data()
+        state['portfolios'] = portfolios
+        await connection_manager.send_full_refresh(state)
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting what-if trade: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/whatif/{trade_id}/convert")
+async def convert_whatif_to_real(trade_id: str):
+    """Convert a what-if trade to real (ready for submission)"""
+    try:
+        result = data_service.convert_whatif_to_real(trade_id)
+
+        if 'error' in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+
+        # Broadcast update
+        state = container_manager.get_full_state()
+        portfolios = data_service.get_portfolios_data()
+        state['portfolios'] = portfolios
+        await connection_manager.send_full_refresh(state)
+
+        return JSONResponse(content=json.loads(json_dumps(result)))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error converting what-if trade: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/whatif")
+async def get_whatif_trades():
+    """Get all what-if trades"""
+    try:
+        trades = data_service.get_whatif_trades()
+        return JSONResponse(content=json.loads(json_dumps(trades)))
+    except Exception as e:
+        logger.error(f"Error getting what-if trades: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/whatif/greeks")
+async def get_whatif_greeks():
+    """Get aggregated Greeks for all what-if trades"""
+    try:
+        greeks = data_service.get_whatif_greeks()
+        return greeks
+    except Exception as e:
+        logger.error(f"Error getting what-if Greeks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== EVENT ENDPOINTS ====================
+
+@app.get("/api/events")
+async def get_events(days: int = 30):
+    """Get recent trade events (event sourcing)"""
+    try:
+        events = data_service.get_recent_events(days=days)
+        return JSONResponse(content=json.loads(json_dumps(events)))
+    except Exception as e:
+        logger.error(f"Error getting events: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== AI/ML ENDPOINTS ====================
+
+@app.get("/api/ai/status")
+async def get_ai_status():
+    """Get AI/ML module status and learning progress"""
+    try:
+        status = data_service.get_ai_status()
+        return JSONResponse(content=json.loads(json_dumps(status)))
+    except Exception as e:
+        logger.error(f"Error getting AI status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai/recommendations")
+async def get_ai_recommendations(underlying: str = None):
+    """Get AI-generated trading recommendations"""
+    try:
+        recommendations = data_service.get_ai_recommendations(underlying)
+        return JSONResponse(content=json.loads(json_dumps(recommendations)))
+    except Exception as e:
+        logger.error(f"Error getting AI recommendations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai/patterns")
+async def get_ai_patterns():
+    """Get recognized trading patterns"""
+    try:
+        status = data_service.get_ai_status()
+        return JSONResponse(content=json.loads(json_dumps(status.get('patterns', []))))
+    except Exception as e:
+        logger.error(f"Error getting AI patterns: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
