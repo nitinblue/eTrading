@@ -390,22 +390,28 @@ class TastytradeAdapter(BrokerAdapter):
                 # Attach Greeks to positions
                 for streamer_symbol, greeks in greeks_map.items():
                     for position in symbol_to_positions[streamer_symbol]:
-                        # Greeks are per-contract from DXLink
-                        # Multiply by signed quantity for position-level Greeks:
-                        # - Long (qty > 0): Greeks keep their sign
-                        # - Short (qty < 0): Greeks are inverted
-                        # Example: Short call has negative delta for the portfolio
-                        qty = position.quantity  # Already signed based on cost_effect
+                        # Greeks are per-contract from DXLink (decimal form, e.g., 0.52)
+                        # Position Greeks = per_contract * signed_qty * multiplier
+                        #
+                        # Examples:
+                        # - Short call (qty=-1): +0.52 * -1 * 100 = -52 (negative delta)
+                        # - Short put (qty=-1):  -0.33 * -1 * 100 = +33 (positive delta)
+                        # - Long call (qty=1):   +0.36 * 1 * 100  = +36 (positive delta)
+                        # - Long put (qty=1):    -0.22 * 1 * 100  = -22 (negative delta)
+
+                        qty = position.quantity  # Signed quantity
+                        multiplier = position.symbol.multiplier  # 100 for options
+
                         position.greeks = dm.Greeks(
-                            delta=greeks.delta * raw_quantity,  # Delta is linear with quantity
-                            gamma=greeks.gamma * abs(raw_quantity),  # Gamma is always positive magnitude
-                            theta=greeks.theta * raw_quantity,       # Short options = positive theta (collect decay)
-                            vega=greeks.vega * raw_quantity,         # Short options = negative vega (hurt by IV rise)
-                            rho=greeks.rho * raw_quantity,
+                            delta=greeks.delta * qty * multiplier,
+                            gamma=greeks.gamma * abs(qty) * multiplier,
+                            theta=greeks.theta * qty * multiplier,
+                            vega=greeks.vega * qty * multiplier,
+                            rho=greeks.rho * qty * multiplier,
                             timestamp=greeks.timestamp
                         )
                         direction = "SHORT" if qty < 0 else "LONG"
-                        logger.debug(f"✓ {direction} {position.symbol.ticker}: Δ={position.greeks.delta:.2f}, Θ={position.greeks.theta:.2f}")
+                        logger.info(f"  {direction} {streamer_symbol}: qty={qty}, Δ={position.greeks.delta:.2f}, Θ={position.greeks.theta:.2f}")
 
             # Filter out options without Greeks
             positions_with_greeks = [p for p in positions if p.greeks is not None]
