@@ -167,6 +167,10 @@ async def root():
             "sync": "POST /api/sync - Sync from TastyTrade broker",
             "refresh": "POST /api/refresh - Refresh from database",
             "portfolios": "GET /api/portfolios - Get real + what-if portfolios",
+            "whatif": "POST /api/whatif - Create what-if trade",
+            "events": "GET /api/events - Get trade events (event sourcing)",
+            "ai_status": "GET /api/ai/status - AI/ML learning status",
+            "ai_recommendations": "GET /api/ai/recommendations - AI suggestions",
         },
         "containers": {
             "initialized": container_manager.is_initialized,
@@ -414,6 +418,54 @@ async def get_whatif_greeks():
         return greeks
     except Exception as e:
         logger.error(f"Error getting what-if Greeks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== EVENT ENDPOINTS ====================
+
+@app.get("/api/events")
+async def get_events(days: int = 30):
+    """Get recent trade events (event sourcing)"""
+    try:
+        events = data_service.get_recent_events(days=days)
+        return JSONResponse(content=json.loads(json_dumps(events)))
+    except Exception as e:
+        logger.error(f"Error getting events: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== AI/ML ENDPOINTS ====================
+
+@app.get("/api/ai/status")
+async def get_ai_status():
+    """Get AI/ML module status and learning progress"""
+    try:
+        status = data_service.get_ai_status()
+        return JSONResponse(content=json.loads(json_dumps(status)))
+    except Exception as e:
+        logger.error(f"Error getting AI status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai/recommendations")
+async def get_ai_recommendations(underlying: str = None):
+    """Get AI-generated trading recommendations"""
+    try:
+        recommendations = data_service.get_ai_recommendations(underlying)
+        return JSONResponse(content=json.loads(json_dumps(recommendations)))
+    except Exception as e:
+        logger.error(f"Error getting AI recommendations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai/patterns")
+async def get_ai_patterns():
+    """Get recognized trading patterns"""
+    try:
+        status = data_service.get_ai_status()
+        return JSONResponse(content=json.loads(json_dumps(status.get('patterns', []))))
+    except Exception as e:
+        logger.error(f"Error getting AI patterns: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
