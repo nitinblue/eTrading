@@ -298,30 +298,34 @@ class TastytradeAdapter(BrokerAdapter):
                         continue
 
                     # Determine position direction
-                    # Tastytrade position fields:
-                    # - quantity_direction: 'Long' or 'Short' (most reliable)
-                    # - cost_effect: 'Credit' or 'Debit' (for the opening transaction)
-                    is_short = False
+                    # Tastytrade API returns:
+                    # - quantity_direction: 'Long' or 'Short' (enum or string)
+                    # - cost_effect: 'Credit' or 'Debit' (for opening transaction)
+                    #
+                    # Direction logic:
+                    # - Short position: negative quantity (sold to open)
+                    # - Long position: positive quantity (bought to open)
 
-                    # Log all available fields for debugging
-                    logger.debug(f"Position {pos_data.symbol}: "
-                                f"qty={raw_quantity}, "
-                                f"qty_dir={getattr(pos_data, 'quantity_direction', 'N/A')}, "
-                                f"cost_effect={getattr(pos_data, 'cost_effect', 'N/A')}")
+                    signed_quantity = abs(raw_quantity)  # Start with positive
 
-                    # Primary: use quantity_direction (standard field)
-                    if hasattr(pos_data, 'quantity_direction') and pos_data.quantity_direction:
-                        qty_dir = str(pos_data.quantity_direction)
-                        is_short = qty_dir.lower() == 'short'
-                    # Fallback: use cost_effect
-                    elif hasattr(pos_data, 'cost_effect') and pos_data.cost_effect:
-                        cost_effect = str(pos_data.cost_effect).lower()
-                        is_short = cost_effect == 'credit'
-
-                    # Apply sign: negative for short positions
-                    signed_quantity = -abs(raw_quantity) if is_short else abs(raw_quantity)
-
-                    logger.info(f"  {'SHORT' if is_short else 'LONG'} {pos_data.symbol}: qty={signed_quantity}")
+                    # Primary: check quantity_direction field
+                    qty_dir = getattr(pos_data, 'quantity_direction', None)
+                    if qty_dir is not None:
+                        # Handle enum or string - check if 'Short' is anywhere in the value
+                        qty_dir_str = str(qty_dir)
+                        if 'Short' in qty_dir_str or 'SHORT' in qty_dir_str:
+                            signed_quantity = -abs(raw_quantity)
+                        logger.info(f"  {pos_data.symbol}: qty_dir={qty_dir_str} -> qty={signed_quantity}")
+                    else:
+                        # Fallback: use cost_effect
+                        cost_effect = getattr(pos_data, 'cost_effect', None)
+                        if cost_effect is not None:
+                            cost_effect_str = str(cost_effect)
+                            if 'Credit' in cost_effect_str or 'CREDIT' in cost_effect_str:
+                                signed_quantity = -abs(raw_quantity)
+                            logger.info(f"  {pos_data.symbol}: cost_effect={cost_effect_str} -> qty={signed_quantity}")
+                        else:
+                            logger.warning(f"  {pos_data.symbol}: no direction field, assuming long")
 
                     # Get broker position ID
                     broker_pos_id = str(pos_data.id) if hasattr(pos_data, 'id') else None
