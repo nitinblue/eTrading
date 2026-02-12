@@ -16,12 +16,14 @@ Design:
 from .portfolio_container import PortfolioContainer
 from .position_container import PositionContainer
 from .risk_factor_container import RiskFactorContainer
+from .trade_container import TradeContainer
 from .container_manager import ContainerManager, CellUpdate, ContainerEvent
 
 __all__ = [
     'PortfolioContainer',
     'PositionContainer',
     'RiskFactorContainer',
+    'TradeContainer',
     'ContainerManager',
     'CellUpdate',
     'ContainerEvent',
