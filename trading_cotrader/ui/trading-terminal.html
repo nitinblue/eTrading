@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoTrader Terminal</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-balham-dark.css">
+    <style>
+        :root {
+            --bg-0: #0a0a0a; --bg-1: #0f0f0f; --bg-2: #151515; --bg-3: #1a1a1a; --bg-4: #222;
+            --border: #2a2a2a; --text-0: #fff; --text-1: #ccc; --text-2: #777; --text-3: #555;
+            --green: #00d26a; --red: #ff4757; --yellow: #ffa502; --blue: #1e90ff;
+            --purple: #9b59b6; --cyan: #00bcd4; --orange: #ff6b35;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Consolas', monospace; background: var(--bg-0); color: var(--text-1); font-size: 11px; overflow: hidden; height: 100vh; }
+
+        /* Header */
+        .header { background: var(--bg-1); border-bottom: 1px solid var(--border); height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
+        .logo { color: var(--cyan); font-weight: bold; font-size: 12px; letter-spacing: 1px; }
+        .header-right { display: flex; align-items: center; gap: 8px; }
+        .status { display: flex; align-items: center; gap: 4px; font-size: 9px; color: var(--text-2); }
+        .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
+        .dot.on { background: var(--green); }
+        .btn { padding: 3px 8px; border: 1px solid var(--border); border-radius: 2px; background: var(--bg-2); color: var(--text-1); font-size: 10px; cursor: pointer; font-family: inherit; }
+        .btn:hover { background: var(--bg-3); }
+        .btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+        /* Top Market Bar */
+        .market-bar { display: flex; border-bottom: 1px solid var(--border); height: 90px; }
+        .market-section { flex: 1; padding: 6px 8px; border-right: 1px solid var(--border); }
+        .market-section:last-child { border-right: none; }
+        .section-title { font-size: 9px; color: var(--text-2); text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px; }
+
+        /* Regime Section */
+        .regime-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+        .regime-box { background: var(--bg-2); padding: 4px 6px; border-radius: 2px; }
+        .regime-label { font-size: 8px; color: var(--text-2); }
+        .regime-value { font-size: 12px; font-weight: bold; }
+
+        /* Macros Section */
+        .macros-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+        .macro-item { background: var(--bg-2); padding: 3px 5px; border-radius: 2px; text-align: center; }
+        .macro-sym { font-size: 8px; color: var(--text-2); }
+        .macro-price { font-size: 11px; font-weight: bold; }
+        .macro-chg { font-size: 9px; }
+        .up { color: var(--green); }
+        .down { color: var(--red); }
+
+        /* Advice Section */
+        .advice-box { background: var(--bg-2); padding: 6px 8px; border-radius: 2px; height: 100%; }
+        .advice-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .advice-regime { font-size: 10px; font-weight: bold; }
+        .advice-text { font-size: 10px; color: var(--text-1); line-height: 1.4; }
+        .advice-strategies { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+        .strat-chip { font-size: 8px; padding: 2px 5px; background: var(--bg-3); border-radius: 2px; color: var(--text-2); }
+        .strat-chip.rec { background: rgba(0,210,106,0.2); color: var(--green); }
+
+        /* Main Layout */
+        .main { display: flex; height: calc(100vh - 122px); }
+        .left-panel { flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+        .right-panel { width: 380px; display: flex; flex-direction: column; transition: width 0.2s; }
+        .right-panel.collapsed { width: 0; overflow: hidden; }
+
+        /* Portfolios Row */
+        .portfolios { display: flex; border-bottom: 1px solid var(--border); height: 70px; }
+        .portfolio { flex: 1; padding: 6px 8px; border-right: 1px solid var(--border); }
+        .portfolio:last-child { border-right: none; }
+        .pf-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .pf-name { font-size: 10px; font-weight: bold; color: var(--text-0); }
+        .pf-badge { font-size: 8px; padding: 1px 4px; border-radius: 2px; }
+        .pf-badge.live { background: rgba(0,210,106,0.2); color: var(--green); }
+        .pf-badge.sim { background: rgba(155,89,182,0.2); color: var(--purple); }
+        .pf-metrics { display: flex; gap: 8px; }
+        .pf-metric { text-align: center; }
+        .pf-val { font-size: 13px; font-weight: bold; }
+        .pf-lbl { font-size: 8px; color: var(--text-2); }
+
+        /* Grids */
+        .grids { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+        .grid-row { display: flex; flex: 1; min-height: 0; border-bottom: 1px solid var(--border); }
+        .grid-panel { flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border); min-width: 0; }
+        .grid-panel:last-child { border-right: none; }
+        .grid-header { background: var(--bg-2); padding: 3px 6px; font-size: 9px; color: var(--text-2); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+        .grid-body { flex: 1; min-height: 0; }
+
+        /* AG Grid */
+        .ag-theme-balham-dark {
+            --ag-background-color: var(--bg-1); --ag-header-background-color: var(--bg-2);
+            --ag-odd-row-background-color: var(--bg-1); --ag-row-hover-color: var(--bg-3);
+            --ag-border-color: var(--border); --ag-header-foreground-color: var(--text-2);
+            --ag-foreground-color: var(--text-1); --ag-row-height: 22px; --ag-header-height: 24px;
+            font-size: 10px;
+        }
+
+        /* Order Builder */
+        .order-builder { padding: 8px; overflow-y: auto; flex: 1; }
+        .ob-section { margin-bottom: 8px; }
+        .ob-title { font-size: 10px; font-weight: bold; color: var(--text-0); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+        .ob-close { cursor: pointer; color: var(--text-2); font-size: 14px; }
+
+        /* Strategy Chips */
+        .strat-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+        .strat-chip2 { padding: 4px 8px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; font-size: 9px; cursor: pointer; }
+        .strat-chip2:hover { border-color: var(--cyan); }
+        .strat-chip2.sel { background: rgba(0,188,212,0.15); border-color: var(--cyan); color: var(--cyan); }
+        .strat-chip2.defined { border-left: 2px solid var(--green); }
+        .strat-chip2.undefined { border-left: 2px solid var(--red); }
+
+        /* Form */
+        .ob-row { display: flex; gap: 6px; margin-bottom: 6px; }
+        .ob-field { flex: 1; }
+        .ob-field label { display: block; font-size: 8px; color: var(--text-2); margin-bottom: 2px; text-transform: uppercase; }
+        .ob-input { width: 100%; background: var(--bg-2); border: 1px solid var(--border); border-radius: 2px; padding: 4px 6px; color: var(--text-1); font-family: inherit; font-size: 10px; }
+        .ob-input:focus { outline: none; border-color: var(--cyan); }
+
+        /* Legs */
+        .legs-box { background: var(--bg-2); border-radius: 2px; padding: 4px; margin-bottom: 6px; }
+        .leg { display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--bg-3); border-radius: 2px; margin-bottom: 2px; font-size: 10px; }
+        .leg:last-child { margin-bottom: 0; }
+        .leg-side { font-size: 8px; font-weight: bold; padding: 1px 4px; border-radius: 2px; }
+        .leg-side.buy { background: rgba(0,210,106,0.2); color: var(--green); }
+        .leg-side.sell { background: rgba(255,71,87,0.2); color: var(--red); }
+        .leg-info { flex: 1; }
+        .leg-greeks { font-size: 9px; color: var(--text-2); }
+        .leg-del { color: var(--red); cursor: pointer; }
+
+        /* Payoff */
+        .payoff-box { background: var(--bg-2); border-radius: 2px; padding: 6px; margin-bottom: 6px; }
+        .payoff-title { font-size: 9px; color: var(--text-2); margin-bottom: 4px; }
+        .payoff-canvas { width: 100%; height: 80px; background: var(--bg-3); border-radius: 2px; }
+        .payoff-stats { display: flex; gap: 8px; margin-top: 4px; font-size: 9px; }
+        .payoff-stat span:first-child { color: var(--text-2); }
+
+        /* Actions */
+        .ob-actions { display: flex; gap: 4px; }
+        .ob-actions .btn { flex: 1; }
+        .btn-success { background: var(--green); border-color: var(--green); color: #fff; }
+
+        /* Tabs */
+        .tabs { display: flex; background: var(--bg-1); border-bottom: 1px solid var(--border); }
+        .tab { padding: 6px 12px; font-size: 10px; color: var(--text-2); cursor: pointer; border-right: 1px solid var(--border); text-transform: uppercase; }
+        .tab:hover { background: var(--bg-2); color: var(--text-1); }
+        .tab.active { background: var(--bg-0); color: var(--cyan); border-bottom: 2px solid var(--cyan); }
+        .tab-badge { font-size: 8px; padding: 1px 4px; background: var(--cyan); color: var(--bg-0); border-radius: 8px; margin-left: 4px; }
+
+        .tab-content { display: none; flex: 1; flex-direction: column; min-height: 0; }
+        .tab-content.active { display: flex; }
+
+        /* AI Status */
+        .ai-status { padding: 8px; }
+        .ai-card { background: var(--bg-2); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
+        .ai-card-title { font-size: 10px; font-weight: bold; color: var(--cyan); margin-bottom: 6px; }
+        .ai-stat { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 4px; }
+        .ai-progress { height: 4px; background: var(--bg-3); border-radius: 2px; margin-top: 4px; }
+        .ai-progress-bar { height: 100%; background: var(--cyan); border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <span class="logo">COTRADER</span>
+        <div class="header-right">
+            <div class="status"><span class="dot" id="wsDot"></span><span>WS</span></div>
+            <div class="status"><span class="dot" id="brokerDot"></span><span>BROKER</span></div>
+            <button class="btn btn-primary" id="syncBtn">SYNC</button>
+            <button class="btn" id="refreshBtn">↻</button>
+            <button class="btn" id="toggleOB">+ TRADE</button>
+        </div>
+    </div>
+
+    <!-- Market Bar -->
+    <div class="market-bar">
+        <!-- Regime -->
+        <div class="market-section">
+            <div class="section-title">Market Regime</div>
+            <div class="regime-grid">
+                <div class="regime-box">
+                    <div class="regime-label">Direction</div>
+                    <div class="regime-value" id="regimeDir" style="color: var(--green)">BULLISH</div>
+                </div>
+                <div class="regime-box">
+                    <div class="regime-label">Volatility</div>
+                    <div class="regime-value" id="regimeVol" style="color: var(--yellow)">NORMAL</div>
+                </div>
+                <div class="regime-box">
+                    <div class="regime-label">Trend Strength</div>
+                    <div class="regime-value" id="regimeAdx">32</div>
+                </div>
+                <div class="regime-box">
+                    <div class="regime-label">IV Rank</div>
+                    <div class="regime-value" id="regimeIvr">45%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Macros -->
+        <div class="market-section">
+            <div class="section-title">Macros</div>
+            <div class="macros-grid">
+                <div class="macro-item"><div class="macro-sym">SPY</div><div class="macro-price" id="macSpy">--</div><div class="macro-chg" id="macSpyChg">--</div></div>
+                <div class="macro-item"><div class="macro-sym">QQQ</div><div class="macro-price" id="macQqq">--</div><div class="macro-chg" id="macQqqChg">--</div></div>
+                <div class="macro-item"><div class="macro-sym">GLD</div><div class="macro-price" id="macGld">--</div><div class="macro-chg" id="macGldChg">--</div></div>
+                <div class="macro-item"><div class="macro-sym">SLV</div><div class="macro-price" id="macSlv">--</div><div class="macro-chg" id="macSlvChg">--</div></div>
+                <div class="macro-item"><div class="macro-sym">DXY</div><div class="macro-price" id="macDxy">--</div><div class="macro-chg" id="macDxyChg">--</div></div>
+                <div class="macro-item"><div class="macro-sym">TNX</div><div class="macro-price" id="macTnx">--</div><div class="macro-chg" id="macTnxChg">--</div></div>
+                <div class="macro-item"><div class="macro-sym">VIX</div><div class="macro-price" id="macVix">--</div><div class="macro-chg" id="macVixChg">--</div></div>
+                <div class="macro-item"><div class="macro-sym">OIL</div><div class="macro-price" id="macOil">--</div><div class="macro-chg" id="macOilChg">--</div></div>
+            </div>
+        </div>
+
+        <!-- Trading Advice -->
+        <div class="market-section">
+            <div class="section-title">Trading Advice</div>
+            <div class="advice-box">
+                <div class="advice-header">
+                    <span class="advice-regime" id="adviceRegime" style="color: var(--green)">BULLISH + NORMAL VOL</span>
+                    <span style="font-size: 9px; color: var(--text-2)" id="adviceTime">--</span>
+                </div>
+                <div class="advice-text" id="adviceText">Market analysis pending. Click SYNC to update.</div>
+                <div class="advice-strategies" id="adviceStrategies"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+        <!-- Left Panel -->
+        <div class="left-panel">
+            <!-- Portfolios -->
+            <div class="portfolios">
+                <div class="portfolio">
+                    <div class="pf-header">
+                        <span class="pf-name">Real Portfolio</span>
+                        <span class="pf-badge live">LIVE</span>
+                    </div>
+                    <div class="pf-metrics">
+                        <div class="pf-metric"><div class="pf-val" id="realNlv">$--</div><div class="pf-lbl">Net Liq</div></div>
+                        <div class="pf-metric"><div class="pf-val" id="realBp">$--</div><div class="pf-lbl">BP</div></div>
+                        <div class="pf-metric"><div class="pf-val" id="realD">--</div><div class="pf-lbl">Δ</div></div>
+                        <div class="pf-metric"><div class="pf-val" id="realT">--</div><div class="pf-lbl">Θ</div></div>
+                        <div class="pf-metric"><div class="pf-val" id="realV">--</div><div class="pf-lbl">V</div></div>
+                        <div class="pf-metric"><div class="pf-val" id="realPnl">--</div><div class="pf-lbl">P&L</div></div>
+                    </div>
+                </div>
+                <div class="portfolio">
+                    <div class="pf-header">
+                        <span class="pf-name">What-If</span>
+                        <span class="pf-badge sim">SIM</span>
+                    </div>
+                    <div class="pf-metrics">
+                        <div class="pf-metric"><div class="pf-val" id="wifCnt">0</div><div class="pf-lbl">Trades</div></div>
+                        <div class="pf-metric"><div class="pf-val" id="wifD">0</div><div class="pf-lbl">Δ</div></div>
+                        <div class="pf-metric"><div class="pf-val" id="wifG">0</div><div class="pf-lbl">Γ</div></div>
+                        <div class="pf-metric"><div class="pf-val" id="wifT">0</div><div class="pf-lbl">Θ</div></div>
+                        <div class="pf-metric"><div class="pf-val" id="wifV">0</div><div class="pf-lbl">V</div></div>
+                        <div class="pf-metric"><div class="pf-val" id="combD">0</div><div class="pf-lbl">Comb Δ</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <div class="tab active" data-tab="positions">Positions</div>
+                <div class="tab" data-tab="trades">Trades</div>
+                <div class="tab" data-tab="whatif">What-If</div>
+                <div class="tab" data-tab="events">Events</div>
+                <div class="tab" data-tab="aiml">AI/ML</div>
+            </div>
+
+            <!-- Tab Contents -->
+            <div class="grids">
+                <div class="tab-content active" id="tab-positions">
+                    <div class="grid-row">
+                        <div class="grid-panel" style="max-width: 280px;">
+                            <div class="grid-header">Risk by UL</div>
+                            <div class="grid-body"><div id="riskGrid" class="ag-theme-balham-dark" style="height:100%;width:100%"></div></div>
+                        </div>
+                        <div class="grid-panel">
+                            <div class="grid-header">Positions <span id="posCnt" style="color:var(--text-3)">(0)</span></div>
+                            <div class="grid-body"><div id="posGrid" class="ag-theme-balham-dark" style="height:100%;width:100%"></div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-content" id="tab-trades">
+                    <div class="grid-row">
+                        <div class="grid-panel">
+                            <div class="grid-header">Open Trades</div>
+                            <div class="grid-body"><div id="tradesGrid" class="ag-theme-balham-dark" style="height:100%;width:100%"></div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-content" id="tab-whatif">
+                    <div class="grid-row">
+                        <div class="grid-panel">
+                            <div class="grid-header">What-If Trades</div>
+                            <div class="grid-body"><div id="whatifGrid" class="ag-theme-balham-dark" style="height:100%;width:100%"></div></div>
+                        </div>
+                        <div class="grid-panel">
+                            <div class="grid-header">Impact Analysis</div>
+                            <div class="grid-body"><div id="impactGrid" class="ag-theme-balham-dark" style="height:100%;width:100%"></div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-content" id="tab-events">
+                    <div class="grid-row">
+                        <div class="grid-panel">
+                            <div class="grid-header">Trade Events (Event Sourcing)</div>
+                            <div class="grid-body"><div id="eventsGrid" class="ag-theme-balham-dark" style="height:100%;width:100%"></div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-content" id="tab-aiml">
+                    <div class="grid-row">
+                        <div class="grid-panel" style="max-width: 320px;">
+                            <div class="grid-header">AI Learning Status</div>
+                            <div class="grid-body ai-status" id="aiStatus">
+                                <div class="ai-card">
+                                    <div class="ai-card-title">Learning Progress</div>
+                                    <div class="ai-stat"><span>Events Captured:</span><span id="aiEvents">0</span></div>
+                                    <div class="ai-stat"><span>Ready for Training:</span><span id="aiReady">No</span></div>
+                                    <div class="ai-stat"><span>Win Rate:</span><span id="aiWinRate">--</span></div>
+                                    <div class="ai-progress"><div class="ai-progress-bar" id="aiProgressBar" style="width: 0%"></div></div>
+                                </div>
+                                <div class="ai-card">
+                                    <div class="ai-card-title">Recommendations</div>
+                                    <div id="aiRecommendations"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid-panel">
+                            <div class="grid-header">Recognized Patterns</div>
+                            <div class="grid-body"><div id="patternsGrid" class="ag-theme-balham-dark" style="height:100%;width:100%"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Order Builder -->
+        <div class="right-panel collapsed" id="rightPanel">
+            <div class="order-builder">
+                <div class="ob-section">
+                    <div class="ob-title">
+                        <span>Order Builder <span class="pf-badge sim">WHAT-IF</span></span>
+                        <span class="ob-close" id="closeOB">×</span>
+                    </div>
+
+                    <!-- Strategy Chips -->
+                    <div class="strat-chips">
+                        <div class="strat-chip2 defined sel" data-strat="vertical">Vertical</div>
+                        <div class="strat-chip2 defined" data-strat="iron_condor">Iron Condor</div>
+                        <div class="strat-chip2 defined" data-strat="butterfly">Butterfly</div>
+                        <div class="strat-chip2 undefined" data-strat="straddle">Straddle</div>
+                        <div class="strat-chip2 undefined" data-strat="strangle">Strangle</div>
+                        <div class="strat-chip2 defined" data-strat="calendar">Calendar</div>
+                        <div class="strat-chip2" data-strat="custom">Custom</div>
+                    </div>
+
+                    <!-- Fields -->
+                    <div class="ob-row">
+                        <div class="ob-field">
+                            <label>Underlying</label>
+                            <input type="text" class="ob-input" id="obUl" value="SPY">
+                        </div>
+                        <div class="ob-field">
+                            <label>Expiry</label>
+                            <input type="date" class="ob-input" id="obExp">
+                        </div>
+                        <div class="ob-field" style="max-width: 60px;">
+                            <label>Qty</label>
+                            <input type="number" class="ob-input" id="obQty" value="1" min="1">
+                        </div>
+                    </div>
+
+                    <!-- Leg Builder -->
+                    <div class="ob-row">
+                        <div class="ob-field" style="max-width: 70px;">
+                            <label>Type</label>
+                            <select class="ob-input" id="legType">
+                                <option value="PUT">PUT</option>
+                                <option value="CALL">CALL</option>
+                            </select>
+                        </div>
+                        <div class="ob-field" style="max-width: 80px;">
+                            <label>Strike</label>
+                            <input type="number" class="ob-input" id="legStrike" value="580">
+                        </div>
+                        <div class="ob-field" style="max-width: 70px;">
+                            <label>Side</label>
+                            <select class="ob-input" id="legSide">
+                                <option value="-1">SELL</option>
+                                <option value="1">BUY</option>
+                            </select>
+                        </div>
+                        <div class="ob-field" style="max-width: 60px;">
+                            <label>&nbsp;</label>
+                            <button class="btn" id="addLegBtn" style="width: 100%">+</button>
+                        </div>
+                    </div>
+
+                    <!-- Legs -->
+                    <div class="legs-box" id="legsBox">
+                        <div style="text-align: center; color: var(--text-2); padding: 8px;">No legs added</div>
+                    </div>
+
+                    <!-- Payoff -->
+                    <div class="payoff-box">
+                        <div class="payoff-title">Payoff @ Expiry</div>
+                        <canvas class="payoff-canvas" id="payoffCanvas"></canvas>
+                        <div class="payoff-stats">
+                            <div class="payoff-stat"><span>Max Profit:</span> <span class="up" id="maxProfit">--</span></div>
+                            <div class="payoff-stat"><span>Max Loss:</span> <span class="down" id="maxLoss">--</span></div>
+                            <div class="payoff-stat"><span>BE:</span> <span id="breakeven">--</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Net Greeks -->
+                    <div class="ob-row" style="background: var(--bg-2); padding: 4px 6px; border-radius: 2px; margin-bottom: 6px;">
+                        <div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text-2)">Net Δ</div><div style="font-weight:bold" id="obNetD">0</div></div>
+                        <div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text-2)">Net Γ</div><div style="font-weight:bold" id="obNetG">0</div></div>
+                        <div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text-2)">Net Θ</div><div style="font-weight:bold;color:var(--green)" id="obNetT">0</div></div>
+                        <div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text-2)">Net V</div><div style="font-weight:bold" id="obNetV">0</div></div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="ob-actions">
+                        <button class="btn" id="resetBtn">Reset</button>
+                        <button class="btn btn-success" id="submitBtn">Submit What-If</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
+    <script>
+        const WS_URL = 'ws://localhost:8000/ws';
+        const API_URL = 'http://localhost:8000';
+        let ws = null, grids = {};
+        let currentLegs = [];
+        let selectedStrategy = 'vertical';
+
+        // Formatters
+        const numFmt = p => p.value != null ? parseFloat(p.value).toFixed(2) : '';
+        const pnlFmt = p => {
+            if (p.value == null) return '';
+            const v = parseFloat(p.value);
+            return `<span style="color:${v >= 0 ? 'var(--green)' : 'var(--red)'}">${v >= 0 ? '+' : ''}${v.toFixed(2)}</span>`;
+        };
+
+        // Columns
+        const riskCols = [
+            { field: 'underlying', headerName: 'UL', width: 55 },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 55 },
+            { field: 'theta', headerName: 'Θ', cellRenderer: numFmt, width: 55 },
+            { field: 'vega', headerName: 'V', cellRenderer: numFmt, width: 55 },
+            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlFmt, width: 65 },
+        ];
+
+        const posCols = [
+            { field: 'symbol', headerName: 'Symbol', width: 130 },
+            { field: 'type', headerName: 'T', width: 35 },
+            { field: 'strike', headerName: 'K', cellRenderer: numFmt, width: 50 },
+            { field: 'expiry', headerName: 'Exp', width: 70 },
+            { field: 'dte', headerName: 'DTE', width: 40 },
+            { field: 'qty', headerName: 'Qty', width: 40 },
+            { field: 'entry', headerName: 'Entry', cellRenderer: numFmt, width: 55 },
+            { field: 'mark', headerName: 'Mark', cellRenderer: numFmt, width: 55 },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 50 },
+            { field: 'theta', headerName: 'Θ', cellRenderer: numFmt, width: 50 },
+            { field: 'vega', headerName: 'V', cellRenderer: numFmt, width: 50 },
+            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlFmt, width: 65 },
+        ];
+
+        const tradeCols = [
+            { field: 'underlying', headerName: 'UL', width: 55 },
+            { field: 'strategy', headerName: 'Strategy', width: 90 },
+            { field: 'status', headerName: 'Status', width: 70 },
+            { field: 'legs', headerName: 'Legs', width: 40 },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 55 },
+            { field: 'theta', headerName: 'Θ', cellRenderer: numFmt, width: 55 },
+            { field: 'pnl', headerName: 'P&L', cellRenderer: pnlFmt, width: 70 },
+            { field: 'dte', headerName: 'DTE', width: 40 },
+        ];
+
+        const eventCols = [
+            { field: 'timestamp', headerName: 'Time', width: 140 },
+            { field: 'event_type', headerName: 'Type', width: 100 },
+            { field: 'underlying', headerName: 'UL', width: 60 },
+            { field: 'strategy', headerName: 'Strategy', width: 90 },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 55 },
+            { field: 'rationale', headerName: 'Rationale', flex: 1 },
+        ];
+
+        const patternCols = [
+            { field: 'timestamp', headerName: 'Time', width: 120 },
+            { field: 'pattern_type', headerName: 'Pattern', width: 100 },
+            { field: 'underlying', headerName: 'UL', width: 60 },
+            { field: 'confidence', headerName: 'Conf', width: 60 },
+            { field: 'description', headerName: 'Description', flex: 1 },
+        ];
+
+        const impactCols = [
+            { field: 'metric', headerName: 'Metric', width: 100 },
+            { field: 'real', headerName: 'Real', width: 70 },
+            { field: 'whatif', headerName: 'What-If', width: 70 },
+            { field: 'combined', headerName: 'Combined', width: 80 },
+            { field: 'change', headerName: 'Δ', cellRenderer: pnlFmt, width: 60 },
+        ];
+
+        function initGrids() {
+            const opts = { animateRows: true, rowSelection: 'single', suppressCellFocus: true, defaultColDef: { sortable: true, resizable: true }};
+            grids.risk = agGrid.createGrid(document.getElementById('riskGrid'), { ...opts, columnDefs: riskCols, rowData: [] });
+            grids.pos = agGrid.createGrid(document.getElementById('posGrid'), { ...opts, columnDefs: posCols, rowData: [] });
+            grids.trades = agGrid.createGrid(document.getElementById('tradesGrid'), { ...opts, columnDefs: tradeCols, rowData: [] });
+            grids.whatif = agGrid.createGrid(document.getElementById('whatifGrid'), { ...opts, columnDefs: tradeCols, rowData: [] });
+            grids.events = agGrid.createGrid(document.getElementById('eventsGrid'), { ...opts, columnDefs: eventCols, rowData: [] });
+            grids.impact = agGrid.createGrid(document.getElementById('impactGrid'), { ...opts, columnDefs: impactCols, rowData: [] });
+            grids.patterns = agGrid.createGrid(document.getElementById('patternsGrid'), { ...opts, columnDefs: patternCols, rowData: [] });
+        }
+
+        // Tabs
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.onclick = () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+                // Load AI status when switching to AI/ML tab
+                if (tab.dataset.tab === 'aiml') loadAIStatus();
+            };
+        });
+
+        // Strategy chips
+        document.querySelectorAll('.strat-chip2').forEach(chip => {
+            chip.onclick = () => {
+                document.querySelectorAll('.strat-chip2').forEach(c => c.classList.remove('sel'));
+                chip.classList.add('sel');
+                selectedStrategy = chip.dataset.strat;
+            };
+        });
+
+        // Toggle Order Builder
+        document.getElementById('toggleOB').onclick = () => document.getElementById('rightPanel').classList.remove('collapsed');
+        document.getElementById('closeOB').onclick = () => document.getElementById('rightPanel').classList.add('collapsed');
+
+        // Add Leg
+        document.getElementById('addLegBtn').onclick = () => {
+            const leg = {
+                option_type: document.getElementById('legType').value,
+                strike: parseFloat(document.getElementById('legStrike').value),
+                expiry: document.getElementById('obExp').value,
+                quantity: parseInt(document.getElementById('legSide').value) * parseInt(document.getElementById('obQty').value)
+            };
+            currentLegs.push(leg);
+            renderLegs();
+        };
+
+        function renderLegs() {
+            const box = document.getElementById('legsBox');
+            if (currentLegs.length === 0) {
+                box.innerHTML = '<div style="text-align: center; color: var(--text-2); padding: 8px;">No legs added</div>';
+                return;
+            }
+            box.innerHTML = currentLegs.map((leg, i) => `
+                <div class="leg">
+                    <span class="leg-side ${leg.quantity < 0 ? 'sell' : 'buy'}">${leg.quantity < 0 ? 'SELL' : 'BUY'}</span>
+                    <span class="leg-info">${leg.option_type} $${leg.strike}</span>
+                    <span class="leg-greeks">x${Math.abs(leg.quantity)}</span>
+                    <span class="leg-del" onclick="removeLeg(${i})">×</span>
+                </div>
+            `).join('');
+        }
+
+        window.removeLeg = (i) => {
+            currentLegs.splice(i, 1);
+            renderLegs();
+        };
+
+        // Reset
+        document.getElementById('resetBtn').onclick = () => {
+            currentLegs = [];
+            renderLegs();
+            document.getElementById('obNetD').textContent = '0';
+            document.getElementById('obNetG').textContent = '0';
+            document.getElementById('obNetT').textContent = '0';
+            document.getElementById('obNetV').textContent = '0';
+        };
+
+        // Submit What-If
+        document.getElementById('submitBtn').onclick = async () => {
+            if (currentLegs.length === 0) {
+                alert('Add at least one leg');
+                return;
+            }
+            const payload = {
+                underlying: document.getElementById('obUl').value,
+                strategy_type: selectedStrategy,
+                legs: currentLegs,
+                notes: ''
+            };
+            try {
+                const res = await fetch(`${API_URL}/api/whatif`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    alert('What-if trade created!');
+                    currentLegs = [];
+                    renderLegs();
+                    document.getElementById('rightPanel').classList.add('collapsed');
+                } else {
+                    alert('Error: ' + (result.detail || result.error || 'Unknown'));
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        };
+
+        // WebSocket
+        function connectWS() {
+            ws = new WebSocket(WS_URL);
+            ws.onopen = () => { document.getElementById('wsDot').classList.add('on'); };
+            ws.onclose = () => { document.getElementById('wsDot').classList.remove('on'); setTimeout(connectWS, 3000); };
+            ws.onmessage = e => { try { handleMsg(JSON.parse(e.data)); } catch(err) {} };
+        }
+
+        function handleMsg(msg) {
+            if (msg.type === 'connected') document.getElementById('brokerDot').classList.toggle('on', msg.broker_connected);
+            if (msg.type === 'fullRefresh') handleRefresh(msg.data);
+        }
+
+        function handleRefresh(data) {
+            if (data.riskFactors) grids.risk.setGridOption('rowData', data.riskFactors);
+            if (data.positions) { grids.pos.setGridOption('rowData', data.positions); document.getElementById('posCnt').textContent = `(${data.positions.length})`; }
+            if (data.portfolios) {
+                updatePortfolios(data.portfolios);
+                if (data.portfolios.whatif_trades) grids.whatif.setGridOption('rowData', data.portfolios.whatif_trades);
+            }
+            if (data.events) grids.events.setGridOption('rowData', data.events);
+            if (data.patterns) grids.patterns.setGridOption('rowData', data.patterns);
+        }
+
+        function updatePortfolios(p) {
+            if (p.real_portfolio) {
+                const r = p.real_portfolio;
+                document.getElementById('realNlv').textContent = '$' + Math.round(r.total_equity || 0).toLocaleString();
+                document.getElementById('realBp').textContent = '$' + Math.round(r.buying_power || 0).toLocaleString();
+                document.getElementById('realD').textContent = (r.delta || 0).toFixed(1);
+                document.getElementById('realT').textContent = (r.theta || 0).toFixed(1);
+                document.getElementById('realV').textContent = (r.vega || 0).toFixed(1);
+                document.getElementById('realPnl').textContent = (r.total_pnl >= 0 ? '+' : '') + (r.total_pnl || 0).toFixed(0);
+            }
+            if (p.whatif_portfolio) {
+                const w = p.whatif_portfolio;
+                document.getElementById('wifCnt').textContent = w.trade_count || 0;
+                document.getElementById('wifD').textContent = (w.delta || 0).toFixed(1);
+                document.getElementById('wifG').textContent = (w.gamma || 0).toFixed(2);
+                document.getElementById('wifT').textContent = (w.theta || 0).toFixed(1);
+                document.getElementById('wifV').textContent = (w.vega || 0).toFixed(1);
+                const rd = p.real_portfolio?.delta || 0;
+                document.getElementById('combD').textContent = (rd + (w.delta || 0)).toFixed(1);
+            }
+        }
+
+        // AI Status
+        async function loadAIStatus() {
+            try {
+                const res = await fetch(`${API_URL}/api/ai/status`);
+                const data = await res.json();
+                document.getElementById('aiEvents').textContent = data.learning_events || 0;
+                document.getElementById('aiReady').textContent = data.ready_for_training ? 'Yes' : `No (need ${data.min_for_training})`;
+                document.getElementById('aiWinRate').textContent = data.win_rate ? data.win_rate + '%' : '--';
+                const progress = Math.min((data.learning_events / data.min_for_training) * 100, 100);
+                document.getElementById('aiProgressBar').style.width = progress + '%';
+
+                // Recommendations
+                const recsDiv = document.getElementById('aiRecommendations');
+                const recs = await fetch(`${API_URL}/api/ai/recommendations`).then(r => r.json());
+                if (recs.length > 0) {
+                    recsDiv.innerHTML = recs.map(r => `
+                        <div class="ai-stat">
+                            <span>${r.strategy}</span>
+                            <span style="color: ${r.action === 'Consider' ? 'var(--green)' : 'var(--red)'}">${r.action}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    recsDiv.innerHTML = '<div style="color: var(--text-2); font-size: 9px;">No recommendations yet</div>';
+                }
+            } catch (e) {
+                console.error('AI status error:', e);
+            }
+        }
+
+        // API
+        async function sync() {
+            try {
+                const r = await fetch(`${API_URL}/api/sync`, { method: 'POST' });
+                if (r.ok) document.getElementById('brokerDot').classList.add('on');
+            } catch(e) {}
+        }
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            initGrids(); connectWS();
+            document.getElementById('syncBtn').onclick = sync;
+            document.getElementById('refreshBtn').onclick = () => fetch(`${API_URL}/api/refresh`, { method: 'POST' });
+            // Set default expiry
+            const today = new Date();
+            today.setDate(today.getDate() + 30);
+            document.getElementById('obExp').value = today.toISOString().split('T')[0];
+        });
+    </script>
+</body>
+</html>
