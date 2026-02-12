@@ -18,6 +18,7 @@ import asyncio
 from .portfolio_container import PortfolioContainer
 from .position_container import PositionContainer
 from .risk_factor_container import RiskFactorContainer
+from .trade_container import TradeContainer
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ class ContainerManager:
         self.portfolio = PortfolioContainer()
         self.positions = PositionContainer()
         self.risk_factors = RiskFactorContainer()
+        self.trades = TradeContainer()  # Holds both real and what-if trades
 
         self._event_listeners: List[Callable] = []
         self._pending_cell_updates: List[CellUpdate] = []
@@ -96,6 +98,7 @@ class ContainerManager:
         self.portfolio.add_change_listener(self._on_portfolio_change)
         self.positions.add_change_listener(self._on_position_change)
         self.risk_factors.add_change_listener(self._on_risk_factor_change)
+        self.trades.add_change_listener(self._on_trade_change)
 
     @property
     def is_initialized(self) -> bool:
@@ -182,6 +185,31 @@ class ContainerManager:
             event_type=EventType.RISK_FACTOR_UPDATE,
             source='risk_factors',
             data={'underlying': underlying, 'changes': changes},
+            cell_updates=cell_updates,
+        )
+        self._emit_event(event)
+
+    def _on_trade_change(self, source: str, data: Dict[str, Any]):
+        """Handle trade container changes"""
+        trade_id = data.get('trade_id')
+        changes = data.get('changes', {})
+
+        cell_updates = []
+        for field_name, change in changes.items():
+            if field_name.startswith('_'):
+                continue
+            cell_updates.append(CellUpdate(
+                grid_type='trades',
+                row_id=trade_id,
+                column=field_name,
+                old_value=change.get('old') if isinstance(change, dict) else None,
+                new_value=change.get('new') if isinstance(change, dict) else change,
+            ))
+
+        event = ContainerEvent(
+            event_type=EventType.POSITION_UPDATE,  # Reuse for trades
+            source='trades',
+            data={'trade_id': trade_id, 'changes': changes},
             cell_updates=cell_updates,
         )
         self._emit_event(event)
@@ -304,10 +332,21 @@ class ContainerManager:
 
     def get_full_state(self) -> Dict[str, Any]:
         """Get complete current state for initial load"""
+        whatif_greeks = self.trades.aggregate_what_if_greeks()
+
         return {
             'portfolio': self.portfolio.to_grid_row() if self.portfolio.state else {},
             'positions': self.positions.to_grid_rows(),
             'riskFactors': self.risk_factors.to_grid_rows(),
+            'trades': self.trades.to_grid_rows(),
+            'whatif_trades': self.trades.to_whatif_cards(),
+            'whatif_portfolio': {
+                'delta': float(whatif_greeks['delta']),
+                'gamma': float(whatif_greeks['gamma']),
+                'theta': float(whatif_greeks['theta']),
+                'vega': float(whatif_greeks['vega']),
+                'trade_count': self.trades.what_if_count,
+            },
             'timestamp': datetime.utcnow().isoformat(),
         }
 

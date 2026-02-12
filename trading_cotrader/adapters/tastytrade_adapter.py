@@ -2,6 +2,7 @@
 Tastytrade Broker Adapter - DXLink Streaming for Greeks
 
 Uses DXLinkStreamer and DXGreeks for reliable Greeks fetching.
+Supports both sync and async contexts (FastAPI, standalone scripts).
 """
 
 from typing import List, Dict, Any, Optional
@@ -12,6 +13,7 @@ import yaml
 from pathlib import Path
 from collections import defaultdict
 import asyncio
+import concurrent.futures
 
 from tastytrade import Session, Account
 from tastytrade.instruments import Equity, Option
@@ -23,6 +25,9 @@ import re
 import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
+
+# Thread pool for running async code from sync context
+_thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 
 class BrokerAdapter:
@@ -233,7 +238,26 @@ class TastytradeAdapter(BrokerAdapter):
 
         return greeks_map
 
-    async def get_positions(self) -> List[dm.Position]:
+    def _run_async(self, coro):
+        """
+        Run an async coroutine from sync context.
+        Handles both standalone and FastAPI (already in event loop) scenarios.
+        """
+        try:
+            # Check if we're in an existing event loop
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # We're inside an event loop (FastAPI), run in thread pool
+            future = _thread_pool.submit(asyncio.run, coro)
+            return future.result(timeout=30)
+        else:
+            # No event loop, create one
+            return asyncio.run(coro)
+
+    def get_positions(self) -> List[dm.Position]:
         """
         Fetch positions with Greeks from DXLink streaming.
 
@@ -241,6 +265,8 @@ class TastytradeAdapter(BrokerAdapter):
         2. Convert OCC symbols to streamer symbols
         3. Fetch Greeks via DXLink streaming
         4. Attach Greeks to positions
+
+        Works in both sync and async contexts.
         """
         try:
             if not self.account:
@@ -268,16 +294,40 @@ class TastytradeAdapter(BrokerAdapter):
                     symbol = self._parse_symbol_from_position(pos_data)
                     # logger.info(f"Found position Symbol: {symbol} ")
 
-                    # Get signed quantity
+                    # Get unsigned quantity
                     raw_quantity = int(pos_data.quantity or 0)
-                    if hasattr(pos_data, 'quantity_direction'):
-                        if pos_data.quantity_direction == 'Short':
-                            raw_quantity = -abs(raw_quantity)
-                        else:
-                            raw_quantity = abs(raw_quantity)
-
                     if raw_quantity == 0:
                         continue
+
+                    # Determine position direction
+                    # Tastytrade API returns:
+                    # - quantity_direction: 'Long' or 'Short' (enum or string)
+                    # - cost_effect: 'Credit' or 'Debit' (for opening transaction)
+                    #
+                    # Direction logic:
+                    # - Short position: negative quantity (sold to open)
+                    # - Long position: positive quantity (bought to open)
+
+                    signed_quantity = abs(raw_quantity)  # Start with positive
+
+                    # Primary: check quantity_direction field
+                    qty_dir = getattr(pos_data, 'quantity_direction', None)
+                    if qty_dir is not None:
+                        # Handle enum or string - check if 'Short' is anywhere in the value
+                        qty_dir_str = str(qty_dir)
+                        if 'Short' in qty_dir_str or 'SHORT' in qty_dir_str:
+                            signed_quantity = -abs(raw_quantity)
+                        logger.info(f"  {pos_data.symbol}: qty_dir={qty_dir_str} -> qty={signed_quantity}")
+                    else:
+                        # Fallback: use cost_effect
+                        cost_effect = getattr(pos_data, 'cost_effect', None)
+                        if cost_effect is not None:
+                            cost_effect_str = str(cost_effect)
+                            if 'Credit' in cost_effect_str or 'CREDIT' in cost_effect_str:
+                                signed_quantity = -abs(raw_quantity)
+                            logger.info(f"  {pos_data.symbol}: cost_effect={cost_effect_str} -> qty={signed_quantity}")
+                        else:
+                            logger.warning(f"  {pos_data.symbol}: no direction field, assuming long")
 
                     # Get broker position ID
                     broker_pos_id = str(pos_data.id) if hasattr(pos_data, 'id') else None
@@ -293,31 +343,31 @@ class TastytradeAdapter(BrokerAdapter):
                         current_price = Decimal(str(pos_data.close_price))
 
                     # Calculate market value
-                    market_value = current_price * abs(raw_quantity) * symbol.multiplier
+                    market_value = current_price * abs(signed_quantity) * symbol.multiplier
 
                     # Create position
                     position = dm.Position(
                         symbol=symbol,
-                        quantity=raw_quantity,
+                        quantity=signed_quantity,  # Signed: positive=long, negative=short
                         entry_price=Decimal(str(pos_data.average_open_price or 0)),
                         current_price=current_price,
                         market_value=market_value,
-                        total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(raw_quantity) * symbol.multiplier,
+                        total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(signed_quantity) * symbol.multiplier,
                         broker_position_id=broker_pos_id,
                     )
 
                     # Handle by asset type
                     if symbol.asset_type == dm.AssetType.EQUITY:
-                        # Stock: delta = quantity
+                        # Stock: delta = quantity (1 share = 1 delta)
                         position.greeks = dm.Greeks(
-                            delta=Decimal(str(raw_quantity)),
+                            delta=Decimal(str(signed_quantity)),
                             gamma=Decimal('0'),
                             theta=Decimal('0'),
                             vega=Decimal('0'),
                             rho=Decimal('0'),
                             timestamp=datetime.utcnow()
                         )
-                        logger.debug(f"✓ Equity: {symbol.ticker} Δ={raw_quantity}")
+                        logger.debug(f"✓ Equity: {symbol.ticker} Δ={signed_quantity}")
 
                     elif symbol.asset_type == dm.AssetType.OPTION:
                         # Options: need to fetch Greeks via DXLink
@@ -335,22 +385,27 @@ class TastytradeAdapter(BrokerAdapter):
             # Fetch Greeks for all options via DXLink
             if streamer_symbols:
                 logger.info(f"Fetching Greeks for {len(streamer_symbols)} option positions via DXLink...")
-                #greeks_map = asyncio.run(self._fetch_greeks_via_dxlink(streamer_symbols))
-                greeks_map = await self._fetch_greeks_via_dxlink(streamer_symbols)
-                logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options {greeks_map}")                
+                greeks_map = self._run_async(self._fetch_greeks_via_dxlink(streamer_symbols))
+                logger.info(f"✓ Fetched Greeks for {len(greeks_map)} options")
                 # Attach Greeks to positions
                 for streamer_symbol, greeks in greeks_map.items():
                     for position in symbol_to_positions[streamer_symbol]:
-                        # Greeks are per-contract, multiply by quantity for position-level
+                        # Greeks are per-contract from DXLink
+                        # Multiply by signed quantity for position-level Greeks:
+                        # - Long (qty > 0): Greeks keep their sign
+                        # - Short (qty < 0): Greeks are inverted
+                        # Example: Short call has negative delta for the portfolio
+                        qty = position.quantity  # Already signed based on cost_effect
                         position.greeks = dm.Greeks(
-                            delta=greeks.delta * abs(position.quantity),
-                            gamma=greeks.gamma * abs(position.quantity),
-                            theta=greeks.theta * abs(position.quantity),
-                            vega=greeks.vega * abs(position.quantity),
-                            rho=greeks.rho * abs(position.quantity),
+                            delta=greeks.delta * raw_quantity,  # Delta is linear with quantity
+                            gamma=greeks.gamma * abs(raw_quantity),  # Gamma is always positive magnitude
+                            theta=greeks.theta * raw_quantity,       # Short options = positive theta (collect decay)
+                            vega=greeks.vega * raw_quantity,         # Short options = negative vega (hurt by IV rise)
+                            rho=greeks.rho * raw_quantity,
                             timestamp=greeks.timestamp
                         )
-                        logger.debug(f"✓ Attached Greeks to {position.symbol.ticker}: Δ={position.greeks.delta:.2f}")
+                        direction = "SHORT" if qty < 0 else "LONG"
+                        logger.debug(f"✓ {direction} {position.symbol.ticker}: Δ={position.greeks.delta:.2f}, Θ={position.greeks.theta:.2f}")
 
             # Filter out options without Greeks
             positions_with_greeks = [p for p in positions if p.greeks is not None]
