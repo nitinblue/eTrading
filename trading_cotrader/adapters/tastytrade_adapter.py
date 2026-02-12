@@ -292,29 +292,36 @@ class TastytradeAdapter(BrokerAdapter):
                 try:
                     symbol = self._parse_symbol_from_position(pos_data)
 
-                    # Get signed quantity
-                    # Tastytrade uses cost_effect: Credit = short, Debit = long
+                    # Get unsigned quantity
                     raw_quantity = int(pos_data.quantity or 0)
-
-                    # Determine direction from cost_effect (primary) or quantity_direction (fallback)
-                    is_short = False
-                    if hasattr(pos_data, 'cost_effect') and pos_data.cost_effect:
-                        # Credit means you received money = short position
-                        # Debit means you paid money = long position
-                        cost_effect = str(pos_data.cost_effect).lower()
-                        is_short = cost_effect == 'credit'
-                        logger.debug(f"Position {pos_data.symbol}: cost_effect={cost_effect}, is_short={is_short}")
-                    elif hasattr(pos_data, 'quantity_direction'):
-                        is_short = pos_data.quantity_direction == 'Short'
-
-                    # Apply sign based on direction
-                    if is_short:
-                        raw_quantity = -abs(raw_quantity)
-                    else:
-                        raw_quantity = abs(raw_quantity)
-
                     if raw_quantity == 0:
                         continue
+
+                    # Determine position direction
+                    # Tastytrade position fields:
+                    # - quantity_direction: 'Long' or 'Short' (most reliable)
+                    # - cost_effect: 'Credit' or 'Debit' (for the opening transaction)
+                    is_short = False
+
+                    # Log all available fields for debugging
+                    logger.debug(f"Position {pos_data.symbol}: "
+                                f"qty={raw_quantity}, "
+                                f"qty_dir={getattr(pos_data, 'quantity_direction', 'N/A')}, "
+                                f"cost_effect={getattr(pos_data, 'cost_effect', 'N/A')}")
+
+                    # Primary: use quantity_direction (standard field)
+                    if hasattr(pos_data, 'quantity_direction') and pos_data.quantity_direction:
+                        qty_dir = str(pos_data.quantity_direction)
+                        is_short = qty_dir.lower() == 'short'
+                    # Fallback: use cost_effect
+                    elif hasattr(pos_data, 'cost_effect') and pos_data.cost_effect:
+                        cost_effect = str(pos_data.cost_effect).lower()
+                        is_short = cost_effect == 'credit'
+
+                    # Apply sign: negative for short positions
+                    signed_quantity = -abs(raw_quantity) if is_short else abs(raw_quantity)
+
+                    logger.info(f"  {'SHORT' if is_short else 'LONG'} {pos_data.symbol}: qty={signed_quantity}")
 
                     # Get broker position ID
                     broker_pos_id = str(pos_data.id) if hasattr(pos_data, 'id') else None
@@ -330,31 +337,31 @@ class TastytradeAdapter(BrokerAdapter):
                         current_price = Decimal(str(pos_data.close_price))
 
                     # Calculate market value
-                    market_value = current_price * abs(raw_quantity) * symbol.multiplier
+                    market_value = current_price * abs(signed_quantity) * symbol.multiplier
 
                     # Create position
                     position = dm.Position(
                         symbol=symbol,
-                        quantity=raw_quantity,
+                        quantity=signed_quantity,  # Signed: positive=long, negative=short
                         entry_price=Decimal(str(pos_data.average_open_price or 0)),
                         current_price=current_price,
                         market_value=market_value,
-                        total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(raw_quantity) * symbol.multiplier,
+                        total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(signed_quantity) * symbol.multiplier,
                         broker_position_id=broker_pos_id,
                     )
 
                     # Handle by asset type
                     if symbol.asset_type == dm.AssetType.EQUITY:
-                        # Stock: delta = quantity
+                        # Stock: delta = quantity (1 share = 1 delta)
                         position.greeks = dm.Greeks(
-                            delta=Decimal(str(raw_quantity)),
+                            delta=Decimal(str(signed_quantity)),
                             gamma=Decimal('0'),
                             theta=Decimal('0'),
                             vega=Decimal('0'),
                             rho=Decimal('0'),
                             timestamp=datetime.utcnow()
                         )
-                        logger.debug(f"✓ Equity: {symbol.ticker} Δ={raw_quantity}")
+                        logger.debug(f"✓ Equity: {symbol.ticker} Δ={signed_quantity}")
 
                     elif symbol.asset_type == dm.AssetType.OPTION:
                         # Options: need to fetch Greeks via DXLink
