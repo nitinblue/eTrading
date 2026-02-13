@@ -544,28 +544,19 @@ class TastytradeAdapter(BrokerAdapter):
             if not self.session:
                 raise RuntimeError("Not authenticated")
 
-            from tastytrade.instruments import get_option_chain, NestedOptionChain
+            from tastytrade.instruments import NestedOptionChain
             from datetime import date
 
-            # Get option chain
-            chain = get_option_chain(self.session, underlying)
-
-            # Get underlying price
-            underlying_price = None
-            try:
-                equity = Equity.get_equity(self.session, underlying)
-                # Get quote for underlying price
-                # For now, use a simple approach
-                underlying_price = 0
-            except Exception as e:
-                logger.warning(f"Could not get underlying price: {e}")
+            # Get option chain using NestedOptionChain
+            chain = NestedOptionChain.get_chain(self.session, underlying)
 
             # Parse expirations and strikes
             expirations = []
             strikes_by_expiry = {}
             today = date.today()
 
-            for expiry_date, strikes_dict in chain.items():
+            # chain.expirations is a dict of expiry_date -> NestedOptionChainExpiration
+            for expiry_date, expiration_data in chain.expirations.items():
                 # Calculate DTE
                 if isinstance(expiry_date, str):
                     exp_date = datetime.strptime(expiry_date, '%Y-%m-%d').date()
@@ -580,10 +571,12 @@ class TastytradeAdapter(BrokerAdapter):
                         'dte': dte
                     })
 
-                    # Get strikes
+                    # Get strikes from the expiration data
                     all_strikes = set()
-                    for strike, options in strikes_dict.items():
-                        all_strikes.add(float(strike))
+                    # expiration_data.strikes is a dict of strike -> options
+                    if hasattr(expiration_data, 'strikes'):
+                        for strike in expiration_data.strikes.keys():
+                            all_strikes.add(float(strike))
 
                     strikes_by_expiry[exp_date.strftime('%Y-%m-%d')] = sorted(list(all_strikes))
 
@@ -594,7 +587,7 @@ class TastytradeAdapter(BrokerAdapter):
 
             return {
                 'underlying': underlying,
-                'underlying_price': underlying_price,
+                'underlying_price': 0,
                 'expirations': expirations[:12],  # Limit to next 12 expirations
                 'strikes': strikes_by_expiry,
             }
