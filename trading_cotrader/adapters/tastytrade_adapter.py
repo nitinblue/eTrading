@@ -536,7 +536,6 @@ class TastytradeAdapter(BrokerAdapter):
         Get option chain for an underlying symbol.
 
         Returns dict with:
-        - underlying_price: current price
         - expirations: list of {date, dte} sorted by date
         - strikes: dict of {expiry_date: [strike1, strike2, ...]}
         """
@@ -544,60 +543,57 @@ class TastytradeAdapter(BrokerAdapter):
             if not self.session:
                 raise RuntimeError("Not authenticated")
 
-            from tastytrade.instruments import NestedOptionChain
+            from tastytrade import get_option_chain
             from datetime import date
 
-            # Get option chain using NestedOptionChain
-            chain = NestedOptionChain.get_chain(self.session, underlying)
+            # Get option chain - returns list of option objects
+            chain = get_option_chain(self.session, underlying)
 
-            # Parse expirations and strikes
-            expirations = []
+            if not chain:
+                return {
+                    'underlying': underlying,
+                    'expirations': [],
+                    'strikes': {},
+                    'error': 'No option chain data'
+                }
+
+            # Parse expirations and strikes from chain
+            expirations_set = set()
             strikes_by_expiry = {}
             today = date.today()
 
-            # chain.expirations is a dict of expiry_date -> NestedOptionChainExpiration
-            for expiry_date, expiration_data in chain.expirations.items():
-                # Calculate DTE
-                if isinstance(expiry_date, str):
-                    exp_date = datetime.strptime(expiry_date, '%Y-%m-%d').date()
-                else:
-                    exp_date = expiry_date
+            for option in chain:
+                exp_date = option.expiration_date
+                strike = float(option.strike)
 
+                # Calculate DTE
                 dte = (exp_date - today).days
 
                 if dte > 0:  # Only future expirations
-                    expirations.append({
-                        'date': exp_date.strftime('%Y-%m-%d'),
-                        'dte': dte
-                    })
+                    exp_str = exp_date.strftime('%Y-%m-%d')
+                    expirations_set.add((exp_str, dte))
 
-                    # Get strikes from the expiration data
-                    all_strikes = set()
-                    # expiration_data.strikes is a dict of strike -> options
-                    if hasattr(expiration_data, 'strikes'):
-                        for strike in expiration_data.strikes.keys():
-                            all_strikes.add(float(strike))
+                    if exp_str not in strikes_by_expiry:
+                        strikes_by_expiry[exp_str] = set()
+                    strikes_by_expiry[exp_str].add(strike)
 
-                    strikes_by_expiry[exp_date.strftime('%Y-%m-%d')] = sorted(list(all_strikes))
-
-            # Sort expirations by date
-            expirations.sort(key=lambda x: x['date'])
+            # Convert to sorted lists
+            expirations = [{'date': d, 'dte': dte} for d, dte in sorted(expirations_set)]
+            for exp_str in strikes_by_expiry:
+                strikes_by_expiry[exp_str] = sorted(list(strikes_by_expiry[exp_str]))
 
             logger.info(f"Option chain for {underlying}: {len(expirations)} expirations")
 
             return {
                 'underlying': underlying,
-                'underlying_price': 0,
-                'expirations': expirations[:12],  # Limit to next 12 expirations
+                'expirations': expirations[:12],
                 'strikes': strikes_by_expiry,
             }
 
         except Exception as e:
             logger.error(f"Failed to get option chain for {underlying}: {e}")
-            logger.exception("Full trace:")
             return {
                 'underlying': underlying,
-                'underlying_price': None,
                 'expirations': [],
                 'strikes': {},
                 'error': str(e)
