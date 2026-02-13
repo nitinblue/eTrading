@@ -858,6 +858,57 @@ class DataService:
             logger.error(f"Failed to get ATM strikes: {e}")
             return {'error': str(e)}
 
+    def get_option_quote(self, underlying: str, expiry: str, strike: float, option_type: str) -> Dict[str, Any]:
+        """
+        Get real-time quote and Greeks for a specific option.
+
+        Used by Order Builder to show bid/ask/mid and Greeks
+        before user adds the leg.
+        """
+        if not self.is_connected:
+            if not self.connect_broker():
+                return {'error': 'Failed to connect to broker'}
+
+        try:
+            return self.broker.get_option_quote(underlying, expiry, strike, option_type)
+        except Exception as e:
+            logger.error(f"Failed to get option quote: {e}")
+            return {'error': str(e)}
+
+    def get_ticker_history(self) -> List[str]:
+        """
+        Get list of tickers from positions and trades for Order Builder dropdown.
+        """
+        tickers = set()
+
+        # From broker positions
+        if self.is_connected:
+            try:
+                broker_tickers = self.broker.get_ticker_history()
+                tickers.update(broker_tickers)
+            except Exception as e:
+                logger.warning(f"Could not get broker tickers: {e}")
+
+        # From database trades
+        try:
+            from trading_cotrader.core.database.schema import TradeORM
+
+            with session_scope() as session:
+                # Get underlyings from trades
+                trade_underlyings = session.query(TradeORM.underlying_symbol).distinct().all()
+                for (ul,) in trade_underlyings:
+                    if ul:
+                        tickers.add(ul)
+
+        except Exception as e:
+            logger.warning(f"Could not get DB tickers: {e}")
+
+        # Add common tickers if empty
+        if not tickers:
+            tickers = {'SPY', 'QQQ', 'IWM', 'AAPL', 'TSLA', 'NVDA', 'AMD', 'MSFT', 'AMZN', 'GOOGL'}
+
+        return sorted(list(tickers))
+
     def get_ai_recommendations(self, underlying: str = None) -> List[Dict[str, Any]]:
         """Get AI recommendations based on current market conditions"""
         try:

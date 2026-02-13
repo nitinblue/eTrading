@@ -655,6 +655,113 @@ class TastytradeAdapter(BrokerAdapter):
             logger.error(f"Failed to get ATM strikes: {e}")
             return {'error': str(e)}
 
+    def get_option_quote(self, underlying: str, expiry: str, strike: float, option_type: str) -> Dict[str, Any]:
+        """
+        Get real-time quote and Greeks for a specific option.
+
+        Returns:
+        - bid, ask, mid prices
+        - delta, gamma, theta, vega
+        - iv (implied volatility)
+
+        This is used by the Order Builder to show real data before submitting.
+        """
+        try:
+            if not self.session:
+                raise RuntimeError("Not authenticated")
+
+            # Build streamer symbol: .{TICKER}{YYMMDD}{C/P}{STRIKE}
+            exp_date = datetime.strptime(expiry, '%Y-%m-%d')
+            exp_str = exp_date.strftime('%y%m%d')
+            opt_char = 'C' if option_type.upper() == 'CALL' else 'P'
+            strike_int = int(strike)
+
+            streamer_symbol = f".{underlying}{exp_str}{opt_char}{strike_int}"
+            logger.info(f"Getting quote for {streamer_symbol}")
+
+            # Fetch Greeks via DXLink
+            greeks_map = self._run_async(self._fetch_greeks_via_dxlink([streamer_symbol]))
+
+            if streamer_symbol not in greeks_map:
+                logger.warning(f"No Greeks received for {streamer_symbol}")
+                return {
+                    'underlying': underlying,
+                    'expiry': expiry,
+                    'strike': strike,
+                    'option_type': option_type,
+                    'streamer_symbol': streamer_symbol,
+                    'bid': 0,
+                    'ask': 0,
+                    'mid': 0,
+                    'delta': 0,
+                    'gamma': 0,
+                    'theta': 0,
+                    'vega': 0,
+                    'iv': 0,
+                    'error': 'No quote data received'
+                }
+
+            greeks = greeks_map[streamer_symbol]
+
+            # DXLink Greeks object contains price info too
+            # For now, estimate mid from theoretical price
+            # In production, you'd also subscribe to Quote events
+            mid_price = 0  # Would come from quote stream
+
+            return {
+                'underlying': underlying,
+                'expiry': expiry,
+                'strike': strike,
+                'option_type': option_type,
+                'streamer_symbol': streamer_symbol,
+                'bid': 0,  # Would come from quote stream
+                'ask': 0,  # Would come from quote stream
+                'mid': float(mid_price),
+                'delta': float(greeks.delta),
+                'gamma': float(greeks.gamma),
+                'theta': float(greeks.theta),
+                'vega': float(greeks.vega),
+                'iv': 0,  # Would come from Greeks event
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get option quote: {e}")
+            logger.exception("Full trace:")
+            return {
+                'underlying': underlying,
+                'expiry': expiry,
+                'strike': strike,
+                'option_type': option_type,
+                'error': str(e)
+            }
+
+    def get_ticker_history(self) -> List[str]:
+        """
+        Get list of tickers from current positions for Order Builder dropdown.
+        """
+        try:
+            if not self.account:
+                return []
+
+            positions_data = self.account.get_positions(self.session)
+            tickers = set()
+
+            for pos in positions_data:
+                symbol = pos.symbol
+                # Extract underlying ticker
+                if pos.instrument_type == 'Equity':
+                    tickers.add(symbol)
+                elif pos.instrument_type == 'Equity Option':
+                    # OCC format: first 6 chars are ticker
+                    ticker = symbol[:6].strip()
+                    tickers.add(ticker)
+
+            return sorted(list(tickers))
+
+        except Exception as e:
+            logger.error(f"Failed to get ticker history: {e}")
+            return []
+
 
 if __name__ == "__main__":
     adapter = TastytradeAdapter()

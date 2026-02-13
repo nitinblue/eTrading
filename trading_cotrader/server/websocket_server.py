@@ -453,6 +453,39 @@ async def get_atm_strikes(underlying: str, expiry: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/quote/{underlying}/{expiry}/{strike}/{option_type}")
+async def get_option_quote(underlying: str, expiry: str, strike: float, option_type: str):
+    """
+    Get real-time quote and Greeks for a specific option.
+
+    Used by Order Builder Step 3 to show bid/ask/mid and Greeks
+    before user adds the leg.
+    """
+    try:
+        quote = data_service.get_option_quote(
+            underlying.upper(), expiry, strike, option_type.upper()
+        )
+        return JSONResponse(content=json.loads(json_dumps(quote)))
+    except Exception as e:
+        logger.error(f"Error getting option quote: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/tickers")
+async def get_ticker_history():
+    """
+    Get list of tickers from positions and trades.
+
+    Used by Order Builder Step 1 dropdown.
+    """
+    try:
+        tickers = data_service.get_ticker_history()
+        return JSONResponse(content=tickers)
+    except Exception as e:
+        logger.error(f"Error getting ticker history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== EVENT ENDPOINTS ====================
 
 @app.get("/api/events")
