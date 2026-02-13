@@ -421,6 +421,38 @@ async def get_whatif_greeks():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== OPTION CHAIN ENDPOINTS ====================
+
+@app.get("/api/chain/{underlying}")
+async def get_option_chain(underlying: str):
+    """
+    Get option chain for an underlying symbol.
+
+    Returns expirations and strikes for the order builder.
+    """
+    try:
+        chain = data_service.get_option_chain(underlying.upper())
+        return JSONResponse(content=json.loads(json_dumps(chain)))
+    except Exception as e:
+        logger.error(f"Error getting option chain: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/strikes/{underlying}/{expiry}")
+async def get_atm_strikes(underlying: str, expiry: str):
+    """
+    Get ATM strikes for an underlying and expiry.
+
+    Returns strikes within 10% of current price for order builder.
+    """
+    try:
+        strikes = data_service.get_atm_strikes(underlying.upper(), expiry)
+        return JSONResponse(content=json.loads(json_dumps(strikes)))
+    except Exception as e:
+        logger.error(f"Error getting ATM strikes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== EVENT ENDPOINTS ====================
 
 @app.get("/api/events")

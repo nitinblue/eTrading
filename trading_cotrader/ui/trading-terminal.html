@@ -362,11 +362,11 @@
                     <div class="ob-row">
                         <div class="ob-field">
                             <label>Underlying</label>
-                            <input type="text" class="ob-input" id="obUl" value="SPY">
+                            <input type="text" class="ob-input" id="obUl" value="SPY" style="text-transform: uppercase;">
                         </div>
                         <div class="ob-field">
                             <label>Expiry</label>
-                            <input type="date" class="ob-input" id="obExp">
+                            <select class="ob-input" id="obExp"></select>
                         </div>
                         <div class="ob-field" style="max-width: 60px;">
                             <label>Qty</label>
@@ -383,9 +383,9 @@
                                 <option value="CALL">CALL</option>
                             </select>
                         </div>
-                        <div class="ob-field" style="max-width: 80px;">
+                        <div class="ob-field" style="max-width: 100px;">
                             <label>Strike</label>
-                            <input type="number" class="ob-input" id="legStrike" value="580">
+                            <select class="ob-input" id="legStrike"></select>
                         </div>
                         <div class="ob-field" style="max-width: 70px;">
                             <label>Side</label>
@@ -543,8 +543,86 @@
         });
 
         // Toggle Order Builder
-        document.getElementById('toggleOB').onclick = () => document.getElementById('rightPanel').classList.remove('collapsed');
+        document.getElementById('toggleOB').onclick = () => {
+            document.getElementById('rightPanel').classList.remove('collapsed');
+            // Load option chain for current underlying
+            loadOptionChain(document.getElementById('obUl').value);
+        };
         document.getElementById('closeOB').onclick = () => document.getElementById('rightPanel').classList.add('collapsed');
+
+        // Option chain data
+        let optionChainData = null;
+
+        // Load option chain when underlying changes
+        document.getElementById('obUl').onchange = async (e) => {
+            const underlying = e.target.value.toUpperCase();
+            e.target.value = underlying;
+            await loadOptionChain(underlying);
+        };
+
+        // Load strikes when expiry changes
+        document.getElementById('obExp').onchange = async () => {
+            await loadStrikes();
+        };
+
+        async function loadOptionChain(underlying) {
+            try {
+                const res = await fetch(`${API_URL}/api/chain/${underlying}`);
+                const data = await res.json();
+
+                if (data.error) {
+                    console.error('Option chain error:', data.error);
+                    return;
+                }
+
+                optionChainData = data;
+
+                // Populate expiry dropdown
+                const expSelect = document.getElementById('obExp');
+                expSelect.innerHTML = data.expirations.map(exp =>
+                    `<option value="${exp.date}">${exp.date} (${exp.dte}d)</option>`
+                ).join('');
+
+                // Load strikes for first expiry
+                if (data.expirations.length > 0) {
+                    await loadStrikes();
+                }
+            } catch (e) {
+                console.error('Failed to load option chain:', e);
+            }
+        }
+
+        async function loadStrikes() {
+            const underlying = document.getElementById('obUl').value.toUpperCase();
+            const expiry = document.getElementById('obExp').value;
+
+            if (!expiry) return;
+
+            try {
+                const res = await fetch(`${API_URL}/api/strikes/${underlying}/${expiry}`);
+                const data = await res.json();
+
+                if (data.error) {
+                    console.error('Strikes error:', data.error);
+                    return;
+                }
+
+                // Populate strike dropdown
+                const strikeSelect = document.getElementById('legStrike');
+                const strikes = data.strikes || [];
+
+                strikeSelect.innerHTML = strikes.map(s =>
+                    `<option value="${s}">${s}</option>`
+                ).join('');
+
+                // Select ATM strike
+                if (data.atm_strike && strikes.includes(data.atm_strike)) {
+                    strikeSelect.value = data.atm_strike;
+                }
+            } catch (e) {
+                console.error('Failed to load strikes:', e);
+            }
+        }
 
         // Add Leg
         document.getElementById('addLegBtn').onclick = () => {
@@ -709,10 +787,8 @@
             initGrids(); connectWS();
             document.getElementById('syncBtn').onclick = sync;
             document.getElementById('refreshBtn').onclick = () => fetch(`${API_URL}/api/refresh`, { method: 'POST' });
-            // Set default expiry
-            const today = new Date();
-            today.setDate(today.getDate() + 30);
-            document.getElementById('obExp').value = today.toISOString().split('T')[0];
+            // Load default option chain for SPY
+            loadOptionChain('SPY');
         });
     </script>
 </body>

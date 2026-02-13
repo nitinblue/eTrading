@@ -235,7 +235,7 @@ class DataService:
                 # Get AI patterns
                 from trading_cotrader.core.database.schema import RecognizedPatternORM
                 patterns = session.query(RecognizedPatternORM).order_by(
-                    RecognizedPatternORM.created_at.desc()
+                    RecognizedPatternORM.discovered_at.desc()
                 ).limit(20).all()
 
                 return {
@@ -246,11 +246,11 @@ class DataService:
                     'events': [self._event_to_dict(e) for e in recent_events[:50]],
                     'patterns': [
                         {
-                            'id': p.id,
-                            'timestamp': p.created_at.isoformat() if p.created_at else '',
+                            'id': p.pattern_id,
+                            'timestamp': p.discovered_at.isoformat() if p.discovered_at else '',
                             'pattern_type': p.pattern_type,
-                            'underlying': p.underlying_symbol or '',
-                            'confidence': float(p.confidence) if p.confidence else 0,
+                            'underlying': '',
+                            'confidence': float(p.confidence_score) if p.confidence_score else 0,
                             'description': p.description or '',
                         }
                         for p in patterns
@@ -444,6 +444,8 @@ class DataService:
         """
         Create a what-if trade with Greeks from broker.
 
+        FULL FLOW: Broker (Greeks) → Database (TradeORM + EventORM) → Container → UI
+
         Each leg should have:
         - option_type: 'CALL' or 'PUT'
         - strike: float
@@ -462,72 +464,178 @@ class DataService:
             leg_symbol_map = {}
 
             for i, leg in enumerate(legs):
-                # Build OCC-style symbol for conversion
                 exp_date = leg['expiry'].replace('-', '')[2:]  # YYMMDD
                 opt_type = 'C' if leg['option_type'].upper() == 'CALL' else 'P'
-                strike_int = int(float(leg['strike']) * 1000)
                 streamer_symbol = f".{underlying}{exp_date}{opt_type}{int(float(leg['strike']))}"
                 streamer_symbols.append(streamer_symbol)
                 leg_symbol_map[i] = streamer_symbol
 
-            # Fetch Greeks from DXLink
+            # STEP 1: Fetch Greeks from broker (DXLink)
             logger.info(f"Fetching Greeks for {len(streamer_symbols)} what-if legs: {streamer_symbols}")
             greeks_map = self.broker._run_async(
                 self.broker._fetch_greeks_via_dxlink(streamer_symbols)
             )
 
-            # Also fetch quotes for mid price
+            # Fetch quotes for mid price
             quotes_map = self._fetch_option_quotes(streamer_symbols)
 
-            # Build legs with Greeks and prices
-            enriched_legs = []
+            # Build domain legs
+            import uuid
+            from datetime import datetime
+            trade_id = str(uuid.uuid4())
+            domain_legs = []
+            total_delta = Decimal('0')
+            total_gamma = Decimal('0')
+            total_theta = Decimal('0')
+            total_vega = Decimal('0')
+            net_entry_price = Decimal('0')
+
             for i, leg in enumerate(legs):
                 streamer_symbol = leg_symbol_map[i]
                 greeks = greeks_map.get(streamer_symbol, {})
                 quote = quotes_map.get(streamer_symbol, {})
 
-                # Mid price = (bid + ask) / 2
                 bid = quote.get('bid', 0) or 0
                 ask = quote.get('ask', 0) or 0
-                mid_price = (bid + ask) / 2 if (bid and ask) else 0
+                mid_price = Decimal(str((bid + ask) / 2)) if (bid and ask) else Decimal('0')
 
                 qty = leg['quantity']
                 is_short = qty < 0
+                multiplier = 100  # Options multiplier
 
-                enriched_leg = {
-                    'option_type': leg['option_type'].upper(),
-                    'strike': Decimal(str(leg['strike'])),
-                    'expiry': leg['expiry'],
-                    'quantity': qty,
-                    'side': 'sell' if is_short else 'buy',
-                    'entry_price': Decimal(str(mid_price)),
-                    'current_price': Decimal(str(mid_price)),
-                    # Per-contract Greeks (will be position-adjusted by container)
-                    'delta': Decimal(str(greeks.get('delta', 0) or 0)),
-                    'gamma': Decimal(str(greeks.get('gamma', 0) or 0)),
-                    'theta': Decimal(str(greeks.get('theta', 0) or 0)),
-                    'vega': Decimal(str(greeks.get('vega', 0) or 0)),
-                }
-                enriched_legs.append(enriched_leg)
-                logger.info(f"  Leg {i}: {streamer_symbol} qty={qty} mid=${mid_price:.2f} Δ={greeks.get('delta', 0)}")
+                # Per-contract Greeks from broker
+                leg_delta = Decimal(str(greeks.get('delta', 0) or 0))
+                leg_gamma = Decimal(str(greeks.get('gamma', 0) or 0))
+                leg_theta = Decimal(str(greeks.get('theta', 0) or 0))
+                leg_vega = Decimal(str(greeks.get('vega', 0) or 0))
 
-            # Add to trade container
-            if self.container_manager:
-                trade = self.container_manager.trades.create_what_if_trade(
-                    underlying=underlying,
-                    strategy_type=strategy_type,
-                    legs=enriched_legs,
-                    notes=notes,
+                # Position Greeks = per_contract * qty * multiplier
+                pos_delta = leg_delta * qty * multiplier
+                pos_gamma = leg_gamma * abs(qty) * multiplier
+                pos_theta = leg_theta * qty * multiplier
+                pos_vega = leg_vega * qty * multiplier
+
+                total_delta += pos_delta
+                total_gamma += pos_gamma
+                total_theta += pos_theta
+                total_vega += pos_vega
+
+                # Net entry: credit (short) is positive, debit (long) is negative
+                leg_cost = mid_price * abs(qty) * multiplier
+                net_entry_price += leg_cost if is_short else -leg_cost
+
+                # Create Symbol for the leg
+                exp_date_obj = datetime.strptime(leg['expiry'], '%Y-%m-%d').date()
+                leg_symbol = dm.Symbol(
+                    ticker=underlying,
+                    asset_type=dm.AssetType.OPTION,
+                    option_type=dm.OptionType.CALL if leg['option_type'].upper() == 'CALL' else dm.OptionType.PUT,
+                    strike=Decimal(str(leg['strike'])),
+                    expiration=exp_date_obj,
+                    multiplier=multiplier,
                 )
-                logger.info(f"Created what-if trade: {trade.trade_id}")
-                return trade.to_dict()
-            else:
-                return {'error': 'No container manager available'}
+
+                # Create Leg domain object
+                domain_leg = dm.Leg(
+                    id=f"{trade_id}_leg_{i}",
+                    symbol=leg_symbol,
+                    quantity=qty,
+                    side=dm.OrderSide.SELL_TO_OPEN if is_short else dm.OrderSide.BUY_TO_OPEN,
+                    entry_price=mid_price,
+                    current_price=mid_price,
+                    entry_greeks=dm.Greeks(delta=leg_delta, gamma=leg_gamma, theta=leg_theta, vega=leg_vega),
+                    current_greeks=dm.Greeks(delta=leg_delta, gamma=leg_gamma, theta=leg_theta, vega=leg_vega),
+                )
+                domain_legs.append(domain_leg)
+                logger.info(f"  Leg {i}: {streamer_symbol} qty={qty} mid=${mid_price:.2f} Δ={pos_delta:.2f}")
+
+            # Create Trade domain object
+            trade_domain = dm.Trade(
+                id=trade_id,
+                underlying_symbol=underlying,
+                trade_type=dm.TradeType.WHAT_IF,
+                trade_status=dm.TradeStatus.INTENT,
+                legs=domain_legs,
+                entry_price=net_entry_price,
+                current_price=net_entry_price,
+                entry_greeks=dm.Greeks(delta=total_delta, gamma=total_gamma, theta=total_theta, vega=total_vega),
+                current_greeks=dm.Greeks(delta=total_delta, gamma=total_gamma, theta=total_theta, vega=total_vega),
+                notes=notes,
+                created_at=datetime.utcnow(),
+            )
+
+            # STEP 2: Save to database
+            with session_scope() as session:
+                trade_repo = TradeRepository(session)
+                event_repo = EventRepository(session)
+
+                # Get or create what-if portfolio
+                portfolio_repo = PortfolioRepository(session)
+                whatif_portfolio = portfolio_repo.get_by_account(broker='whatif', account_id='whatif')
+                if not whatif_portfolio:
+                    whatif_portfolio = dm.Portfolio(
+                        name="What-If Portfolio",
+                        broker="whatif",
+                        account_id="whatif",
+                    )
+                    whatif_portfolio = portfolio_repo.create_from_domain(whatif_portfolio)
+
+                # Save trade to database
+                created_trade = trade_repo.create_from_domain(trade_domain, whatif_portfolio.id)
+                if not created_trade:
+                    return {'error': 'Failed to save trade to database'}
+
+                logger.info(f"✓ Saved what-if trade to database: {trade_id}")
+
+                # STEP 3: Create event for AI learning
+                trade_event = ev.TradeEvent(
+                    event_type=ev.EventType.TRADE_OPENED,
+                    trade_id=trade_id,
+                    strategy_type=strategy_type,
+                    underlying_symbol=underlying,
+                    entry_delta=total_delta,
+                    entry_gamma=total_gamma,
+                    entry_theta=total_theta,
+                    entry_vega=total_vega,
+                    net_credit_debit=net_entry_price,
+                    decision_context=ev.DecisionContext(
+                        rationale=notes,
+                        confidence_level=5,
+                    ),
+                    tags=['what_if', strategy_type],
+                )
+                event_repo.create_from_domain(trade_event)
+                logger.info(f"✓ Created event for AI learning: {trade_event.event_id}")
+
+            # STEP 4: Load into container for UI
+            if self.container_manager:
+                self._refresh_containers_from_db()
+
+            return {
+                'trade_id': trade_id,
+                'underlying': underlying,
+                'strategy_type': strategy_type,
+                'legs_count': len(domain_legs),
+                'delta': float(total_delta),
+                'gamma': float(total_gamma),
+                'theta': float(total_theta),
+                'vega': float(total_vega),
+                'entry_price': float(net_entry_price),
+                'status': 'created',
+            }
 
         except Exception as e:
             logger.error(f"Failed to create what-if trade: {e}")
             logger.exception("Full trace:")
             return {'error': str(e)}
+
+    def _refresh_containers_from_db(self):
+        """Refresh containers from database after changes"""
+        try:
+            with session_scope() as session:
+                self._refresh_containers(session)
+        except Exception as e:
+            logger.error(f"Failed to refresh containers: {e}")
 
     def _fetch_option_quotes(self, streamer_symbols: List[str]) -> Dict[str, Dict]:
         """
@@ -683,7 +791,7 @@ class DataService:
                 # Get recent patterns
                 from trading_cotrader.core.database.schema import RecognizedPatternORM
                 patterns = session.query(RecognizedPatternORM).order_by(
-                    RecognizedPatternORM.created_at.desc()
+                    RecognizedPatternORM.discovered_at.desc()
                 ).limit(10).all()
 
                 # Calculate win rate from completed events
@@ -701,10 +809,10 @@ class DataService:
                     'total_trades': total,
                     'patterns': [
                         {
-                            'id': p.id,
+                            'id': p.pattern_id,
                             'pattern_type': p.pattern_type,
                             'description': p.description,
-                            'confidence': float(p.confidence) if p.confidence else 0,
+                            'confidence': float(p.confidence_score) if p.confidence_score else 0,
                             'success_rate': float(p.success_rate) if p.success_rate else 0,
                         }
                         for p in patterns
@@ -714,6 +822,41 @@ class DataService:
         except Exception as e:
             logger.error(f"Failed to get AI status: {e}")
             return {'status': 'error', 'error': str(e)}
+
+    # ==================== OPTION CHAIN METHODS ====================
+
+    def get_option_chain(self, underlying: str) -> Dict[str, Any]:
+        """
+        Get option chain for an underlying.
+
+        Used by the Order Builder to populate expiries and strikes
+        when the user changes the underlying ticker.
+        """
+        if not self.is_connected:
+            if not self.connect_broker():
+                return {'error': 'Failed to connect to broker'}
+
+        try:
+            return self.broker.get_option_chain(underlying)
+        except Exception as e:
+            logger.error(f"Failed to get option chain: {e}")
+            return {'error': str(e)}
+
+    def get_atm_strikes(self, underlying: str, expiry: str) -> Dict[str, Any]:
+        """
+        Get ATM strikes for what-if order builder.
+
+        Returns strikes within 10% of the current underlying price.
+        """
+        if not self.is_connected:
+            if not self.connect_broker():
+                return {'error': 'Failed to connect to broker'}
+
+        try:
+            return self.broker.get_atm_strikes(underlying, expiry)
+        except Exception as e:
+            logger.error(f"Failed to get ATM strikes: {e}")
+            return {'error': str(e)}
 
     def get_ai_recommendations(self, underlying: str = None) -> List[Dict[str, Any]]:
         """Get AI recommendations based on current market conditions"""
