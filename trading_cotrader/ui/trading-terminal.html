@@ -155,6 +155,21 @@
         .ai-stat { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 4px; }
         .ai-progress { height: 4px; background: var(--bg-3); border-radius: 2px; margin-top: 4px; }
         .ai-progress-bar { height: 100%; background: var(--cyan); border-radius: 2px; }
+
+        /* Wizard Steps */
+        .wizard-step { display: none; }
+        .wizard-step.active { display: block; }
+        .step-title { font-size: 11px; font-weight: bold; color: var(--cyan); margin-bottom: 10px; }
+        .step-indicator { display: flex; flex-direction: column; align-items: center; opacity: 0.4; }
+        .step-indicator.active { opacity: 1; }
+        .step-indicator.completed { opacity: 0.7; }
+        .step-indicator.completed .step-num { background: var(--green); }
+        .step-num { width: 20px; height: 20px; background: var(--bg-3); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; }
+        .step-indicator.active .step-num { background: var(--cyan); color: var(--bg-0); }
+        .step-label { font-size: 8px; margin-top: 2px; color: var(--text-2); }
+
+        /* What-if trade checkbox in grid */
+        .impact-checkbox { width: 14px; height: 14px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -338,96 +353,196 @@
             </div>
         </div>
 
-        <!-- Right Panel: Order Builder -->
+        <!-- Right Panel: Order Builder - Step by Step Wizard -->
         <div class="right-panel collapsed" id="rightPanel">
             <div class="order-builder">
                 <div class="ob-section">
                     <div class="ob-title">
-                        <span>Order Builder <span class="pf-badge sim">WHAT-IF</span></span>
+                        <span>What-If Order Builder <span class="pf-badge sim">WIZARD</span></span>
                         <span class="ob-close" id="closeOB">×</span>
                     </div>
 
-                    <!-- Strategy Chips -->
-                    <div class="strat-chips">
-                        <div class="strat-chip2 defined sel" data-strat="vertical">Vertical</div>
-                        <div class="strat-chip2 defined" data-strat="iron_condor">Iron Condor</div>
-                        <div class="strat-chip2 defined" data-strat="butterfly">Butterfly</div>
-                        <div class="strat-chip2 undefined" data-strat="straddle">Straddle</div>
-                        <div class="strat-chip2 undefined" data-strat="strangle">Strangle</div>
-                        <div class="strat-chip2 defined" data-strat="calendar">Calendar</div>
-                        <div class="strat-chip2" data-strat="custom">Custom</div>
-                    </div>
-
-                    <!-- Fields -->
-                    <div class="ob-row">
-                        <div class="ob-field">
-                            <label>Underlying</label>
-                            <input type="text" class="ob-input" id="obUl" value="SPY" style="text-transform: uppercase;">
+                    <!-- Progress Steps -->
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding: 8px 0; border-bottom: 1px solid var(--border);">
+                        <div class="step-indicator active" data-step="1">
+                            <span class="step-num">1</span>
+                            <span class="step-label">Ticker</span>
                         </div>
-                        <div class="ob-field">
-                            <label>Expiry</label>
-                            <select class="ob-input" id="obExp"></select>
+                        <div class="step-indicator" data-step="2">
+                            <span class="step-num">2</span>
+                            <span class="step-label">Options</span>
                         </div>
-                        <div class="ob-field" style="max-width: 60px;">
-                            <label>Qty</label>
-                            <input type="number" class="ob-input" id="obQty" value="1" min="1">
+                        <div class="step-indicator" data-step="3">
+                            <span class="step-num">3</span>
+                            <span class="step-label">Build</span>
+                        </div>
+                        <div class="step-indicator" data-step="4">
+                            <span class="step-num">4</span>
+                            <span class="step-label">Review</span>
                         </div>
                     </div>
 
-                    <!-- Leg Builder -->
-                    <div class="ob-row">
-                        <div class="ob-field" style="max-width: 70px;">
-                            <label>Type</label>
-                            <select class="ob-input" id="legType">
-                                <option value="PUT">PUT</option>
-                                <option value="CALL">CALL</option>
+                    <!-- STEP 1: Select Ticker -->
+                    <div class="wizard-step active" id="step1">
+                        <div class="step-title">Step 1: Select Underlying</div>
+                        <div class="ob-field" style="margin-bottom: 8px;">
+                            <label>Your Tickers (from positions)</label>
+                            <select class="ob-input" id="tickerDropdown">
+                                <option value="">-- Select or type below --</option>
                             </select>
                         </div>
-                        <div class="ob-field" style="max-width: 100px;">
-                            <label>Strike</label>
-                            <select class="ob-input" id="legStrike"></select>
+                        <div class="ob-field">
+                            <label>Or Enter Ticker</label>
+                            <input type="text" class="ob-input" id="obUl" value="" placeholder="SPY" style="text-transform: uppercase;">
                         </div>
-                        <div class="ob-field" style="max-width: 70px;">
-                            <label>Side</label>
-                            <select class="ob-input" id="legSide">
-                                <option value="-1">SELL</option>
-                                <option value="1">BUY</option>
-                            </select>
+                        <div style="margin-top: 12px;">
+                            <button class="btn btn-primary" id="step1Next" style="width: 100%;">Next: Load Options →</button>
                         </div>
-                        <div class="ob-field" style="max-width: 60px;">
-                            <label>&nbsp;</label>
-                            <button class="btn" id="addLegBtn" style="width: 100%">+</button>
+                        <div id="step1Status" style="margin-top: 8px; font-size: 10px; color: var(--text-2);"></div>
+                    </div>
+
+                    <!-- STEP 2: Select Expiry & Strike -->
+                    <div class="wizard-step" id="step2">
+                        <div class="step-title">Step 2: Select Expiration & Strike</div>
+                        <div class="ob-row">
+                            <div class="ob-field">
+                                <label>Expiration</label>
+                                <select class="ob-input" id="obExp"></select>
+                            </div>
+                        </div>
+                        <div class="ob-row">
+                            <div class="ob-field">
+                                <label>Strike</label>
+                                <select class="ob-input" id="legStrike"></select>
+                            </div>
+                            <div class="ob-field" style="max-width: 70px;">
+                                <label>Type</label>
+                                <select class="ob-input" id="legType">
+                                    <option value="PUT">PUT</option>
+                                    <option value="CALL">CALL</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="quoteBox" style="background: var(--bg-2); padding: 8px; border-radius: 4px; margin: 8px 0; display: none;">
+                            <div style="font-size: 9px; color: var(--text-2); margin-bottom: 4px;">LIVE QUOTE</div>
+                            <div style="display: flex; gap: 12px; font-size: 11px;">
+                                <div><span style="color: var(--text-2)">Bid:</span> <span id="quoteBid">--</span></div>
+                                <div><span style="color: var(--text-2)">Ask:</span> <span id="quoteAsk">--</span></div>
+                                <div><span style="color: var(--text-2)">Mid:</span> <span id="quoteMid" style="color: var(--cyan);">--</span></div>
+                            </div>
+                            <div style="display: flex; gap: 12px; margin-top: 4px; font-size: 10px;">
+                                <div><span style="color: var(--text-2)">Δ:</span> <span id="quoteD">--</span></div>
+                                <div><span style="color: var(--text-2)">Γ:</span> <span id="quoteG">--</span></div>
+                                <div><span style="color: var(--text-2)">Θ:</span> <span id="quoteT">--</span></div>
+                                <div><span style="color: var(--text-2)">V:</span> <span id="quoteV">--</span></div>
+                            </div>
+                        </div>
+                        <div class="ob-actions">
+                            <button class="btn" id="step2Back">← Back</button>
+                            <button class="btn btn-primary" id="step2Next">Next: Build Legs →</button>
                         </div>
                     </div>
 
-                    <!-- Legs -->
-                    <div class="legs-box" id="legsBox">
-                        <div style="text-align: center; color: var(--text-2); padding: 8px;">No legs added</div>
-                    </div>
+                    <!-- STEP 3: Build Legs -->
+                    <div class="wizard-step" id="step3">
+                        <div class="step-title">Step 3: Build Your Position</div>
 
-                    <!-- Payoff -->
-                    <div class="payoff-box">
-                        <div class="payoff-title">Payoff @ Expiry</div>
-                        <canvas class="payoff-canvas" id="payoffCanvas"></canvas>
-                        <div class="payoff-stats">
-                            <div class="payoff-stat"><span>Max Profit:</span> <span class="up" id="maxProfit">--</span></div>
-                            <div class="payoff-stat"><span>Max Loss:</span> <span class="down" id="maxLoss">--</span></div>
-                            <div class="payoff-stat"><span>BE:</span> <span id="breakeven">--</span></div>
+                        <!-- Strategy Templates -->
+                        <div style="margin-bottom: 8px;">
+                            <label style="font-size: 9px; color: var(--text-2);">STRATEGY TEMPLATES</label>
+                            <div class="strat-chips">
+                                <div class="strat-chip2 sel" data-strat="custom">Custom</div>
+                                <div class="strat-chip2" data-strat="vertical">Vertical</div>
+                                <div class="strat-chip2" data-strat="iron_condor">Iron Condor</div>
+                                <div class="strat-chip2" data-strat="straddle">Straddle</div>
+                            </div>
+                        </div>
+
+                        <!-- Add Leg -->
+                        <div class="ob-row" style="background: var(--bg-2); padding: 6px; border-radius: 4px;">
+                            <div class="ob-field" style="max-width: 70px;">
+                                <label>Type</label>
+                                <select class="ob-input" id="addLegType">
+                                    <option value="PUT">PUT</option>
+                                    <option value="CALL">CALL</option>
+                                </select>
+                            </div>
+                            <div class="ob-field" style="max-width: 90px;">
+                                <label>Strike</label>
+                                <select class="ob-input" id="addLegStrike"></select>
+                            </div>
+                            <div class="ob-field" style="max-width: 60px;">
+                                <label>Side</label>
+                                <select class="ob-input" id="addLegSide">
+                                    <option value="-1">SELL</option>
+                                    <option value="1">BUY</option>
+                                </select>
+                            </div>
+                            <div class="ob-field" style="max-width: 50px;">
+                                <label>Qty</label>
+                                <input type="number" class="ob-input" id="addLegQty" value="1" min="1">
+                            </div>
+                            <div class="ob-field" style="max-width: 40px;">
+                                <label>&nbsp;</label>
+                                <button class="btn btn-primary" id="addLegBtn" style="width: 100%">+</button>
+                            </div>
+                        </div>
+
+                        <!-- Legs List -->
+                        <div class="legs-box" id="legsBox" style="margin: 8px 0; min-height: 60px;">
+                            <div style="text-align: center; color: var(--text-2); padding: 16px;">Add legs above</div>
+                        </div>
+
+                        <!-- Net Greeks Summary -->
+                        <div style="background: var(--bg-2); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+                            <div style="font-size: 9px; color: var(--text-2); margin-bottom: 4px;">NET POSITION GREEKS</div>
+                            <div style="display: flex; justify-content: space-around;">
+                                <div style="text-align: center;"><div style="font-size: 9px; color: var(--text-2);">Δ</div><div style="font-weight: bold;" id="obNetD">0</div></div>
+                                <div style="text-align: center;"><div style="font-size: 9px; color: var(--text-2);">Γ</div><div style="font-weight: bold;" id="obNetG">0</div></div>
+                                <div style="text-align: center;"><div style="font-size: 9px; color: var(--text-2);">Θ</div><div style="font-weight: bold; color: var(--green);" id="obNetT">0</div></div>
+                                <div style="text-align: center;"><div style="font-size: 9px; color: var(--text-2);">V</div><div style="font-weight: bold;" id="obNetV">0</div></div>
+                                <div style="text-align: center;"><div style="font-size: 9px; color: var(--text-2);">Credit</div><div style="font-weight: bold; color: var(--green);" id="obNetCredit">$0</div></div>
+                            </div>
+                        </div>
+
+                        <div class="ob-actions">
+                            <button class="btn" id="step3Back">← Back</button>
+                            <button class="btn" id="step3Reset">Reset</button>
+                            <button class="btn btn-primary" id="step3Next">Review →</button>
                         </div>
                     </div>
 
-                    <!-- Net Greeks -->
-                    <div class="ob-row" style="background: var(--bg-2); padding: 4px 6px; border-radius: 2px; margin-bottom: 6px;">
-                        <div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text-2)">Net Δ</div><div style="font-weight:bold" id="obNetD">0</div></div>
-                        <div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text-2)">Net Γ</div><div style="font-weight:bold" id="obNetG">0</div></div>
-                        <div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text-2)">Net Θ</div><div style="font-weight:bold;color:var(--green)" id="obNetT">0</div></div>
-                        <div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text-2)">Net V</div><div style="font-weight:bold" id="obNetV">0</div></div>
-                    </div>
+                    <!-- STEP 4: Review & Submit -->
+                    <div class="wizard-step" id="step4">
+                        <div class="step-title">Step 4: Review & Submit</div>
 
-                    <!-- Actions -->
-                    <div class="ob-actions">
-                        <button class="btn" id="resetBtn">Reset</button>
-                        <button class="btn btn-success" id="submitBtn">Submit What-If</button>
+                        <div id="reviewSummary" style="background: var(--bg-2); padding: 10px; border-radius: 4px; margin-bottom: 8px;">
+                            <!-- Filled dynamically -->
+                        </div>
+
+                        <!-- Impact Preview -->
+                        <div style="background: var(--bg-3); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+                            <div style="font-size: 9px; color: var(--text-2); margin-bottom: 4px;">PORTFOLIO IMPACT PREVIEW</div>
+                            <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                                <div>
+                                    <div style="color: var(--text-2);">Current Δ</div>
+                                    <div id="impactCurD">--</div>
+                                </div>
+                                <div>
+                                    <div style="color: var(--text-2);">+ Trade Δ</div>
+                                    <div id="impactTradeD">--</div>
+                                </div>
+                                <div>
+                                    <div style="color: var(--text-2);">= New Δ</div>
+                                    <div style="font-weight: bold; color: var(--cyan);" id="impactNewD">--</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ob-actions">
+                            <button class="btn" id="step4Back">← Edit</button>
+                            <button class="btn btn-success" id="submitBtn" style="flex: 2;">✓ Submit What-If Trade</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -485,6 +600,26 @@
             { field: 'dte', headerName: 'DTE', width: 40 },
         ];
 
+        // What-if grid with impact checkbox
+        const whatifCols = [
+            {
+                headerName: '☑',
+                width: 35,
+                checkboxSelection: true,
+                headerCheckboxSelection: true,
+                cellRenderer: () => '',
+            },
+            { field: 'underlying', headerName: 'UL', width: 50 },
+            { field: 'strategy', headerName: 'Strategy', width: 85 },
+            { field: 'legs', headerName: 'Legs', width: 35 },
+            { field: 'delta', headerName: 'Δ', cellRenderer: numFmt, width: 50 },
+            { field: 'gamma', headerName: 'Γ', cellRenderer: numFmt, width: 50 },
+            { field: 'theta', headerName: 'Θ', cellRenderer: numFmt, width: 50 },
+            { field: 'vega', headerName: 'V', cellRenderer: numFmt, width: 50 },
+            { field: 'credit', headerName: 'Cr/Dr', cellRenderer: pnlFmt, width: 55 },
+            { field: 'dte', headerName: 'DTE', width: 35 },
+        ];
+
         const eventCols = [
             { field: 'timestamp', headerName: 'Time', width: 140 },
             { field: 'event_type', headerName: 'Type', width: 100 },
@@ -515,10 +650,50 @@
             grids.risk = agGrid.createGrid(document.getElementById('riskGrid'), { ...opts, columnDefs: riskCols, rowData: [] });
             grids.pos = agGrid.createGrid(document.getElementById('posGrid'), { ...opts, columnDefs: posCols, rowData: [] });
             grids.trades = agGrid.createGrid(document.getElementById('tradesGrid'), { ...opts, columnDefs: tradeCols, rowData: [] });
-            grids.whatif = agGrid.createGrid(document.getElementById('whatifGrid'), { ...opts, columnDefs: tradeCols, rowData: [] });
+
+            // What-if grid with multi-select for impact calculation
+            grids.whatif = agGrid.createGrid(document.getElementById('whatifGrid'), {
+                ...opts,
+                rowSelection: 'multiple',
+                columnDefs: whatifCols,
+                rowData: [],
+                onSelectionChanged: updateWhatIfImpact,
+            });
+
             grids.events = agGrid.createGrid(document.getElementById('eventsGrid'), { ...opts, columnDefs: eventCols, rowData: [] });
             grids.impact = agGrid.createGrid(document.getElementById('impactGrid'), { ...opts, columnDefs: impactCols, rowData: [] });
             grids.patterns = agGrid.createGrid(document.getElementById('patternsGrid'), { ...opts, columnDefs: patternCols, rowData: [] });
+        }
+
+        // Update impact analysis when what-if selection changes
+        function updateWhatIfImpact() {
+            const selected = grids.whatif.getSelectedRows();
+            let sumD = 0, sumG = 0, sumT = 0, sumV = 0;
+            selected.forEach(row => {
+                sumD += parseFloat(row.delta) || 0;
+                sumG += parseFloat(row.gamma) || 0;
+                sumT += parseFloat(row.theta) || 0;
+                sumV += parseFloat(row.vega) || 0;
+            });
+
+            // Update the whatif portfolio display
+            document.getElementById('wifD').textContent = sumD.toFixed(1);
+            document.getElementById('wifG').textContent = sumG.toFixed(2);
+            document.getElementById('wifT').textContent = sumT.toFixed(1);
+            document.getElementById('wifV').textContent = sumV.toFixed(1);
+
+            // Update combined delta
+            const rd = portfolioDelta;
+            document.getElementById('combD').textContent = (rd + sumD).toFixed(1);
+
+            // Update impact grid
+            const impactData = [
+                { metric: 'Delta', real: portfolioDelta.toFixed(1), whatif: sumD.toFixed(1), combined: (portfolioDelta + sumD).toFixed(1), change: sumD },
+                { metric: 'Gamma', real: '0', whatif: sumG.toFixed(2), combined: sumG.toFixed(2), change: sumG },
+                { metric: 'Theta', real: '0', whatif: sumT.toFixed(1), combined: sumT.toFixed(1), change: sumT },
+                { metric: 'Vega', real: '0', whatif: sumV.toFixed(1), combined: sumV.toFixed(1), change: sumV },
+            ];
+            grids.impact.setGridOption('rowData', impactData);
         }
 
         // Tabs
@@ -533,45 +708,67 @@
             };
         });
 
-        // Strategy chips
-        document.querySelectorAll('.strat-chip2').forEach(chip => {
-            chip.onclick = () => {
-                document.querySelectorAll('.strat-chip2').forEach(c => c.classList.remove('sel'));
-                chip.classList.add('sel');
-                selectedStrategy = chip.dataset.strat;
-            };
-        });
+        // ==================== WIZARD STATE ====================
+        let wizardStep = 1;
+        let optionChainData = null;
+        let currentQuote = null;
+        let portfolioDelta = 0;  // Track real portfolio delta for impact
 
-        // Toggle Order Builder
-        document.getElementById('toggleOB').onclick = () => {
+        // ==================== WIZARD NAVIGATION ====================
+        function goToStep(step) {
+            wizardStep = step;
+            document.querySelectorAll('.wizard-step').forEach(s => s.classList.remove('active'));
+            document.getElementById('step' + step).classList.add('active');
+
+            // Update step indicators
+            document.querySelectorAll('.step-indicator').forEach(ind => {
+                const indStep = parseInt(ind.dataset.step);
+                ind.classList.remove('active', 'completed');
+                if (indStep === step) ind.classList.add('active');
+                else if (indStep < step) ind.classList.add('completed');
+            });
+        }
+
+        // ==================== STEP 1: TICKER SELECTION ====================
+        document.getElementById('toggleOB').onclick = async () => {
             document.getElementById('rightPanel').classList.remove('collapsed');
-            // Load option chain for current underlying
-            loadOptionChain(document.getElementById('obUl').value);
+            goToStep(1);
+            // Load ticker history
+            try {
+                const res = await fetch(`${API_URL}/api/tickers`);
+                const tickers = await res.json();
+                const dd = document.getElementById('tickerDropdown');
+                dd.innerHTML = '<option value="">-- Select or type below --</option>' +
+                    tickers.map(t => `<option value="${t}">${t}</option>`).join('');
+            } catch (e) {
+                console.error('Failed to load tickers:', e);
+            }
         };
         document.getElementById('closeOB').onclick = () => document.getElementById('rightPanel').classList.add('collapsed');
 
-        // Option chain data
-        let optionChainData = null;
-
-        // Load option chain when underlying changes
-        document.getElementById('obUl').onchange = async (e) => {
-            const underlying = e.target.value.toUpperCase();
-            e.target.value = underlying;
-            await loadOptionChain(underlying);
+        // Sync ticker dropdown with input
+        document.getElementById('tickerDropdown').onchange = (e) => {
+            if (e.target.value) {
+                document.getElementById('obUl').value = e.target.value;
+            }
         };
 
-        // Load strikes when expiry changes
-        document.getElementById('obExp').onchange = async () => {
-            await loadStrikes();
-        };
+        // Step 1 Next: Load option chain
+        document.getElementById('step1Next').onclick = async () => {
+            const underlying = document.getElementById('obUl').value.toUpperCase().trim();
+            if (!underlying) {
+                document.getElementById('step1Status').innerHTML = '<span style="color: var(--red);">Please enter a ticker</span>';
+                return;
+            }
+            document.getElementById('obUl').value = underlying;
+            document.getElementById('step1Status').innerHTML = '<span style="color: var(--yellow);">Loading option chain...</span>';
 
-        async function loadOptionChain(underlying) {
             try {
                 const res = await fetch(`${API_URL}/api/chain/${underlying}`);
                 const data = await res.json();
 
                 if (data.error) {
-                    console.error('Option chain error:', data.error);
+                    document.getElementById('step1Status').innerHTML = `<span style="color: var(--red);">Error: ${data.error}</span>`;
                     return;
                 }
 
@@ -587,66 +784,151 @@
                 if (data.expirations.length > 0) {
                     await loadStrikes();
                 }
-            } catch (e) {
-                console.error('Failed to load option chain:', e);
-            }
-        }
 
+                document.getElementById('step1Status').innerHTML = `<span style="color: var(--green);">✓ Loaded ${data.expirations.length} expirations</span>`;
+                goToStep(2);
+            } catch (e) {
+                document.getElementById('step1Status').innerHTML = `<span style="color: var(--red);">Error: ${e.message}</span>`;
+            }
+        };
+
+        // ==================== STEP 2: SELECT EXPIRY & STRIKE ====================
         async function loadStrikes() {
             const underlying = document.getElementById('obUl').value.toUpperCase();
             const expiry = document.getElementById('obExp').value;
-
             if (!expiry) return;
 
             try {
                 const res = await fetch(`${API_URL}/api/strikes/${underlying}/${expiry}`);
                 const data = await res.json();
 
-                if (data.error) {
-                    console.error('Strikes error:', data.error);
-                    return;
-                }
-
-                // Populate strike dropdown
                 const strikeSelect = document.getElementById('legStrike');
                 const strikes = data.strikes || [];
+                strikeSelect.innerHTML = strikes.map(s => `<option value="${s}">${s}</option>`).join('');
 
-                strikeSelect.innerHTML = strikes.map(s =>
-                    `<option value="${s}">${s}</option>`
-                ).join('');
+                // Also populate the add leg strike dropdown
+                const addLegStrike = document.getElementById('addLegStrike');
+                addLegStrike.innerHTML = strikes.map(s => `<option value="${s}">${s}</option>`).join('');
 
                 // Select ATM strike
-                if (data.atm_strike && strikes.includes(data.atm_strike)) {
+                if (data.atm_strike) {
                     strikeSelect.value = data.atm_strike;
+                    addLegStrike.value = data.atm_strike;
                 }
             } catch (e) {
                 console.error('Failed to load strikes:', e);
             }
         }
 
+        // Load strikes when expiry changes
+        document.getElementById('obExp').onchange = async () => {
+            await loadStrikes();
+            await loadQuote();
+        };
+
+        // Load quote when strike or type changes
+        document.getElementById('legStrike').onchange = loadQuote;
+        document.getElementById('legType').onchange = loadQuote;
+
+        async function loadQuote() {
+            const underlying = document.getElementById('obUl').value.toUpperCase();
+            const expiry = document.getElementById('obExp').value;
+            const strike = document.getElementById('legStrike').value;
+            const optType = document.getElementById('legType').value;
+
+            if (!underlying || !expiry || !strike) return;
+
+            document.getElementById('quoteBox').style.display = 'block';
+            document.getElementById('quoteBid').textContent = '...';
+            document.getElementById('quoteAsk').textContent = '...';
+            document.getElementById('quoteMid').textContent = '...';
+
+            try {
+                const res = await fetch(`${API_URL}/api/quote/${underlying}/${expiry}/${strike}/${optType}`);
+                currentQuote = await res.json();
+
+                if (currentQuote.error) {
+                    document.getElementById('quoteMid').innerHTML = `<span style="color: var(--red);">Error</span>`;
+                    return;
+                }
+
+                document.getElementById('quoteBid').textContent = currentQuote.bid?.toFixed(2) || '--';
+                document.getElementById('quoteAsk').textContent = currentQuote.ask?.toFixed(2) || '--';
+                document.getElementById('quoteMid').textContent = currentQuote.mid?.toFixed(2) || '--';
+                document.getElementById('quoteD').textContent = currentQuote.delta?.toFixed(3) || '--';
+                document.getElementById('quoteG').textContent = currentQuote.gamma?.toFixed(4) || '--';
+                document.getElementById('quoteT').textContent = currentQuote.theta?.toFixed(3) || '--';
+                document.getElementById('quoteV').textContent = currentQuote.vega?.toFixed(3) || '--';
+            } catch (e) {
+                document.getElementById('quoteMid').innerHTML = `<span style="color: var(--red);">Error</span>`;
+            }
+        }
+
+        document.getElementById('step2Back').onclick = () => goToStep(1);
+        document.getElementById('step2Next').onclick = () => goToStep(3);
+
+        // ==================== STEP 3: BUILD LEGS ====================
+        // Strategy chips
+        document.querySelectorAll('.strat-chip2').forEach(chip => {
+            chip.onclick = () => {
+                document.querySelectorAll('.strat-chip2').forEach(c => c.classList.remove('sel'));
+                chip.classList.add('sel');
+                selectedStrategy = chip.dataset.strat;
+            };
+        });
+
         // Add Leg
-        document.getElementById('addLegBtn').onclick = () => {
+        document.getElementById('addLegBtn').onclick = async () => {
+            const optType = document.getElementById('addLegType').value;
+            const strike = parseFloat(document.getElementById('addLegStrike').value);
+            const side = parseInt(document.getElementById('addLegSide').value);
+            const qty = parseInt(document.getElementById('addLegQty').value) || 1;
+            const expiry = document.getElementById('obExp').value;
+            const underlying = document.getElementById('obUl').value.toUpperCase();
+
+            if (!strike || !expiry) return;
+
+            // Fetch Greeks for this leg
+            let delta = 0, gamma = 0, theta = 0, vega = 0, mid = 0;
+            try {
+                const res = await fetch(`${API_URL}/api/quote/${underlying}/${expiry}/${strike}/${optType}`);
+                const quote = await res.json();
+                if (!quote.error) {
+                    delta = quote.delta || 0;
+                    gamma = quote.gamma || 0;
+                    theta = quote.theta || 0;
+                    vega = quote.vega || 0;
+                    mid = quote.mid || 0;
+                }
+            } catch (e) {}
+
             const leg = {
-                option_type: document.getElementById('legType').value,
-                strike: parseFloat(document.getElementById('legStrike').value),
-                expiry: document.getElementById('obExp').value,
-                quantity: parseInt(document.getElementById('legSide').value) * parseInt(document.getElementById('obQty').value)
+                option_type: optType,
+                strike: strike,
+                expiry: expiry,
+                quantity: side * qty,
+                delta: delta * side * qty * 100,  // Position delta
+                gamma: gamma * Math.abs(qty) * 100,
+                theta: theta * side * qty * 100,
+                vega: vega * side * qty * 100,
+                mid: mid
             };
             currentLegs.push(leg);
             renderLegs();
+            updateNetGreeks();
         };
 
         function renderLegs() {
             const box = document.getElementById('legsBox');
             if (currentLegs.length === 0) {
-                box.innerHTML = '<div style="text-align: center; color: var(--text-2); padding: 8px;">No legs added</div>';
+                box.innerHTML = '<div style="text-align: center; color: var(--text-2); padding: 16px;">Add legs above</div>';
                 return;
             }
             box.innerHTML = currentLegs.map((leg, i) => `
                 <div class="leg">
                     <span class="leg-side ${leg.quantity < 0 ? 'sell' : 'buy'}">${leg.quantity < 0 ? 'SELL' : 'BUY'}</span>
                     <span class="leg-info">${leg.option_type} $${leg.strike}</span>
-                    <span class="leg-greeks">x${Math.abs(leg.quantity)}</span>
+                    <span class="leg-greeks">x${Math.abs(leg.quantity)} | Δ${leg.delta?.toFixed(1) || 0}</span>
                     <span class="leg-del" onclick="removeLeg(${i})">×</span>
                 </div>
             `).join('');
@@ -655,30 +937,103 @@
         window.removeLeg = (i) => {
             currentLegs.splice(i, 1);
             renderLegs();
+            updateNetGreeks();
         };
 
-        // Reset
-        document.getElementById('resetBtn').onclick = () => {
+        function updateNetGreeks() {
+            let netD = 0, netG = 0, netT = 0, netV = 0, netCredit = 0;
+            currentLegs.forEach(leg => {
+                netD += leg.delta || 0;
+                netG += leg.gamma || 0;
+                netT += leg.theta || 0;
+                netV += leg.vega || 0;
+                // Credit = -qty * mid (selling gives credit, buying costs)
+                netCredit += (leg.quantity < 0 ? 1 : -1) * Math.abs(leg.quantity) * (leg.mid || 0) * 100;
+            });
+            document.getElementById('obNetD').textContent = netD.toFixed(1);
+            document.getElementById('obNetG').textContent = netG.toFixed(2);
+            document.getElementById('obNetT').textContent = netT.toFixed(1);
+            document.getElementById('obNetV').textContent = netV.toFixed(1);
+            document.getElementById('obNetCredit').textContent = '$' + netCredit.toFixed(0);
+            document.getElementById('obNetCredit').style.color = netCredit >= 0 ? 'var(--green)' : 'var(--red)';
+        }
+
+        document.getElementById('step3Back').onclick = () => goToStep(2);
+        document.getElementById('step3Reset').onclick = () => {
             currentLegs = [];
             renderLegs();
-            document.getElementById('obNetD').textContent = '0';
-            document.getElementById('obNetG').textContent = '0';
-            document.getElementById('obNetT').textContent = '0';
-            document.getElementById('obNetV').textContent = '0';
+            updateNetGreeks();
+        };
+        document.getElementById('step3Next').onclick = () => {
+            if (currentLegs.length === 0) {
+                alert('Add at least one leg');
+                return;
+            }
+            updateReviewSummary();
+            goToStep(4);
         };
 
-        // Submit What-If
+        // ==================== STEP 4: REVIEW & SUBMIT ====================
+        function updateReviewSummary() {
+            const underlying = document.getElementById('obUl').value.toUpperCase();
+            const expiry = document.getElementById('obExp').value;
+
+            let netD = 0, netT = 0, netCredit = 0;
+            currentLegs.forEach(leg => {
+                netD += leg.delta || 0;
+                netT += leg.theta || 0;
+                netCredit += (leg.quantity < 0 ? 1 : -1) * Math.abs(leg.quantity) * (leg.mid || 0) * 100;
+            });
+
+            const legsHtml = currentLegs.map(leg =>
+                `<div style="font-size: 10px; padding: 2px 0;">
+                    <span style="color: ${leg.quantity < 0 ? 'var(--red)' : 'var(--green)'}">${leg.quantity < 0 ? 'SELL' : 'BUY'}</span>
+                    ${Math.abs(leg.quantity)} ${leg.option_type} $${leg.strike}
+                </div>`
+            ).join('');
+
+            document.getElementById('reviewSummary').innerHTML = `
+                <div style="font-size: 11px; font-weight: bold; margin-bottom: 6px;">${underlying} - ${selectedStrategy.toUpperCase()}</div>
+                <div style="font-size: 10px; color: var(--text-2); margin-bottom: 4px;">Expiry: ${expiry}</div>
+                ${legsHtml}
+                <div style="border-top: 1px solid var(--border); margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between;">
+                    <span>Net Delta: <b>${netD.toFixed(1)}</b></span>
+                    <span>Net Theta: <b>${netT.toFixed(1)}</b></span>
+                    <span style="color: ${netCredit >= 0 ? 'var(--green)' : 'var(--red)'};">
+                        ${netCredit >= 0 ? 'Credit' : 'Debit'}: <b>$${Math.abs(netCredit).toFixed(0)}</b>
+                    </span>
+                </div>
+            `;
+
+            // Update impact preview
+            let netDelta = 0;
+            currentLegs.forEach(leg => netDelta += leg.delta || 0);
+            document.getElementById('impactCurD').textContent = portfolioDelta.toFixed(1);
+            document.getElementById('impactTradeD').textContent = (netDelta >= 0 ? '+' : '') + netDelta.toFixed(1);
+            document.getElementById('impactNewD').textContent = (portfolioDelta + netDelta).toFixed(1);
+        }
+
+        document.getElementById('step4Back').onclick = () => goToStep(3);
+
+        // Submit What-If Trade
         document.getElementById('submitBtn').onclick = async () => {
             if (currentLegs.length === 0) {
                 alert('Add at least one leg');
                 return;
             }
+
             const payload = {
-                underlying: document.getElementById('obUl').value,
+                underlying: document.getElementById('obUl').value.toUpperCase(),
                 strategy_type: selectedStrategy,
-                legs: currentLegs,
-                notes: ''
+                legs: currentLegs.map(leg => ({
+                    option_type: leg.option_type,
+                    strike: leg.strike,
+                    expiry: leg.expiry,
+                    quantity: leg.quantity
+                })),
+                notes: 'Created via Order Builder Wizard'
             };
+
             try {
                 const res = await fetch(`${API_URL}/api/whatif`, {
                     method: 'POST',
@@ -686,11 +1041,15 @@
                     body: JSON.stringify(payload)
                 });
                 const result = await res.json();
+
                 if (res.ok) {
-                    alert('What-if trade created!');
+                    // Success - reset wizard and close
                     currentLegs = [];
-                    renderLegs();
+                    goToStep(1);
                     document.getElementById('rightPanel').classList.add('collapsed');
+
+                    // Switch to What-If tab to show the new trade
+                    document.querySelector('.tab[data-tab="whatif"]').click();
                 } else {
                     alert('Error: ' + (result.detail || result.error || 'Unknown'));
                 }
@@ -732,6 +1091,9 @@
                 document.getElementById('realT').textContent = (r.theta || 0).toFixed(1);
                 document.getElementById('realV').textContent = (r.vega || 0).toFixed(1);
                 document.getElementById('realPnl').textContent = (r.total_pnl >= 0 ? '+' : '') + (r.total_pnl || 0).toFixed(0);
+
+                // Track for impact calculations
+                portfolioDelta = parseFloat(r.delta) || 0;
             }
             if (p.whatif_portfolio) {
                 const w = p.whatif_portfolio;
@@ -742,6 +1104,15 @@
                 document.getElementById('wifV').textContent = (w.vega || 0).toFixed(1);
                 const rd = p.real_portfolio?.delta || 0;
                 document.getElementById('combD').textContent = (rd + (w.delta || 0)).toFixed(1);
+            }
+
+            // Update what-if grid and select all rows by default
+            if (p.whatif_trades) {
+                grids.whatif.setGridOption('rowData', p.whatif_trades);
+                // Select all rows to include in impact calculation
+                setTimeout(() => {
+                    grids.whatif.selectAll();
+                }, 100);
             }
         }
 
