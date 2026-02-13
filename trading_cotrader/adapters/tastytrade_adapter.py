@@ -531,6 +531,131 @@ class TastytradeAdapter(BrokerAdapter):
             )
 
 
+    def get_option_chain(self, underlying: str) -> Dict[str, Any]:
+        """
+        Get option chain for an underlying symbol.
+
+        Returns dict with:
+        - underlying_price: current price
+        - expirations: list of {date, dte} sorted by date
+        - strikes: dict of {expiry_date: [strike1, strike2, ...]}
+        """
+        try:
+            if not self.session:
+                raise RuntimeError("Not authenticated")
+
+            from tastytrade.instruments import get_option_chain, NestedOptionChain
+            from datetime import date
+
+            # Get option chain
+            chain = get_option_chain(self.session, underlying)
+
+            # Get underlying price
+            underlying_price = None
+            try:
+                equity = Equity.get_equity(self.session, underlying)
+                # Get quote for underlying price
+                # For now, use a simple approach
+                underlying_price = 0
+            except Exception as e:
+                logger.warning(f"Could not get underlying price: {e}")
+
+            # Parse expirations and strikes
+            expirations = []
+            strikes_by_expiry = {}
+            today = date.today()
+
+            for expiry_date, strikes_dict in chain.items():
+                # Calculate DTE
+                if isinstance(expiry_date, str):
+                    exp_date = datetime.strptime(expiry_date, '%Y-%m-%d').date()
+                else:
+                    exp_date = expiry_date
+
+                dte = (exp_date - today).days
+
+                if dte > 0:  # Only future expirations
+                    expirations.append({
+                        'date': exp_date.strftime('%Y-%m-%d'),
+                        'dte': dte
+                    })
+
+                    # Get strikes
+                    all_strikes = set()
+                    for strike, options in strikes_dict.items():
+                        all_strikes.add(float(strike))
+
+                    strikes_by_expiry[exp_date.strftime('%Y-%m-%d')] = sorted(list(all_strikes))
+
+            # Sort expirations by date
+            expirations.sort(key=lambda x: x['date'])
+
+            logger.info(f"Option chain for {underlying}: {len(expirations)} expirations")
+
+            return {
+                'underlying': underlying,
+                'underlying_price': underlying_price,
+                'expirations': expirations[:12],  # Limit to next 12 expirations
+                'strikes': strikes_by_expiry,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get option chain for {underlying}: {e}")
+            logger.exception("Full trace:")
+            return {
+                'underlying': underlying,
+                'underlying_price': None,
+                'expirations': [],
+                'strikes': {},
+                'error': str(e)
+            }
+
+    def get_atm_strikes(self, underlying: str, expiry: str, range_pct: float = 0.10) -> Dict[str, Any]:
+        """
+        Get ATM strikes for what-if order builder.
+
+        Returns strikes within range_pct of the current underlying price.
+        Useful for the order builder to suggest relevant strikes.
+        """
+        try:
+            chain_data = self.get_option_chain(underlying)
+
+            if 'error' in chain_data:
+                return chain_data
+
+            # Get strikes for the expiry
+            strikes = chain_data.get('strikes', {}).get(expiry, [])
+
+            if not strikes:
+                return {
+                    'underlying': underlying,
+                    'expiry': expiry,
+                    'strikes': [],
+                    'atm_strike': None,
+                }
+
+            # Find ATM (middle strike)
+            middle_idx = len(strikes) // 2
+            atm_strike = strikes[middle_idx]
+
+            # Filter to strikes within range
+            lower = atm_strike * (1 - range_pct)
+            upper = atm_strike * (1 + range_pct)
+            filtered_strikes = [s for s in strikes if lower <= s <= upper]
+
+            return {
+                'underlying': underlying,
+                'expiry': expiry,
+                'strikes': filtered_strikes,
+                'all_strikes': strikes,
+                'atm_strike': atm_strike,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get ATM strikes: {e}")
+            return {'error': str(e)}
+
+
 if __name__ == "__main__":
     adapter = TastytradeAdapter()
     adapter.authenticate()
