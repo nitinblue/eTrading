@@ -279,6 +279,7 @@
             <div class="tabs">
                 <div class="tab active" data-tab="positions">Positions</div>
                 <div class="tab" data-tab="trades">Trades</div>
+                <div class="tab" data-tab="optbuilder">Option Builder</div>
                 <div class="tab" data-tab="whatif">What-If</div>
                 <div class="tab" data-tab="events">Events</div>
                 <div class="tab" data-tab="aiml">AI/ML</div>
@@ -306,6 +307,86 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Option Builder Tab -->
+                <div class="tab-content" id="tab-optbuilder">
+                    <!-- Toolbar -->
+                    <div style="display: flex; gap: 8px; padding: 8px; background: var(--bg-2); border-radius: 4px; margin-bottom: 8px; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <label style="font-size: 10px; color: var(--text-2);">Underlying:</label>
+                            <input type="text" id="gridUnderlying" value="SPY" style="width: 60px; padding: 4px; background: var(--bg-3); border: 1px solid var(--border); color: var(--text-1); text-transform: uppercase;">
+                            <button class="btn btn-primary" id="loadGridBtn" style="padding: 4px 8px;">Load Grid</button>
+                        </div>
+                        <div style="border-left: 1px solid var(--border); height: 20px;"></div>
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <label style="font-size: 10px; color: var(--text-2);">Strategy:</label>
+                            <select id="strategySelect" style="padding: 4px; background: var(--bg-3); border: 1px solid var(--border); color: var(--text-1);">
+                                <option value="">-- Select --</option>
+                                <option value="bull_put_spread">Bull Put Spread</option>
+                                <option value="bear_call_spread">Bear Call Spread</option>
+                                <option value="iron_condor">Iron Condor</option>
+                                <option value="straddle">Short Straddle</option>
+                                <option value="strangle">Short Strangle</option>
+                                <option value="put_credit_spread">Put Credit Spread</option>
+                                <option value="call_credit_spread">Call Credit Spread</option>
+                            </select>
+                            <select id="expirySelect" style="padding: 4px; background: var(--bg-3); border: 1px solid var(--border); color: var(--text-1); width: 100px;">
+                                <option value="0">Nearest</option>
+                            </select>
+                            <button class="btn" id="applyStrategyBtn" style="padding: 4px 8px;">Apply</button>
+                        </div>
+                        <div style="flex: 1;"></div>
+                        <button class="btn" id="clearGridBtn" style="padding: 4px 8px;">Clear</button>
+                        <button class="btn btn-success" id="submitGridBtn" style="padding: 4px 12px;">Submit What-If</button>
+                    </div>
+
+                    <!-- Position Summary -->
+                    <div id="gridSummary" style="display: flex; gap: 16px; padding: 8px; background: var(--bg-2); border-radius: 4px; margin-bottom: 8px;">
+                        <div style="font-size: 10px;">
+                            <span style="color: var(--text-2);">Legs:</span>
+                            <span id="summaryLegs" style="font-weight: bold;">0</span>
+                        </div>
+                        <div style="font-size: 10px;">
+                            <span style="color: var(--text-2);">Net Δ:</span>
+                            <span id="summaryDelta" style="font-weight: bold;">0</span>
+                        </div>
+                        <div style="font-size: 10px;">
+                            <span style="color: var(--text-2);">Net Γ:</span>
+                            <span id="summaryGamma" style="font-weight: bold;">0</span>
+                        </div>
+                        <div style="font-size: 10px;">
+                            <span style="color: var(--text-2);">Net Θ:</span>
+                            <span id="summaryTheta" style="font-weight: bold; color: var(--green);">0</span>
+                        </div>
+                        <div style="font-size: 10px;">
+                            <span style="color: var(--text-2);">Net V:</span>
+                            <span id="summaryVega" style="font-weight: bold;">0</span>
+                        </div>
+                        <div style="font-size: 10px;">
+                            <span style="color: var(--text-2);">Credit:</span>
+                            <span id="summaryCredit" style="font-weight: bold; color: var(--green);">$0</span>
+                        </div>
+                    </div>
+
+                    <!-- Grid Container -->
+                    <div class="grid-row" style="flex: 1;">
+                        <div class="grid-panel" style="flex: 1;">
+                            <div class="grid-header">
+                                PUTS
+                                <span id="gridPutsInfo" style="color: var(--text-3); font-size: 9px; margin-left: 8px;"></span>
+                            </div>
+                            <div class="grid-body"><div id="putsGrid" class="ag-theme-balham-dark" style="height:100%;width:100%"></div></div>
+                        </div>
+                        <div class="grid-panel" style="flex: 1;">
+                            <div class="grid-header">
+                                CALLS
+                                <span id="gridCallsInfo" style="color: var(--text-3); font-size: 9px; margin-left: 8px;"></span>
+                            </div>
+                            <div class="grid-body"><div id="callsGrid" class="ag-theme-balham-dark" style="height:100%;width:100%"></div></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="tab-content" id="tab-whatif">
                     <div class="grid-row">
                         <div class="grid-panel">
@@ -663,7 +744,280 @@
             grids.events = agGrid.createGrid(document.getElementById('eventsGrid'), { ...opts, columnDefs: eventCols, rowData: [] });
             grids.impact = agGrid.createGrid(document.getElementById('impactGrid'), { ...opts, columnDefs: impactCols, rowData: [] });
             grids.patterns = agGrid.createGrid(document.getElementById('patternsGrid'), { ...opts, columnDefs: patternCols, rowData: [] });
+
+            // Initialize option builder grids (will be populated on load)
+            initOptionGrids();
         }
+
+        // ==================== OPTION BUILDER ====================
+        let optionGridData = null;
+        let optionGridExpiries = [];
+
+        function initOptionGrids() {
+            // Grids are created dynamically when data is loaded
+        }
+
+        function createOptionGridColumns(expiries) {
+            // Strike column + expiry columns
+            const cols = [
+                {
+                    field: 'strike',
+                    headerName: 'Strike',
+                    width: 70,
+                    pinned: 'left',
+                    cellStyle: params => {
+                        if (params.data && params.data.isATM) {
+                            return { background: 'var(--cyan)', color: 'var(--bg-0)', fontWeight: 'bold' };
+                        }
+                        return null;
+                    }
+                }
+            ];
+
+            expiries.forEach((exp, idx) => {
+                cols.push({
+                    field: `exp_${idx}`,
+                    headerName: `${exp.substr(5)} (${optionGridData?.expiry_dtes?.[idx] || '?'}d)`,
+                    width: 75,
+                    cellRenderer: renderOptionCell,
+                    cellStyle: { padding: '2px', cursor: 'pointer' },
+                });
+            });
+
+            return cols;
+        }
+
+        function renderOptionCell(params) {
+            if (!params.value) return '';
+            const cell = params.value;
+            const selected = cell.selected;
+            const qty = cell.quantity;
+
+            let bgColor = '';
+            let text = '';
+
+            if (selected && qty !== 0) {
+                bgColor = qty < 0 ? 'rgba(239, 83, 80, 0.3)' : 'rgba(38, 166, 154, 0.3)';
+                text = `<b>${qty < 0 ? 'S' : 'B'}${Math.abs(qty)}</b>`;
+            } else {
+                // Show delta
+                text = `<span style="font-size:9px">${cell.delta?.toFixed(2) || '--'}</span>`;
+            }
+
+            return `<div style="background:${bgColor}; height:100%; display:flex; align-items:center; justify-content:center;">${text}</div>`;
+        }
+
+        function buildOptionGridRows(gridData, optionType) {
+            const rows = [];
+            const cells = optionType === 'C' ? gridData.calls : gridData.puts;
+
+            gridData.strikes.forEach((strike, strikeIdx) => {
+                const row = {
+                    strike: strike,
+                    isATM: Math.abs(strike - gridData.atm_strike) < 0.01,
+                };
+
+                gridData.expiries.forEach((exp, expIdx) => {
+                    const cellData = cells[strikeIdx]?.[expIdx];
+                    row[`exp_${expIdx}`] = cellData;
+                });
+
+                rows.push(row);
+            });
+
+            return rows;
+        }
+
+        async function loadOptionGrid(underlying) {
+            document.getElementById('gridPutsInfo').textContent = 'Loading...';
+            document.getElementById('gridCallsInfo').textContent = 'Loading...';
+
+            try {
+                const res = await fetch(`${API_URL}/api/grid/${underlying}`);
+                const data = await res.json();
+
+                if (data.error) {
+                    document.getElementById('gridPutsInfo').textContent = 'Error: ' + data.error;
+                    return;
+                }
+
+                optionGridData = data;
+                optionGridData.expiry_dtes = data.expiries.map(exp => {
+                    const d = new Date(exp);
+                    const today = new Date();
+                    return Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+                });
+
+                // Update expiry selector
+                const expirySelect = document.getElementById('expirySelect');
+                expirySelect.innerHTML = data.expiries.map((exp, idx) =>
+                    `<option value="${idx}">${exp.substr(5)} (${optionGridData.expiry_dtes[idx]}d)</option>`
+                ).join('');
+
+                // Create grids
+                const cols = createOptionGridColumns(data.expiries);
+
+                const gridOpts = {
+                    columnDefs: cols,
+                    rowData: [],
+                    animateRows: false,
+                    suppressCellFocus: true,
+                    onCellClicked: onOptionCellClicked,
+                    getRowStyle: params => params.data?.isATM ? { background: 'rgba(0,255,255,0.1)' } : null,
+                };
+
+                // Destroy old grids if exist
+                if (grids.puts) grids.puts.destroy();
+                if (grids.calls) grids.calls.destroy();
+
+                grids.puts = agGrid.createGrid(document.getElementById('putsGrid'), { ...gridOpts, rowData: buildOptionGridRows(data, 'P') });
+                grids.calls = agGrid.createGrid(document.getElementById('callsGrid'), { ...gridOpts, rowData: buildOptionGridRows(data, 'C') });
+
+                document.getElementById('gridPutsInfo').textContent = `${data.underlying} | ATM: $${data.atm_strike}`;
+                document.getElementById('gridCallsInfo').textContent = `${data.underlying} | ATM: $${data.atm_strike}`;
+
+                updateGridSummary();
+
+            } catch (e) {
+                document.getElementById('gridPutsInfo').textContent = 'Error: ' + e.message;
+                console.error('Failed to load grid:', e);
+            }
+        }
+
+        async function onOptionCellClicked(params) {
+            if (params.colDef.field === 'strike') return;
+            if (!params.value) return;
+
+            const cell = params.value;
+            const optType = params.api === grids.puts ? 'P' : 'C';
+
+            // Toggle: 0 -> -1 (sell) -> 1 (buy) -> 0
+            let newQty = 0;
+            if (cell.quantity === 0) newQty = -1;
+            else if (cell.quantity === -1) newQty = 1;
+            else newQty = 0;
+
+            try {
+                const res = await fetch(`${API_URL}/api/grid/select`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        strike: cell.strike,
+                        expiry: cell.expiry,
+                        option_type: optType,
+                        quantity: newQty
+                    })
+                });
+
+                const summary = await res.json();
+
+                // Update cell locally
+                cell.selected = newQty !== 0;
+                cell.quantity = newQty;
+
+                // Refresh grid
+                params.api.refreshCells({ force: true });
+
+                // Update summary
+                updateGridSummaryFromData(summary);
+
+            } catch (e) {
+                console.error('Failed to select cell:', e);
+            }
+        }
+
+        async function applyStrategy() {
+            const strategy = document.getElementById('strategySelect').value;
+            const expiryIdx = parseInt(document.getElementById('expirySelect').value) || 0;
+
+            if (!strategy) {
+                alert('Select a strategy');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/api/grid/strategy`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ strategy, expiry_idx: expiryIdx })
+                });
+
+                const data = await res.json();
+
+                if (data.grid) {
+                    optionGridData = data.grid;
+                    grids.puts.setGridOption('rowData', buildOptionGridRows(data.grid, 'P'));
+                    grids.calls.setGridOption('rowData', buildOptionGridRows(data.grid, 'C'));
+                }
+
+                updateGridSummaryFromData(data.summary);
+
+            } catch (e) {
+                console.error('Failed to apply strategy:', e);
+            }
+        }
+
+        async function clearGridSelection() {
+            try {
+                await fetch(`${API_URL}/api/grid/clear`, { method: 'POST' });
+
+                // Reload grid
+                if (optionGridData) {
+                    loadOptionGrid(optionGridData.underlying);
+                }
+            } catch (e) {
+                console.error('Failed to clear grid:', e);
+            }
+        }
+
+        async function submitGridAsWhatIf() {
+            try {
+                const res = await fetch(`${API_URL}/api/grid/submit`, { method: 'POST' });
+                const data = await res.json();
+
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+
+                alert('What-if trade created!');
+
+                // Switch to what-if tab
+                document.querySelector('.tab[data-tab="whatif"]').click();
+
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+
+        function updateGridSummary() {
+            fetch(`${API_URL}/api/grid/summary`)
+                .then(r => r.json())
+                .then(updateGridSummaryFromData)
+                .catch(e => console.error('Failed to get summary:', e));
+        }
+
+        function updateGridSummaryFromData(summary) {
+            document.getElementById('summaryLegs').textContent = summary.legs || 0;
+            document.getElementById('summaryDelta').textContent = (summary.delta || 0).toFixed(1);
+            document.getElementById('summaryGamma').textContent = (summary.gamma || 0).toFixed(2);
+            document.getElementById('summaryTheta').textContent = (summary.theta || 0).toFixed(1);
+            document.getElementById('summaryVega').textContent = (summary.vega || 0).toFixed(1);
+
+            const credit = summary.credit || 0;
+            const creditEl = document.getElementById('summaryCredit');
+            creditEl.textContent = (credit >= 0 ? '+' : '') + '$' + credit.toFixed(0);
+            creditEl.style.color = credit >= 0 ? 'var(--green)' : 'var(--red)';
+        }
+
+        // Wire up option builder buttons
+        document.getElementById('loadGridBtn')?.addEventListener('click', () => {
+            const ul = document.getElementById('gridUnderlying').value.toUpperCase();
+            if (ul) loadOptionGrid(ul);
+        });
+        document.getElementById('applyStrategyBtn')?.addEventListener('click', applyStrategy);
+        document.getElementById('clearGridBtn')?.addEventListener('click', clearGridSelection);
+        document.getElementById('submitGridBtn')?.addEventListener('click', submitGridAsWhatIf);
 
         // Update impact analysis when what-if selection changes
         function updateWhatIfImpact() {
@@ -705,6 +1059,11 @@
                 document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
                 // Load AI status when switching to AI/ML tab
                 if (tab.dataset.tab === 'aiml') loadAIStatus();
+                // Load option grid when switching to Option Builder tab
+                if (tab.dataset.tab === 'optbuilder' && !optionGridData) {
+                    const ul = document.getElementById('gridUnderlying').value || 'SPY';
+                    loadOptionGrid(ul.toUpperCase());
+                }
             };
         });
 
