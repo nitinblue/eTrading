@@ -319,25 +319,36 @@ class OptionGridService:
         strikes_below = strikes_below or self.strikes_below_atm
 
         try:
-            from tastytrade.instruments import Option
+            from tastytrade import get_option_chain
 
-            # Get all options for this underlying
+            # Get option chain - returns list of option objects
             logger.info(f"Fetching option chain for {underlying}...")
-            options = Option.get_options(self.broker.session, underlying)
+            chain = get_option_chain(self.broker.session, underlying)
 
-            if not options:
+            if not chain:
                 logger.warning(f"No options found for {underlying}")
                 return None
 
-            logger.info(f"Found {len(options)} options for {underlying}")
+            logger.info(f"Found {len(chain)} options for {underlying}")
 
             # Find ATM strike and available strikes/expiries
             all_strikes = set()
             all_expiries = set()
 
-            for opt in options:
-                all_strikes.add(Decimal(str(opt.strike_price)))
-                all_expiries.add(opt.expiration_date)
+            # Build lookup: (strike, expiry, type) -> option with greeks
+            option_lookup = {}
+
+            for opt in chain:
+                strike = Decimal(str(opt.strike_price))
+                expiry = opt.expiration_date
+                opt_type = opt.option_type  # 'C' or 'P'
+
+                all_strikes.add(strike)
+                all_expiries.add(expiry)
+
+                # Store option data with Greeks if available
+                key = (strike, expiry, opt_type)
+                option_lookup[key] = opt
 
             sorted_strikes = sorted(all_strikes)
             sorted_expiries = sorted(all_expiries)
@@ -377,27 +388,46 @@ class OptionGridService:
                 expiries=grid_expiries,
             )
 
-            # Populate cells
-            for opt in options:
-                strike = Decimal(str(opt.strike_price))
-                expiry = opt.expiration_date
-                opt_type = 'C' if opt.option_type == 'C' else 'P'
-
-                if strike in grid_strikes and expiry in grid_expiries:
+            # Populate cells from option_lookup
+            for strike in grid_strikes:
+                for expiry in grid_expiries:
                     dte = (expiry - today).days
-                    cell = OptionCell(
+
+                    # Create PUT cell
+                    put_key = (strike, expiry, 'P')
+                    put_opt = option_lookup.get(put_key)
+                    put_cell = OptionCell(
                         underlying=underlying,
                         strike=strike,
                         expiry=expiry,
-                        option_type=opt_type,
+                        option_type='P',
                         dte=dte,
                     )
+                    # Populate Greeks if available from chain
+                    if put_opt and hasattr(put_opt, 'greeks') and put_opt.greeks:
+                        put_cell.delta = Decimal(str(put_opt.greeks.delta or 0))
+                        put_cell.gamma = Decimal(str(put_opt.greeks.gamma or 0))
+                        put_cell.theta = Decimal(str(put_opt.greeks.theta or 0))
+                        put_cell.vega = Decimal(str(put_opt.greeks.vega or 0))
+                    grid.puts[(strike, expiry)] = put_cell
 
-                    key = (strike, expiry)
-                    if opt_type == 'C':
-                        grid.calls[key] = cell
-                    else:
-                        grid.puts[key] = cell
+                    # Create CALL cell
+                    call_key = (strike, expiry, 'C')
+                    call_opt = option_lookup.get(call_key)
+                    call_cell = OptionCell(
+                        underlying=underlying,
+                        strike=strike,
+                        expiry=expiry,
+                        option_type='C',
+                        dte=dte,
+                    )
+                    # Populate Greeks if available from chain
+                    if call_opt and hasattr(call_opt, 'greeks') and call_opt.greeks:
+                        call_cell.delta = Decimal(str(call_opt.greeks.delta or 0))
+                        call_cell.gamma = Decimal(str(call_opt.greeks.gamma or 0))
+                        call_cell.theta = Decimal(str(call_opt.greeks.theta or 0))
+                        call_cell.vega = Decimal(str(call_opt.greeks.vega or 0))
+                    grid.calls[(strike, expiry)] = call_cell
 
             self.current_grid = grid
             logger.info(f"Built grid: {len(grid_strikes)} strikes x {len(grid_expiries)} expiries")
