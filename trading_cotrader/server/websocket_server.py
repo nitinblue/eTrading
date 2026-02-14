@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse
 
 from trading_cotrader.containers import ContainerManager, ContainerEvent
 from trading_cotrader.services.data_service import DataService
+from trading_cotrader.services.option_grid_service import OptionGridService
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ class ConnectionManager:
 connection_manager = ConnectionManager()
 container_manager = ContainerManager()
 data_service = DataService(container_manager)
+option_grid_service = OptionGridService()
 
 
 def on_container_event(event: ContainerEvent):
@@ -531,6 +533,191 @@ async def get_ai_patterns():
         return JSONResponse(content=json.loads(json_dumps(status.get('patterns', []))))
     except Exception as e:
         logger.error(f"Error getting AI patterns: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== OPTION GRID ENDPOINTS ====================
+
+@app.get("/api/grid/templates")
+async def get_grid_templates():
+    """Get available strategy templates"""
+    try:
+        templates = option_grid_service.get_strategy_templates()
+        return JSONResponse(content=templates)
+    except Exception as e:
+        logger.error(f"Error getting templates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/grid/{underlying}")
+async def build_option_grid(underlying: str):
+    """
+    Build option grid for an underlying.
+
+    Returns grid with strikes x expiries, each cell has bid/ask/mid/Greeks.
+    """
+    try:
+        # Ensure broker is connected
+        if not data_service.is_connected:
+            data_service.connect_broker()
+
+        # Set broker on grid service
+        option_grid_service.set_broker(data_service.broker)
+
+        # Build grid
+        grid = option_grid_service.build_grid(underlying.upper())
+
+        if not grid:
+            raise HTTPException(status_code=404, detail=f"Could not build grid for {underlying}")
+
+        # Populate Greeks
+        option_grid_service.populate_greeks(grid)
+
+        return JSONResponse(content=json.loads(json_dumps(grid.to_dict())))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error building grid: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/grid/strategy")
+async def apply_grid_strategy(request: dict):
+    """
+    Apply a strategy template to the current grid.
+
+    Request: {"strategy": "iron_condor", "expiry_idx": 2}
+    """
+    try:
+        strategy = request.get('strategy')
+        expiry_idx = request.get('expiry_idx', 0)
+
+        if not strategy:
+            raise HTTPException(status_code=400, detail="Missing strategy")
+
+        selected = option_grid_service.apply_strategy(strategy, expiry_idx)
+        summary = option_grid_service.get_position_summary()
+
+        return JSONResponse(content=json.loads(json_dumps({
+            'selected_count': len(selected),
+            'summary': summary,
+            'grid': option_grid_service.current_grid.to_dict() if option_grid_service.current_grid else None
+        })))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error applying strategy: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/grid/select")
+async def select_grid_cell(request: dict):
+    """
+    Select/deselect a cell in the grid.
+
+    Request: {"strike": 580, "expiry": "2025-03-21", "option_type": "P", "quantity": -1}
+    """
+    try:
+        from decimal import Decimal
+        from datetime import datetime
+
+        strike = Decimal(str(request.get('strike')))
+        expiry_str = request.get('expiry')
+        expiry = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+        opt_type = request.get('option_type', 'P')
+        quantity = request.get('quantity', 0)
+
+        if not option_grid_service.current_grid:
+            raise HTTPException(status_code=400, detail="No grid loaded")
+
+        option_grid_service.current_grid.select_cell(strike, expiry, opt_type, quantity)
+        summary = option_grid_service.get_position_summary()
+
+        return JSONResponse(content=json.loads(json_dumps(summary)))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error selecting cell: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/grid/clear")
+async def clear_grid_selection():
+    """Clear all selections in the grid"""
+    try:
+        if option_grid_service.current_grid:
+            option_grid_service.current_grid.clear_selection()
+        return {"status": "cleared"}
+    except Exception as e:
+        logger.error(f"Error clearing grid: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/grid/summary")
+async def get_grid_summary():
+    """Get summary of currently selected position"""
+    try:
+        summary = option_grid_service.get_position_summary()
+        return JSONResponse(content=json.loads(json_dumps(summary)))
+    except Exception as e:
+        logger.error(f"Error getting summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/grid/submit")
+async def submit_grid_as_whatif():
+    """Submit current grid selection as a what-if trade"""
+    try:
+        if not option_grid_service.current_grid:
+            raise HTTPException(status_code=400, detail="No grid loaded")
+
+        selected = option_grid_service.current_grid.get_selected_cells()
+        if not selected:
+            raise HTTPException(status_code=400, detail="No cells selected")
+
+        # Build legs for what-if trade
+        underlying = option_grid_service.current_grid.underlying
+        legs = []
+        for cell in selected:
+            legs.append({
+                'option_type': 'CALL' if cell.option_type == 'C' else 'PUT',
+                'strike': float(cell.strike),
+                'expiry': cell.expiry.strftime('%Y-%m-%d'),
+                'quantity': cell.quantity,
+            })
+
+        # Determine strategy type
+        strategy_type = 'custom'
+        if len(legs) == 2:
+            strategy_type = 'vertical'
+        elif len(legs) == 4:
+            strategy_type = 'iron_condor'
+
+        # Create what-if trade
+        result = data_service.create_whatif_trade(
+            underlying=underlying,
+            strategy_type=strategy_type,
+            legs=legs,
+            notes='Created via Option Grid Builder'
+        )
+
+        if 'error' in result:
+            raise HTTPException(status_code=500, detail=result['error'])
+
+        # Clear grid selection
+        option_grid_service.current_grid.clear_selection()
+
+        # Broadcast update
+        state = container_manager.get_full_state()
+        portfolios = data_service.get_portfolios_data()
+        state['portfolios'] = portfolios
+        await connection_manager.send_full_refresh(state)
+
+        return JSONResponse(content=json.loads(json_dumps(result)))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error submitting grid: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
