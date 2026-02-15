@@ -1,308 +1,368 @@
-# CLAUDE.md - AI Assistant Guide for trading_cotrader
+# CLAUDE.md
+# Project: Trading CoTrader
+# Last Updated: February 14, 2026
 
-This document provides comprehensive guidance for AI assistants working on the `trading_cotrader` codebase.
+---
 
-## Project Overview
+## [NITIN OWNS] WHY THIS EXISTS
+<!--
+  RULE: Add new entries at TOP with date. Never delete anything below.
+  History of how your thinking evolved lives here permanently.
+-->
 
-**Trading Co-Trader** is an event-sourced, AI-learning trading application designed for options trading with the Tastytrade broker. It focuses on:
+### Feb 14, 2026
+20 years pricing and risk analytics on institutional trading floors — IR, commodities, FX, mortgages.
+Nitin understands how top-end platforms work and that trading is fundamentally about risk management
+first, staying invested through cycles second.
 
-- **Real-time Greeks calculation** with Black-Scholes pricing
-- **Event sourcing** for capturing every trading decision with full context
-- **AI/ML pattern recognition** to learn from historical trades
-- **Professional risk management** with configurable limits
-- **P&L attribution** by Greeks components
+The gap: that institutional discipline has never been applied to personal wealth. 250K sits idle
+(50K personal, 200K self-directed IRA) while college tuition for two daughters and other obligations
+approach.
 
-## Tech Stack
+This tool exists to close that gap — not by chasing returns, but by deploying capital systematically,
+safely, and with full risk visibility at every level: trade, strategy, portfolio.
 
-- **Python 3.10+**
-- **SQLAlchemy** for ORM and database management
-- **Pydantic** for configuration and data validation
-- **Tastytrade API** for broker integration (with DXLink streaming)
-- **SQLite/PostgreSQL** for data persistence
-- **pytest** for testing
+The secondary objective: build this right and it becomes a product for a small group of people who
+think the same way. Not mass market. High conviction, high discipline users only.
 
-## Directory Structure
+The mental model is always: Macro Context → My Exposure → Action Required.
+Never: "I have an iron condor." Always: "I have -150 SPY delta, +$450 theta/day. Am I within limits?"
 
-```
-trading_cotrader/
-├── adapters/                    # Broker integrations
-│   └── tastytrade_adapter.py    # Tastytrade API implementation
-├── ai_cotrader/                 # AI/ML learning components
-│   ├── feature_engineering/     # Feature extraction for ML
-│   ├── learning/                # ML model training
-│   └── models/                  # Trained model storage
-├── analytics/                   # Financial calculations
-│   ├── greeks/
-│   │   └── engine.py            # Black-Scholes Greeks engine
-│   ├── pricing/
-│   │   ├── option_pricer.py     # Option valuation
-│   │   └── pnl_calculator.py    # P&L calculations
-│   ├── risk/                    # Risk metrics
-│   ├── performance/             # Performance analytics
-│   ├── functional_portfolio.py  # DAG-based scenario analysis
-│   └── volatility_surface.py    # Volatility term structure
-├── cli/
-│   └── log_event.py             # CLI for logging trading decisions
-├── config/
-│   └── settings.py              # Pydantic configuration management
-├── core/
-│   ├── database/
-│   │   ├── schema.py            # SQLAlchemy ORM models
-│   │   └── session.py           # Database session management
-│   ├── models/
-│   │   ├── domain.py            # Core domain models (Trade, Position, Leg, Greeks)
-│   │   ├── events.py            # Event sourcing models
-│   │   └── calculations.py      # Business logic calculations
-│   └── validation/
-│       └── validators.py        # Data validation utilities
-├── repositories/                # Data access layer
-│   ├── base.py                  # Generic CRUD base class
-│   ├── position.py              # Position repository
-│   ├── trade.py                 # Trade repository
-│   ├── portfolio.py             # Portfolio repository
-│   └── event.py                 # Event repository
-├── runners/                     # Application entry points
-│   ├── sync_portfolio.py        # Main daily sync workflow
-│   ├── sync_with_greeks.py      # Greeks calculation runner
-│   ├── portfolio_analyzer.py    # Portfolio analysis
-│   └── validate_data.py         # Data validation runner
-├── scripts/
-│   └── setup_database.py        # Database initialization
-├── services/                    # Business logic services
-│   ├── risk_manager.py          # Risk limit enforcement
-│   ├── position_sync.py         # Broker position sync
-│   ├── greeks_service.py        # Real-time Greeks updates
-│   ├── event_analytics.py       # Trading pattern analysis
-│   ├── snapshot_service.py      # Daily snapshots
-│   └── real_risk_check.py       # Real-time risk validation
-└── tests/                       # Test suite
-```
+---
 
-## Key Files to Understand
+## [NITIN OWNS] BUSINESS OBJECTIVES
+<!--
+  RULE: Add new entries at TOP with date. Never delete or overwrite prior entries.
+  Change a status by adding a new dated row at top, not by editing old rows.
+-->
 
-| File | Purpose |
-|------|---------|
-| `core/models/domain.py` | Core domain entities: Trade, Position, Leg, Greeks, Symbol, Portfolio |
-| `core/models/events.py` | Event sourcing: TradeEvent, MarketContext, DecisionContext |
-| `core/database/schema.py` | SQLAlchemy ORM table definitions |
-| `services/risk_manager.py` | Risk validation before trade execution |
-| `adapters/tastytrade_adapter.py` | Tastytrade API integration with DXLink streaming |
-| `analytics/greeks/engine.py` | Black-Scholes Greeks calculation engine |
-| `config/settings.py` | Pydantic settings with environment variable support |
-| `runners/sync_portfolio.py` | Main entry point for daily portfolio sync |
+### Feb 14, 2026
 
-## Development Commands
+| # | Objective | Signal (observable behavior) | Status |
+|---|-----------|-------------------------------|--------|
+| 1 | Deploy 250K in structured, risk-managed portfolio (50K personal + 200K IRA) | Capital allocated across defined risk buckets, not in cash | NOT STARTED |
+| 2 | Income generation is primary, not alpha chasing | Portfolio generates consistent premium income via options + dividends | NOT STARTED |
+| 3 | Option book structured: 20% undefined risk / 80% defined risk | Every open position tagged to risk profile, limits enforced by system, not memory | NOT STARTED |
+| 4 | Core long-term holdings accumulated via options (CSP → wheel strategy) | User never buys stock outright when options route is available | NOT STARTED |
+| 5 | Every trade decision codified and logged before execution | No trade exists without recorded rationale linked to a strategy and objective | IN PROGRESS |
+| 6 | System surfaces insights and recommendations — user approves, does not originate | User chooses from system-generated options, not thinking from scratch | NOT STARTED |
+| 7 | Risk limits enforced at every level: trade, strategy, portfolio | System blocks or warns before limit breach, not after | IN PROGRESS |
+| 8 | Event data feeds AI/ML layer for reinforcement learning | System measurably improves recommendations over time as trades accumulate | NOT STARTED |
 
-### Setup
+Status options: NOT STARTED → IN PROGRESS → USER CAN NOW DO THIS
 
-```bash
-# Initialize database
-python -m trading_cotrader.scripts.setup_database
+---
 
-# Create .env file (see config/settings.py for ENV_EXAMPLE)
-```
+## [NITIN OWNS] SESSION MANDATE
+<!--
+  RULE: Add new entries at TOP with date. Never delete prior entries.
+  History of what you were focused on each day lives here permanently.
+-->
 
-### Running the Application
+### Feb 14, 2026
+Objective I am advancing today:
+Done looks like: User can _______________
+Not touching today:
 
-```bash
-# Sync portfolio from Tastytrade
-python -m trading_cotrader.runners.sync_portfolio
+---
 
-# Calculate Greeks for positions
-python -m trading_cotrader.runners.sync_with_greeks
+## [NITIN OWNS] TODAY'S SURGICAL TASK
+<!--
+  RULE: OVERWRITE COMPLETELY every session. No dates. No history.
+  This is a directive, not a record. 5 lines max.
+  Write this in claude.ai BEFORE opening Claude Code.
+-->
 
-# Analyze portfolio
-python -m trading_cotrader.runners.portfolio_analyzer
+FILE:
+CHANGE:
+DONE WHEN: `paste the exact command that proves it works`
+DO NOT TOUCH:
 
-# Validate data integrity
-python -m trading_cotrader.runners.validate_data
+---
 
-# Log a trading decision (for AI learning)
-python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor --rationale "High IV rank"
-```
+## [CLAUDE OWNS] WHAT USER CAN DO TODAY
+<!-- Claude updates this at end of every session. Written as user actions only. -->
 
-### Testing
+- User can authenticate with TastyTrade broker and maintain a live session
+- User can sync portfolio and pull live positions with current market prices and Greeks
+- User can create a WhatIf trade (identical object to a real trade, just flagged as WHAT_IF)
+- User can run a debug harness (debug_autotrader.py) to validate steps 1–4 of the trade lifecycle
+- User can log events against trades via CLI
 
-```bash
-# Run all tests
-pytest
+**Blocked / Not Yet Working:**
+- Step 5+ of debug harness failing due to `is_open` property issue in trade.py
+- WhatIf end-to-end lifecycle (intent → evaluate → execute → close) not yet validated
+- AG Grid UI exists as components but is not wired to live backend data
 
-# Run with verbose output
-pytest -v
+---
 
-# Run specific test file
-pytest tests/unit/test_risk_manager.py
-```
+## [CLAUDE OWNS] ARCHITECTURE DECISIONS
+<!-- Append only. Never delete. Add new decisions at the bottom with a date. -->
 
-## Architecture Patterns
+### Decision 1: Objects That Behave, Not Values That Display
+- DECISION: Every entity (Portfolio, Trade, Position, WhatIf) is a domain object with state, behavior, and lifecycle. UI holds references (IDs), backend owns state and exposes methods.
+- CONSTRAINT THAT FORCED IT: Need P&L attribution by Greek, not just a final number. Values can't carry that.
+- REJECTED APPROACH: Value-only grid (TastyTrade/ThinkorSwim style) — rejected because it cannot support "why did I make/lose money" decomposition.
+- OBJECTIVE IT SERVES: #5, #6, #7
 
-### 1. Repository Pattern
-Data access is abstracted through repositories:
+### Decision 2: WhatIf = Trade (Same Object Model)
+- DECISION: A WhatIf scenario is structurally identical to a real trade. Same domain object, same Greeks path, same P&L attribution. Differentiated only by `trade_type=WHAT_IF` and `portfolio_type=WHAT_IF`.
+- CONSTRAINT THAT FORCED IT: If WhatIf is a separate object, it can never be promoted to a real trade without translation. Translation = bugs + drift.
+- REJECTED APPROACH: Separate WhatIf object/table — rejected. One code path for both hypothetical and real.
+- OBJECTIVE IT SERVES: #4, #5
+
+### Decision 3: Refresh-First, Streaming-Ready Architecture
+- DECISION: UI calls `GET /snapshot` on demand. Backend fetches fresh data from broker. Contract is identical whether data came from cache or live API. `RefreshBasedProvider` and `StreamingProvider` are swappable behind the same interface.
+- CONSTRAINT THAT FORCED IT: TastyTrade DXLink streaming is complex to implement reliably in MVP. Refresh is practical; streaming is architectural.
+- REJECTED APPROACH: Build streaming first — rejected, adds complexity before core object model is stable.
+- OBJECTIVE IT SERVES: #7
+
+### Decision 4: Trade Lifecycle is Explicit State Machine
+- DECISION: `TradeStatus` follows: INTENT → EVALUATED → PENDING → EXECUTED → CLOSED/ROLLED. `is_open` is a computed property from status, not a stored field.
+- CONSTRAINT THAT FORCED IT: Need to represent a trade that exists as a plan before it exists as a real position. INTENT and EVALUATED states are pre-execution.
+- REJECTED APPROACH: Boolean `is_open` stored field — rejected because it goes stale and requires manual sync.
+- OBJECTIVE IT SERVES: #5, #8
+
+### Decision 5: Event Sourcing as the Foundation for AI/ML
+- DECISION: Every trade action, decision, and market context snapshot is logged as an immutable event. Events are the training data for future RL. System is unusable for ML without this layer.
+- CONSTRAINT THAT FORCED IT: RL needs (state, action, reward) triples. Without event sourcing, there is no way to reconstruct what the trader knew at the moment of decision.
+- REJECTED APPROACH: Log only outcomes — rejected, loses the context that makes ML useful.
+- OBJECTIVE IT SERVES: #8
+
+### Decision 6: Single-Screen Institutional Cockpit (not a dashboard)
+- DECISION: One screen. Top to bottom: Market Context → Risk Monitor (by underlying) → Scenario Matrix → Positions Grid (AG Grid, editable) → Hedging Blotter. No tabs for normal workflow.
+- CONSTRAINT THAT FORCED IT: Trader mental model is top-down: macro → exposure → action. Tab-based UIs break that flow.
+- REJECTED APPROACH: Dashboard with cards and widgets — rejected because it puts layout decisions on the user and fragments context.
+- OBJECTIVE IT SERVES: #6, #7
+
+### Decision 7: Risk Aggregated by Underlying, Not by Strategy
+- DECISION: Primary risk view always aggregates Greeks by underlying (SPY delta: -150, QQQ delta: +80). Strategy grouping is secondary/optional.
+- CONSTRAINT THAT FORCED IT: Hedging decisions are made at the underlying level. Knowing "my iron condor is -50 delta" is useless if you have 3 other SPY strategies running.
+- REJECTED APPROACH: Strategy-centric view as primary — rejected. This is the core distinction between retail and institutional thinking.
+- OBJECTIVE IT SERVES: #3, #7
+
+### Decision 8: Broker = TastyTrade (Primary), Architecture = Multi-Broker Ready
+- DECISION: TastyTrade as first broker. All broker interaction goes through `broker_adapter.py` abstract base class. No direct TastyTrade calls outside the adapter.
+- CONSTRAINT THAT FORCED IT: Options-focused, good API, retail-friendly pricing. But lock-in is unacceptable for a product sold to others.
+- REJECTED APPROACH: TastyTrade calls scattered throughout codebase — rejected.
+- OBJECTIVE IT SERVES: Future monetization (Milestone 9)
+
+### Decision 9: SQLite Now, PostgreSQL When Needed
+- DECISION: Start with SQLite. No migration until either (a) multi-user or (b) performance is measurably a problem.
+- CONSTRAINT THAT FORCED IT: Operational simplicity matters more than scale at this stage.
+- REJECTED APPROACH: PostgreSQL from day one — rejected, adds DevOps overhead before the schema is stable.
+- OBJECTIVE IT SERVES: All objectives (reduces friction in early development)
+
+---
+
+## [CLAUDE OWNS] CODE MAP
+<!-- Maps code to business objectives. What exists in code that serves each objective. -->
+
+| Objective # | What exists in code today |
+|-------------|--------------------------|
+| 1 (Deploy 250K) | `config/risk_config.yaml` + `config/risk_config_loader.py` — risk parameters per portfolio. `core/database/schema.py` — portfolio_type, per-portfolio risk limits in ORM. |
+| 2 (Income generation) | `analytics/pricing/option_pricer.py` — Black-Scholes. `analytics/greeks/engine.py` — Greeks. `analytics/pricing/pnl_calculator.py` — P&L. Strategy catalog defined in PROJECT_MASTER. |
+| 3 (80/20 risk book) | `services/risk/limits.py` — risk limits manager. `services/risk/portfolio_risk.py` — portfolio risk analyzer. `core/models/domain.py` — `PortfolioType` enum, `RiskCategory` on trades. |
+| 4 (Wheel strategy / CSP) | Domain objects support all trade types. No strategy-specific automation yet — this is a gap. |
+| 5 (Every decision logged) | `services/event_logger.py` — event logging service. `core/models/events.py` — event sourcing models. `repositories/event.py` — event repository. `cli/log_event.py` — CLI interface. |
+| 6 (System surfaces insights) | `ai_cotrader/` — structure exists. `TradingAdvisor` class exists. Feature extraction and RL agents stubbed. NOT YET WIRED TO LIVE DATA. |
+| 7 (Risk limits enforced) | `services/risk/var_calculator.py` — VaR. `services/risk/correlation.py`. `services/risk/concentration.py`. `services/risk/margin.py`. `services/risk/limits.py`. `services/position_mgmt/rules_engine.py` — exit rules. |
+| 8 (AI/ML / RL) | `ai_cotrader/feature_engineering/feature_extractor.py` — 55-dimension state vectors. `ai_cotrader/learning/supervised.py` — pattern recognition (Decision Tree). `ai_cotrader/learning/reinforcement.py` — Q-Learning + DQN. `RewardFunction` defined. NEEDS DATA — usable after 500+ logged trades. |
+
+---
+
+## [CLAUDE OWNS] CURRENT BLOCKER
+<!-- What is actively broken right now. Claude updates this every session. -->
+
+**Blocker:** `is_open` property vs field mismatch in `repositories/trade.py`
+**Impact:** debug_autotrader Step 5 (Event Logging) fails. Steps 6–13 not tested.
+**Fix:** `is_open` must be computed from `trade_status`, never read from DB as a stored field.
+**File to fix:** `repositories/trade.py`
+**Test command after fix:** `python -m runners.debug_autotrader --skip-sync`
+
+---
+
+## [CLAUDE OWNS] SESSION LOG
+<!--
+  RULE: Claude appends one entry at TOP after every session. Never deletes.
+  This is the permanent record of what got done.
+-->
+
+### Feb 14, 2026
+- SYNTHESIZED: All prior docs (ARCHITECTURE_28Jan26, PROJECT_MASTER, PROJECT_STATUS_SESSION_JAN26) into CLAUDE.md
+- ESTABLISHED: Ownership rules, session pattern, surgical task pattern
+- NEXT: Fix is_open bug in repositories/trade.py, get debug_autotrader steps 1-13 passing
+
+---
+
+## [CLAUDE OWNS] OPEN QUESTIONS
+<!-- Things that need Nitin's decision before code proceeds. -->
+
+| # | Question | Context | Decision |
+|---|----------|---------|----------|
+| 1 | What VaR confidence level matters to you? | Risk limits module is built, needs your thresholds | TBD |
+| 2 | Max portfolio VaR tolerance as % of equity? | Same — needs your number to enforce | TBD |
+| 3 | Concentration limit per underlying? | Default assumption is 20% — correct? | TBD |
+| 4 | Preferred exit rules? | 50% profit? 21 DTE roll? | TBD |
+| 5 | Is paper trading in scope before live trading? | Affects whether to add a paper portfolio type first | TBD |
+| 6 | GitHub repo URL or local path? | Needed so Claude can read actual files next session | TBD |
+
+---
+
+## [CLAUDE OWNS] CODING STANDARDS
+<!-- Claude reads this before writing any code. Never asks about these. -->
+
+### Non-negotiables
+- `Decimal` for ALL money/price values. Never float.
+- `UUID` strings for all entity IDs
+- Type hints on every function signature
+- `dataclass` for domain models, prefer `frozen=True` for value objects
+- Specific exceptions only, never bare `Exception`
+- Always use `session_scope()` context manager for DB — never raw sessions
+
+### Imports order
 ```python
-from core.database.session import session_scope
-from repositories.position import PositionRepository
-
-with session_scope() as session:
-    repo = PositionRepository(session)
-    positions = repo.get_by_portfolio(portfolio_id)
-```
-
-### 2. Event Sourcing
-Every trading decision is captured as an immutable event:
-```python
-# Events include MarketContext (spot, IV, RSI, etc.) and
-# DecisionContext (rationale, confidence, risk tolerance)
-```
-
-### 3. Service Layer
-Business logic lives in services, not models:
-- `RiskManager` - validates trades against limits
-- `PositionSyncService` - syncs from broker
-- `GreeksService` - real-time Greeks updates
-
-### 4. Configuration via Pydantic Settings
-```python
-from config.settings import get_settings
-settings = get_settings()
-print(settings.database_url)
-```
-
-## Domain Models
-
-### Key Enumerations
-- `AssetType`: EQUITY, OPTION, FUTURE, CRYPTO
-- `OptionType`: CALL, PUT
-- `OrderSide`: BUY, SELL, BUY_TO_OPEN, SELL_TO_OPEN, BUY_TO_CLOSE, SELL_TO_CLOSE
-- `StrategyType`: IRON_CONDOR, VERTICAL_SPREAD, STRADDLE, STRANGLE, etc.
-
-### Core Entities
-- **Symbol**: Immutable representation of a tradable instrument
-- **Greeks**: Delta, gamma, theta, vega, rho snapshot
-- **Leg**: Single leg of a trade (quantity, entry/exit prices, Greeks)
-- **Trade**: Collection of legs representing a complete position
-- **Position**: Current holding snapshot
-- **Portfolio**: Top-level container with cash, buying power, aggregated Greeks
-
-## Configuration
-
-### Environment Variables (.env)
-```bash
-# Database
-DATABASE_URL=sqlite:///trading_cotrader.db
-
-# Tastytrade (credentials loaded from YAML)
-IS_PAPER_TRADING=false
-
-# Risk Management
-MAX_PORTFOLIO_DELTA=100.0
-MAX_POSITION_SIZE_PERCENT=20.0
-
-# Feature Flags
-ENABLE_AI_LEARNING=true
-ENABLE_GREEKS_CALCULATION=true
-ENABLE_PNL_ATTRIBUTION=true
-
-# Logging
-LOG_LEVEL=INFO
-```
-
-### YAML Configuration (config.yaml)
-The main `config.yaml` at project root contains:
-- Broker credentials (environment variable references)
-- Strategy configurations (iron condor, verticals, wheel, etc.)
-- Risk limits (per-trade, daily, weekly stops)
-- Technical indicator settings (RSI, SMA, MACD, etc.)
-
-## Risk Management
-
-The `RiskManager` service enforces:
-
-| Check | Description | Default Limit |
-|-------|-------------|---------------|
-| Portfolio Delta | Maximum gross directional exposure | 100 units |
-| Position Size | Max % of portfolio per position | 20% |
-| Concentration | Max exposure to single underlying | Configurable |
-| Buying Power | Available margin validation | Account balance |
-
-## Coding Conventions
-
-### Python Style
-- Use type hints for all function signatures
-- Dataclasses for domain models (prefer frozen=True for value objects)
-- Decimal for all money/price values (never float)
-- UUID strings for entity IDs
-
-### Imports
-```python
-# Standard library
+# 1. Standard library
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional, List
 
-# Third-party
+# 2. Third-party
 from sqlalchemy import Column, String
 from pydantic import Field
 
-# Local
+# 3. Local
 from core.models.domain import Position, Trade
 from config.settings import get_settings
 ```
 
-### Database Sessions
-Always use the context manager for automatic transaction handling:
+### DB session pattern (always this, never anything else)
 ```python
 from core.database.session import session_scope
 
 with session_scope() as session:
-    # Operations here
-    # Auto-commits on success, rollback on error
+    repo = SomeRepository(session)
+    # auto-commits on success, auto-rollbacks on error
 ```
 
-### Error Handling
-- Use specific exceptions, not generic Exception
-- Log errors with context before re-raising
-- Validate inputs at system boundaries
+### Adding a new strategy type
+1. Add enum to `StrategyType` in `core/models/domain.py`
+2. Add config in `config.yaml` under `strategies.defined` or `strategies.undefined`
 
-## Common Tasks for AI Assistants
-
-### Adding a New Strategy Type
-1. Add enum value to `StrategyType` in `core/models/domain.py`
-2. Add strategy config in `config.yaml` under `strategies.defined` or `strategies.undefined`
-3. Implement strategy logic if needed
-
-### Adding a New Risk Check
+### Adding a new risk check
 1. Add method to `RiskManager` in `services/risk_manager.py`
-2. Call from `validate_trade()` method
-3. Add tests in `tests/`
+2. Call from `validate_trade()`
+3. Add test in `tests/`
 
-### Modifying Database Schema
-1. Update ORM models in `core/database/schema.py`
-2. Run `setup_database.py` to recreate (or use migrations for production)
-3. Update corresponding domain models in `core/models/domain.py`
+### Modifying DB schema
+1. Update ORM in `core/database/schema.py`
+2. Update domain model in `core/models/domain.py`
+3. Run `setup_database.py` to recreate (never manual migrations in dev)
 
-### Adding a New Broker Adapter
-1. Create new file in `adapters/` implementing the broker interface
-2. Implement methods: `connect()`, `get_positions()`, `get_account_balance()`, `submit_order()`
-3. Register in configuration
+---
 
-## Testing Conventions
+## [CLAUDE OWNS] DEV COMMANDS
+<!-- Claude uses these exact commands. Never invents alternatives. -->
 
-- Unit tests in `tests/unit/`
-- Integration tests in `tests/integration/`
-- Use pytest fixtures for common setup
-- Mock external services (broker API, market data)
+```bash
+# Database setup
+python -m trading_cotrader.scripts.setup_database
 
-## Important Notes
+# Daily sync from TastyTrade
+python -m trading_cotrader.runners.sync_portfolio
 
-1. **Never store credentials in code** - use environment variables or YAML with ${VAR} syntax
-2. **Greeks come from DXLink streaming**, not REST API - the adapter handles this
-3. **Event sourcing is critical** - every trade decision should be logged for AI learning
-4. **Paper trading mode** - always test with `IS_PAPER_TRADING=true` first
-5. **Decimal precision** - never use float for financial calculations
+# Greeks calculation
+python -m trading_cotrader.runners.sync_with_greeks
 
-## File Naming Conventions
+# Portfolio analysis
+python -m trading_cotrader.runners.portfolio_analyzer
 
-- Snake_case for Python files: `risk_manager.py`
-- Classes use PascalCase: `RiskManager`
-- Constants use UPPER_SNAKE_CASE: `MAX_PORTFOLIO_DELTA`
-- Private methods/attributes prefixed with underscore: `_validate_delta()`
+# Data validation
+python -m trading_cotrader.runners.validate_data
+
+# Debug harness (primary test tool)
+python -m runners.debug_autotrader --skip-sync   # no broker needed
+python -m runners.debug_autotrader --mode what-if
+python -m runners.debug_autotrader               # full with broker
+
+# Log a trading decision
+python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor --rationale "High IV rank"
+
+# Tests
+pytest
+pytest -v
+pytest tests/unit/test_risk_manager.py
+```
+
+### Critical runtime notes
+- Greeks come from DXLink streaming, NOT REST API — adapter handles this
+- Always test with `IS_PAPER_TRADING=true` before live
+- Never store credentials in code — use `.env` or YAML with `${VAR}` syntax
+
+---
+
+## TECH STACK (REFERENCE)
+
+| Layer | Choice | Status |
+|-------|--------|--------|
+| Backend | Python + FastAPI | ✅ Working |
+| Database | SQLite (→ PostgreSQL later) | ✅ Working |
+| Broker | TastyTrade via SDK | ✅ Connected |
+| Greeks/Pricing | Black-Scholes (custom) | ✅ Built |
+| Frontend | React + AG Grid + WebSocket | ⚠️ Components exist, not wired |
+| Event Sourcing | Custom (core/models/events.py) | ✅ Built |
+| AI/ML | Q-Learning + DQN (numpy) | ⚠️ Built, needs data |
+
+---
+
+## FILE STRUCTURE (WHAT EXISTS TODAY)
+
+```
+trading_cotrader/
+├── adapters/
+│   └── tastytrade_adapter.py        ✅ Auth, positions, balance
+├── analytics/
+│   ├── pricing/option_pricer.py     ✅ Black-Scholes
+│   ├── greeks/engine.py             ✅ Greeks calculations
+│   ├── volatility_surface.py        ✅ IV surface
+│   └── pricing/pnl_calculator.py   ✅ P&L
+├── config/
+│   ├── settings.py                  ✅
+│   ├── risk_config.yaml             ✅
+│   └── risk_config_loader.py        ✅
+├── core/
+│   ├── database/schema.py           ✅ Enhanced (11 tables, WhatIf support)
+│   ├── database/session.py          ✅
+│   ├── models/domain.py             ✅ Enhanced (PortfolioType, TradeStatus lifecycle, PnLAttribution)
+│   ├── models/events.py             ✅
+│   ├── models/calculations.py       ✅
+│   └── models/what_if.py            ✅
+├── repositories/
+│   ├── base.py                      ✅
+│   ├── portfolio.py                 ✅
+│   ├── trade.py                     ⚠️ is_open bug — fix first
+│   ├── position.py                  ✅
+│   └── event.py                     ✅
+├── services/
+│   ├── position_sync.py             ✅
+│   ├── greeks_service.py            ✅
+│   ├── event_logger.py              ✅
+│   ├── event_analytics.py           ✅
+│   ├── risk/                        ✅ Complete module
+│   └── position_mgmt/rules_engine.py ✅
+├── ai_cotrader/
+│   ├── feature_engineering/         ⚠️ Built, needs live event data
+│   ├── learning/                    ⚠️ Built, needs 500+ events to train
+│   └── models/                      ⚠️ Agents defined, not trained
+├── runners/
+│   ├── debug_autotrader.py          ✅ Steps 1-4 passing, Step 5 blocked
+│   ├── sync_portfolio.py            ✅
+│   └── portfolio_analyzer.py        ✅
+└── frontend/
+    └── src/components/
+        ├── MarketContext.tsx         ⚠️ Exists, not wired to live data
+        ├── RiskMonitor.tsx           ⚠️ Exists, not wired
+        ├── ScenarioMatrix.tsx        ⚠️ Exists, not wired
+        ├── PositionsGrid.tsx         ⚠️ Exists, not wired
+        └── HedgingBlotter.tsx        ⚠️ Exists, not wired
+```
