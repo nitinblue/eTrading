@@ -86,13 +86,14 @@ DO NOT TOUCH:
 - User can authenticate with TastyTrade broker and maintain a live session
 - User can sync portfolio and pull live positions with current market prices and Greeks
 - User can create a WhatIf trade (identical object to a real trade, just flagged as WHAT_IF)
-- User can run a debug harness (debug_autotrader.py) to validate steps 1–4 of the trade lifecycle
+- User can run the test harness (`python -m harness.runner`) — steps 1-10 defined
 - User can log events against trades via CLI
+- User can start the grid server (`python -m trading_cotrader.runners.run_grid_server`) and view positions in browser
 
 **Blocked / Not Yet Working:**
-- Step 5+ of debug harness failing due to `is_open` property issue in trade.py
+- `is_open` property vs field mismatch in `repositories/trade.py` — breaks trade persistence round-trips
 - WhatIf end-to-end lifecycle (intent → evaluate → execute → close) not yet validated
-- AG Grid UI exists as components but is not wired to live backend data
+- UI exists as HTML/JSX prototypes (`ui/`) but is not a production React app yet
 
 ---
 
@@ -153,6 +154,16 @@ DO NOT TOUCH:
 - REJECTED APPROACH: PostgreSQL from day one — rejected, adds DevOps overhead before the schema is stable.
 - OBJECTIVE IT SERVES: All objectives (reduces friction in early development)
 
+### Decision 10: Container Pattern for Runtime State (Feb 14, 2026)
+- DECISION: `containers/` holds runtime state objects (PortfolioContainer, PositionContainer, TradeContainer, RiskFactorContainer) orchestrated by ContainerManager. These are in-memory state holders that sit between the DB/broker layer and the services layer.
+- CONSTRAINT THAT FORCED IT: Services need rich, interconnected runtime state (positions + greeks + risk factors together). Passing raw DB rows around creates coupling and repeated hydration logic.
+- OBJECTIVE IT SERVES: #7 (risk aggregation needs all state in one place)
+
+### Decision 11: Test Harness Over pytest for Integration Testing (Feb 14, 2026)
+- DECISION: `harness/` provides a step-based integration test framework (steps 01-11) with rich terminal output. The harness tests the full vertical slice: imports → broker → portfolio → market data → risk → hedging → trades → events → ML status → containers. pytest reserved for unit tests (not yet written).
+- CONSTRAINT THAT FORCED IT: Integration testing across broker + DB + domain requires ordered steps with shared state. pytest fixtures don't naturally model this.
+- OBJECTIVE IT SERVES: All objectives (validates the entire stack works end-to-end)
+
 ---
 
 ## [CLAUDE OWNS] CODE MAP
@@ -160,13 +171,13 @@ DO NOT TOUCH:
 
 | Objective # | What exists in code today |
 |-------------|--------------------------|
-| 1 (Deploy 250K) | `config/risk_config.yaml` + `config/risk_config_loader.py` — risk parameters per portfolio. `core/database/schema.py` — portfolio_type, per-portfolio risk limits in ORM. |
-| 2 (Income generation) | `analytics/pricing/option_pricer.py` — Black-Scholes. `analytics/greeks/engine.py` — Greeks. `analytics/pricing/pnl_calculator.py` — P&L. Strategy catalog defined in PROJECT_MASTER. |
-| 3 (80/20 risk book) | `services/risk/limits.py` — risk limits manager. `services/risk/portfolio_risk.py` — portfolio risk analyzer. `core/models/domain.py` — `PortfolioType` enum, `RiskCategory` on trades. |
+| 1 (Deploy 250K) | `config/risk_config_loader.py` — risk parameter loading (NOTE: `risk_config.yaml` file is MISSING, loader exists but config file needs to be created). `core/database/schema.py` — portfolio_type, per-portfolio risk limits in ORM. |
+| 2 (Income generation) | `analytics/pricing/option_pricer.py` — Black-Scholes. `analytics/greeks/engine.py` — Greeks. `analytics/pricing/pnl_calculator.py` — P&L. `services/pricing/` — additional BS, greeks, implied vol, probability, scenarios. |
+| 3 (80/20 risk book) | `services/risk/limits.py` — risk limits manager. `services/risk/portfolio_risk.py` — portfolio risk analyzer. `core/models/domain.py` — `PortfolioType` enum, `RiskCategory` on trades. `services/risk_manager.py` — top-level risk orchestration. |
 | 4 (Wheel strategy / CSP) | Domain objects support all trade types. No strategy-specific automation yet — this is a gap. |
 | 5 (Every decision logged) | `services/event_logger.py` — event logging service. `core/models/events.py` — event sourcing models. `repositories/event.py` — event repository. `cli/log_event.py` — CLI interface. |
-| 6 (System surfaces insights) | `ai_cotrader/` — structure exists. `TradingAdvisor` class exists. Feature extraction and RL agents stubbed. NOT YET WIRED TO LIVE DATA. |
-| 7 (Risk limits enforced) | `services/risk/var_calculator.py` — VaR. `services/risk/correlation.py`. `services/risk/concentration.py`. `services/risk/margin.py`. `services/risk/limits.py`. `services/position_mgmt/rules_engine.py` — exit rules. |
+| 6 (System surfaces insights) | `ai_cotrader/` — structure exists. Feature extraction and RL agents stubbed. NOT YET WIRED TO LIVE DATA. |
+| 7 (Risk limits enforced) | `services/risk/var_calculator.py` — VaR. `services/risk/correlation.py`. `services/risk/concentration.py`. `services/risk/margin.py`. `services/risk/limits.py`. `services/position_mgmt/rules_engine.py` — exit rules. `services/risk_factors/` — risk factor resolution. `services/hedging/hedge_calculator.py` — hedge recommendations. |
 | 8 (AI/ML / RL) | `ai_cotrader/feature_engineering/feature_extractor.py` — 55-dimension state vectors. `ai_cotrader/learning/supervised.py` — pattern recognition (Decision Tree). `ai_cotrader/learning/reinforcement.py` — Q-Learning + DQN. `RewardFunction` defined. NEEDS DATA — usable after 500+ logged trades. |
 
 ---
@@ -175,10 +186,10 @@ DO NOT TOUCH:
 <!-- What is actively broken right now. Claude updates this every session. -->
 
 **Blocker:** `is_open` property vs field mismatch in `repositories/trade.py`
-**Impact:** debug_autotrader Step 5 (Event Logging) fails. Steps 6–13 not tested.
-**Fix:** `is_open` must be computed from `trade_status`, never read from DB as a stored field.
-**File to fix:** `repositories/trade.py`
-**Test command after fix:** `python -m runners.debug_autotrader --skip-sync`
+**Impact:** Trade persistence round-trips break — the repo tries to read/write `is_open` as a stored DB field, but the domain model defines it as a computed property from `trade_status`.
+**Fix:** `is_open` must be computed from `trade_status`, never read from DB as a stored field. Remove all `is_open` field access in `repositories/trade.py`.
+**File to fix:** `repositories/trade.py` (lines ~58-65, ~273-275, ~451-453)
+**Test command after fix:** `python -m harness.runner --skip-sync`
 
 ---
 
@@ -187,6 +198,12 @@ DO NOT TOUCH:
   RULE: Claude appends one entry at TOP after every session. Never deletes.
   This is the permanent record of what got done.
 -->
+
+### Feb 14, 2026 (session 2)
+- AUDITED: CLAUDE.md against actual codebase — found major discrepancies
+- FIXED: File structure, dev commands, code map, blocker section — all now match real code
+- KEY FINDINGS: runners/ only has run_grid_server.py; harness/ is the real test framework; frontend/ doesn't exist (it's ui/); config/risk_config.yaml is missing; containers/ and server/ were undocumented
+- NEXT: Fix is_open bug in repositories/trade.py, get harness steps passing
 
 ### Feb 14, 2026
 - SYNTHESIZED: All prior docs (ARCHITECTURE_28Jan26, PROJECT_MASTER, PROJECT_STATUS_SESSION_JAN26) into CLAUDE.md
@@ -205,7 +222,8 @@ DO NOT TOUCH:
 | 3 | Concentration limit per underlying? | Default assumption is 20% — correct? | TBD |
 | 4 | Preferred exit rules? | 50% profit? 21 DTE roll? | TBD |
 | 5 | Is paper trading in scope before live trading? | Affects whether to add a paper portfolio type first | TBD |
-| 6 | GitHub repo URL or local path? | Needed so Claude can read actual files next session | TBD |
+| 6 | Should `config/risk_config.yaml` be created? | Loader exists at `config/risk_config_loader.py` but the YAML file is missing | TBD |
+| 7 | Should playground/ scripts be promoted to runners/? | Currently sync_portfolio, portfolio_analyzer etc. live in playground/, not runners/ | TBD |
 
 ---
 
@@ -268,30 +286,27 @@ with session_scope() as session:
 # Database setup
 python -m trading_cotrader.scripts.setup_database
 
-# Daily sync from TastyTrade
-python -m trading_cotrader.runners.sync_portfolio
+# Test harness (primary test/validation tool — 10 steps)
+python -m harness.runner --skip-sync   # use existing DB data, no broker needed
+python -m harness.runner --mock        # mock data, no broker
+python -m harness.runner               # full test with broker connection
 
-# Greeks calculation
-python -m trading_cotrader.runners.sync_with_greeks
+# Grid server (WebSocket + REST API for UI)
+python -m trading_cotrader.runners.run_grid_server
+# Then open trading_cotrader/ui/trading-grid.html in browser
 
-# Portfolio analysis
-python -m trading_cotrader.runners.portfolio_analyzer
-
-# Data validation
-python -m trading_cotrader.runners.validate_data
-
-# Debug harness (primary test tool)
-python -m runners.debug_autotrader --skip-sync   # no broker needed
-python -m runners.debug_autotrader --mode what-if
-python -m runners.debug_autotrader               # full with broker
+# Daily operations (in playground/ — experimental scripts)
+python -m trading_cotrader.playground.sync_portfolio
+python -m trading_cotrader.playground.sync_with_greeks
+python -m trading_cotrader.playground.portfolio_analyzer
+python -m trading_cotrader.playground.validate_data
 
 # Log a trading decision
 python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor --rationale "High IV rank"
 
-# Tests
+# Tests (note: tests/ dir is currently empty — harness is the primary test tool)
 pytest
 pytest -v
-pytest tests/unit/test_risk_manager.py
 ```
 
 ### Critical runtime notes
@@ -305,13 +320,15 @@ pytest tests/unit/test_risk_manager.py
 
 | Layer | Choice | Status |
 |-------|--------|--------|
-| Backend | Python + FastAPI | ✅ Working |
+| Backend | Python + FastAPI (`server/api_v2.py`) | ✅ Working |
+| WebSocket | Custom (`server/websocket_server.py`) | ✅ Built |
 | Database | SQLite (→ PostgreSQL later) | ✅ Working |
-| Broker | TastyTrade via SDK | ✅ Connected |
-| Greeks/Pricing | Black-Scholes (custom) | ✅ Built |
-| Frontend | React + AG Grid + WebSocket | ⚠️ Components exist, not wired |
-| Event Sourcing | Custom (core/models/events.py) | ✅ Built |
+| Broker | TastyTrade via SDK (`adapters/tastytrade_adapter.py`) | ✅ Connected |
+| Greeks/Pricing | Black-Scholes (custom, in both `analytics/` and `services/pricing/`) | ✅ Built |
+| Frontend | HTML + JSX prototypes (`ui/`), NOT a React app yet | ⚠️ Prototypes only |
+| Event Sourcing | Custom (`core/models/events.py`) | ✅ Built |
 | AI/ML | Q-Learning + DQN (numpy) | ⚠️ Built, needs data |
+| Containers | Domain object state management (`containers/`) | ✅ Built |
 
 ---
 
@@ -320,49 +337,107 @@ pytest tests/unit/test_risk_manager.py
 ```
 trading_cotrader/
 ├── adapters/
-│   └── tastytrade_adapter.py        ✅ Auth, positions, balance
+│   └── tastytrade_adapter.py        ✅ Auth, positions, balance (+ _working.py, _working_v1.py backups)
 ├── analytics/
 │   ├── pricing/option_pricer.py     ✅ Black-Scholes
+│   ├── pricing/pnl_calculator.py    ✅ P&L
 │   ├── greeks/engine.py             ✅ Greeks calculations
 │   ├── volatility_surface.py        ✅ IV surface
-│   └── pricing/pnl_calculator.py   ✅ P&L
+│   └── functional_portfolio.py      ✅ Functional portfolio analysis
+├── cli/
+│   └── log_event.py                 ✅ CLI for logging trade decisions
 ├── config/
 │   ├── settings.py                  ✅
-│   ├── risk_config.yaml             ✅
-│   └── risk_config_loader.py        ✅
+│   ├── risk_config_loader.py        ✅ (NOTE: risk_config.yaml is MISSING — loader exists, file doesn't)
+│   └── risk_config.yaml             ❌ MISSING — needs to be created
+├── containers/
+│   ├── container_manager.py         ✅ Orchestrates all containers
+│   ├── portfolio_container.py       ✅ Portfolio state
+│   ├── position_container.py        ✅ Position state
+│   ├── trade_container.py           ✅ Trade state
+│   └── risk_factor_container.py     ✅ Risk factor state
 ├── core/
-│   ├── database/schema.py           ✅ Enhanced (11 tables, WhatIf support)
-│   ├── database/session.py          ✅
-│   ├── models/domain.py             ✅ Enhanced (PortfolioType, TradeStatus lifecycle, PnLAttribution)
-│   ├── models/events.py             ✅
+│   ├── database/schema.py           ✅ ORM (11 tables, WhatIf support)
+│   ├── database/session.py          ✅ session_scope() context manager
+│   ├── models/domain.py             ✅ PortfolioType, TradeStatus lifecycle, PnLAttribution
+│   ├── models/events.py             ✅ Event sourcing models
 │   ├── models/calculations.py       ✅
-│   └── models/what_if.py            ✅
+│   ├── models/what_if.py            ✅
+│   └── validation/validators.py     ✅
+├── harness/                          ✅ TEST FRAMEWORK (replaces old debug_autotrader)
+│   ├── runner.py                    ✅ Main orchestrator (python -m harness.runner)
+│   ├── base.py                      ✅ Step base classes, rich output
+│   ├── run_containers.py            ✅ Container-based test variant
+│   └── steps/
+│       ├── step01_imports.py        ✅ Import validation
+│       ├── step02_broker.py         ✅ Broker connection
+│       ├── step03_portfolio.py      ✅ Portfolio sync
+│       ├── step04_market_data.py    ✅ Market data containers
+│       ├── step05_risk_aggregation.py ✅ Risk aggregation
+│       ├── step05_risk_factors.py   ✅ Risk factor resolution
+│       ├── step06_hedging.py        ✅ Hedge calculations
+│       ├── step07_risk_limits.py    ✅ Risk limit checks
+│       ├── step08_trades.py         ✅ Trade history
+│       ├── step09_events.py         ✅ Event logging
+│       ├── step10_ml_status.py      ✅ ML readiness check
+│       └── step11_containers.py     ✅ Container integration
 ├── repositories/
 │   ├── base.py                      ✅
 │   ├── portfolio.py                 ✅
 │   ├── trade.py                     ⚠️ is_open bug — fix first
 │   ├── position.py                  ✅
 │   └── event.py                     ✅
+├── runners/
+│   └── run_grid_server.py           ✅ WebSocket + REST server for UI
+├── scripts/
+│   ├── setup_database.py            ✅ DB creation
+│   └── test_whatif_flow.py          ✅ WhatIf test script
+├── server/
+│   ├── api_v2.py                    ✅ FastAPI REST endpoints
+│   ├── contracts.py                 ✅ API request/response contracts
+│   ├── data_provider.py             ✅ Data abstraction layer (33KB)
+│   └── websocket_server.py          ✅ WebSocket server (26KB)
 ├── services/
-│   ├── position_sync.py             ✅
-│   ├── greeks_service.py            ✅
-│   ├── event_logger.py              ✅
-│   ├── event_analytics.py           ✅
-│   ├── risk/                        ✅ Complete module
-│   └── position_mgmt/rules_engine.py ✅
+│   ├── position_sync.py             ✅ Broker position sync
+│   ├── portfolio_sync.py            ✅ Portfolio-level sync
+│   ├── greeks_service.py            ✅ Greeks calculation service
+│   ├── event_logger.py              ✅ Event logging
+│   ├── event_analytics.py           ✅ Event analysis
+│   ├── data_service.py              ✅ General data service
+│   ├── snapshot_service.py          ✅ Portfolio snapshot service
+│   ├── option_grid_service.py       ✅ Option chain grid
+│   ├── risk_manager.py              ✅ Top-level risk orchestration
+│   ├── real_risk_check.py           ✅ Live risk validation
+│   ├── hedging/hedge_calculator.py  ✅ Hedge recommendations
+│   ├── market_data/                 ✅ Market data domain (3 files)
+│   ├── pricing/                     ✅ BS, greeks, implied vol, probability, scenarios (5 files)
+│   ├── risk/                        ✅ VaR, correlation, concentration, margin, limits, portfolio_risk
+│   ├── risk_factors/                ✅ Risk factor models + resolver
+│   └── position_mgmt/rules_engine.py ✅ Exit rules
 ├── ai_cotrader/
+│   ├── data_pipeline.py             ⚠️ Built, needs live data
 │   ├── feature_engineering/         ⚠️ Built, needs live event data
 │   ├── learning/                    ⚠️ Built, needs 500+ events to train
 │   └── models/                      ⚠️ Agents defined, not trained
-├── runners/
-│   ├── debug_autotrader.py          ✅ Steps 1-4 passing, Step 5 blocked
-│   ├── sync_portfolio.py            ✅
-│   └── portfolio_analyzer.py        ✅
-└── frontend/
-    └── src/components/
-        ├── MarketContext.tsx         ⚠️ Exists, not wired to live data
-        ├── RiskMonitor.tsx           ⚠️ Exists, not wired
-        ├── ScenarioMatrix.tsx        ⚠️ Exists, not wired
-        ├── PositionsGrid.tsx         ⚠️ Exists, not wired
-        └── HedgingBlotter.tsx        ⚠️ Exists, not wired
+├── playground/                       ⚠️ Experimental scripts (not production)
+│   ├── auto_trader.py               Prototype auto-trader
+│   ├── sync_portfolio.py            Daily sync script
+│   ├── sync_with_greeks.py          Greeks sync
+│   ├── portfolio_analyzer.py        Analysis script
+│   ├── validate_data.py             Data validation
+│   ├── instituitional_trading_v4.py Large prototype (61KB)
+│   ├── instituitional_trading_v5.py Large prototype (64KB)
+│   ├── beta_hedging_v1/v2.py        Beta hedging experiments
+│   ├── regime_markovchain_v1/v2.py  Regime detection experiments
+│   ├── passive_strategies.py        Passive strategy experiments
+│   └── test_flow.py                 Test flow script
+├── tests/
+│   └── __init__.py                  ❌ EMPTY — no pytest tests written yet
+└── ui/                               ⚠️ Prototypes, not a React app
+    ├── grid/TradingDashboard.jsx    JSX component (single file)
+    ├── trading-grid.html            Main UI entry point
+    ├── institutional-dashboard.html  Dashboard prototype
+    ├── trading-terminal.html         Terminal prototype
+    ├── trading-terminal_v0.html      Terminal v0
+    └── payoff_graph.py              Python payoff graph utility
 ```
