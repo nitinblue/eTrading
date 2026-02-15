@@ -130,6 +130,68 @@ class UnderlyingsConfig:
 
 
 @dataclass
+class ExitRuleProfile:
+    """Exit rule profile (conservative/balanced/aggressive)"""
+    name: str = ""
+    profit_target_pct: float = 50
+    stop_loss_multiplier: float = 1.0
+    roll_dte: int = 21
+    close_dte: int = 7
+
+
+@dataclass
+class PortfolioRiskLimits:
+    """Risk limits for a single portfolio tier"""
+    max_portfolio_delta: float = 500
+    max_positions: int = 10
+    max_single_position_pct: float = 10
+    max_single_trade_risk_pct: float = 5
+    max_total_risk_pct: float = 25
+    min_cash_reserve_pct: float = 10
+    max_concentration_pct: float = 20
+
+
+@dataclass
+class PortfolioConfig:
+    """Configuration for a single portfolio tier"""
+    name: str                        # internal key (e.g. "core_holdings")
+    display_name: str = ""
+    description: str = ""
+    capital_allocation_pct: float = 0
+    initial_capital: float = 0
+    target_annual_return_pct: float = 0
+    exit_rule_profile: str = "balanced"
+    tags: List[str] = field(default_factory=list)
+    allowed_strategies: List[str] = field(default_factory=list)
+    risk_limits: PortfolioRiskLimits = field(default_factory=PortfolioRiskLimits)
+    preferred_underlyings: List[str] = field(default_factory=list)
+    requires_rationale: bool = False
+    requires_exit_commentary: bool = False
+
+
+@dataclass
+class PortfoliosConfig:
+    """Container for all portfolio configurations"""
+    portfolios: Dict[str, PortfolioConfig] = field(default_factory=dict)
+
+    def get_by_name(self, name: str) -> Optional[PortfolioConfig]:
+        """Get portfolio config by internal name."""
+        return self.portfolios.get(name)
+
+    def get_all(self) -> List[PortfolioConfig]:
+        """Get all portfolio configs."""
+        return list(self.portfolios.values())
+
+    def total_allocation_pct(self) -> float:
+        """Sum of all portfolio allocations."""
+        return sum(p.capital_allocation_pct for p in self.portfolios.values())
+
+    def validate_allocations(self) -> bool:
+        """Check that allocations sum to <= 100%."""
+        return self.total_allocation_pct() <= 100.0
+
+
+@dataclass
 class IVConfig:
     """IV settings"""
     high_iv_threshold: float = 50
@@ -191,6 +253,12 @@ class RiskConfig:
     enabled_alerts: List[str] = field(default_factory=list)
     earnings_warning_days: int = 7
     
+    # Portfolios
+    portfolios: PortfoliosConfig = field(default_factory=PortfoliosConfig)
+
+    # Exit rule profiles
+    exit_rule_profiles: Dict[str, ExitRuleProfile] = field(default_factory=dict)
+
     # Performance tracking
     track_metrics: List[str] = field(default_factory=list)
     track_by: List[str] = field(default_factory=list)
@@ -350,11 +418,44 @@ class RiskConfigLoader:
             config.enabled_alerts = raw['alerts'].get('enabled', [])
             config.earnings_warning_days = raw['alerts'].get('earnings_warning_days', 7)
         
+        # Exit rule profiles
+        if 'exit_rule_profiles' in raw:
+            for name, profile_data in raw['exit_rule_profiles'].items():
+                config.exit_rule_profiles[name] = ExitRuleProfile(
+                    name=name, **profile_data
+                )
+
+        # Portfolios
+        if 'portfolios' in raw:
+            portfolios_dict = {}
+            for name, pdata in raw['portfolios'].items():
+                risk_limits_data = pdata.get('risk_limits', {})
+                risk_limits = PortfolioRiskLimits(**risk_limits_data)
+
+                portfolios_dict[name] = PortfolioConfig(
+                    name=name,
+                    display_name=pdata.get('display_name', name),
+                    description=pdata.get('description', ''),
+                    capital_allocation_pct=pdata.get('capital_allocation_pct', 0),
+                    initial_capital=pdata.get('initial_capital', 0),
+                    target_annual_return_pct=pdata.get('target_annual_return_pct', 0),
+                    exit_rule_profile=pdata.get('exit_rule_profile', 'balanced'),
+                    tags=pdata.get('tags', []),
+                    allowed_strategies=pdata.get('allowed_strategies', []),
+                    risk_limits=risk_limits,
+                    preferred_underlyings=pdata.get('preferred_underlyings', []),
+                    requires_rationale=pdata.get('requires_rationale', False),
+                    requires_exit_commentary=pdata.get('requires_exit_commentary', False),
+                )
+            config.portfolios = PortfoliosConfig(portfolios=portfolios_dict)
+            logger.info(f"Loaded {len(portfolios_dict)} portfolio configs "
+                        f"(total allocation: {config.portfolios.total_allocation_pct():.0f}%)")
+
         # Performance
         if 'performance' in raw:
             config.track_metrics = raw['performance'].get('track_metrics', [])
             config.track_by = raw['performance'].get('track_by', [])
-        
+
         return config
 
 

@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 14, 2026 (session 4)
+# Last Updated: February 15, 2026 (session 5)
 
 ---
 
@@ -35,6 +35,14 @@ Never: "I have an iron condor." Always: "I have -150 SPY delta, +$450 theta/day.
   RULE: Add new entries at TOP with date. Never delete or overwrite prior entries.
   Change a status by adding a new dated row at top, not by editing old rows.
 -->
+
+### Feb 15, 2026
+
+| # | Objective | Signal (observable behavior) | Status |
+|---|-----------|-------------------------------|--------|
+| 1 | Deploy 250K in structured, risk-managed portfolio (50K personal + 200K IRA) | Capital allocated across defined risk buckets, not in cash | IN PROGRESS |
+| 2 | Income generation is primary, not alpha chasing | Portfolio generates consistent premium income via options + dividends | NOT STARTED |
+| 3 | Option book structured: 20% undefined risk / 80% defined risk | Every open position tagged to risk profile, limits enforced by system, not memory | IN PROGRESS |
 
 ### Feb 14, 2026
 
@@ -89,7 +97,11 @@ COMMAND TO RUN:
 - User can book a WhatIf trade end-to-end via `TradeBookingService` with live DXLink Greeks/quotes → DB → containers → snapshot → ML
 - User can book any of 12 strategy types as WhatIf trades (single, vertical, iron condor, iron butterfly, straddle, strangle, butterfly, condor, jade lizard, big lizard, ratio spread, calendar spread)
 - User can look up strategy templates (risk category, bias, theta/vega profile, exit rules) via `strategy_templates.py`
-- User can run the test harness (`python -m harness.runner`) — steps 1-13 defined (12 books a single trade, 13 books all 12 testable strategies)
+- User can run the test harness (`python -m harness.runner`) — steps 1-14 defined (12 books a single trade, 13 books all 12 testable strategies, 14 initializes multi-tier portfolios + performance metrics)
+- User can initialize 4 risk-tiered portfolios from YAML config (Core Holdings $200K, Medium Risk $20K, High Risk $10K, Model Portfolio $25K) via `PortfolioManager`
+- User can view performance metrics per portfolio (win rate, P&L, profit factor, expectancy, max drawdown, Sharpe, CAGR) via `PerformanceMetricsService`
+- User can see strategy permissions matrix — which strategies are allowed in which portfolio tier
+- User can route WhatIf trades to specific portfolios via `portfolio_name` parameter in `TradeBookingService`
 - User can log events against trades via CLI
 - User can start the grid server (`python -m trading_cotrader.runners.run_grid_server`) and view positions in browser
 
@@ -164,9 +176,15 @@ COMMAND TO RUN:
 - OBJECTIVE IT SERVES: #7 (risk aggregation needs all state in one place)
 
 ### Decision 11: Test Harness Over pytest for Integration Testing (Feb 14, 2026)
-- DECISION: `harness/` provides a step-based integration test framework (steps 01-13) with rich terminal output. The harness tests the full vertical slice: imports → broker → portfolio → market data → risk → hedging → trades → events → ML status → containers → trade booking → strategy templates. pytest reserved for unit tests (not yet written).
+- DECISION: `harness/` provides a step-based integration test framework (steps 01-14) with rich terminal output. The harness tests the full vertical slice: imports → broker → portfolio → market data → risk → hedging → trades → events → ML status → containers → trade booking → strategy templates → portfolio tiers + performance metrics. pytest reserved for unit tests (not yet written).
 - CONSTRAINT THAT FORCED IT: Integration testing across broker + DB + domain requires ordered steps with shared state. pytest fixtures don't naturally model this.
 - OBJECTIVE IT SERVES: All objectives (validates the entire stack works end-to-end)
+
+### Decision 12: Multi-Tier Portfolios from YAML Config (Feb 15, 2026)
+- DECISION: Portfolios are defined in `config/risk_config.yaml` with capital allocations, allowed strategies, risk limits, and exit rule profiles. `PortfolioManager` creates them in DB using `broker='cotrader'` + `account_id=<config_name>` to reuse the existing unique constraint. No schema changes needed.
+- CONSTRAINT THAT FORCED IT: User needs 4 risk tiers (Core/Med/High/Model) with different strategy permissions and capital allocations. Config must be easily adjustable without code changes.
+- REJECTED APPROACH: Hardcoded portfolio definitions in code — rejected because allocation amounts and strategy permissions change as user's portfolio evolves.
+- OBJECTIVE IT SERVES: #1, #3, #7, #8
 
 ---
 
@@ -175,14 +193,14 @@ COMMAND TO RUN:
 
 | Objective # | What exists in code today |
 |-------------|--------------------------|
-| 1 (Deploy 250K) | `config/risk_config_loader.py` — risk parameter loading (NOTE: `risk_config.yaml` file is MISSING, loader exists but config file needs to be created). `core/database/schema.py` — portfolio_type, per-portfolio risk limits in ORM. |
+| 1 (Deploy 250K) | `config/risk_config.yaml` — 4 portfolio tiers defined (Core $200K, Medium $20K, High $10K, Model $25K). `config/risk_config_loader.py` — risk + portfolio config loading with `PortfolioConfig`, `PortfoliosConfig` dataclasses. `services/portfolio_manager.py` — initializes portfolios from YAML, validates allocations, routes trades. `core/database/schema.py` — portfolio_type, per-portfolio risk limits in ORM. |
 | 2 (Income generation) | `analytics/pricing/option_pricer.py` — Black-Scholes. `analytics/greeks/engine.py` — Greeks. `analytics/pricing/pnl_calculator.py` — P&L. `services/pricing/` — additional BS, greeks, implied vol, probability, scenarios. |
-| 3 (80/20 risk book) | `services/risk/limits.py` — risk limits manager. `services/risk/portfolio_risk.py` — portfolio risk analyzer. `core/models/domain.py` — `PortfolioType` enum, `RiskCategory` on trades. `services/risk_manager.py` — top-level risk orchestration. |
+| 3 (80/20 risk book) | `services/risk/limits.py` — risk limits manager. `services/risk/portfolio_risk.py` — portfolio risk analyzer. `core/models/domain.py` — `PortfolioType` enum, `RiskCategory` on trades. `services/risk_manager.py` — top-level risk orchestration. `config/risk_config.yaml` — per-portfolio strategy permissions (Core=5, Med=10, High=10, Model=17 allowed strategies). `services/portfolio_manager.py` — validates strategy-to-portfolio routing. |
 | 4 (Wheel strategy / CSP) | Domain objects support all trade types. `core/models/strategy_templates.py` — 18 strategy templates with risk/bias/Greeks profiles. `services/trade_booking_service.py` — end-to-end WhatIf booking with live Greeks. No strategy-specific automation yet — this is a gap. |
 | 5 (Every decision logged) | `services/event_logger.py` — event logging service. `core/models/events.py` — event sourcing models. `repositories/event.py` — event repository. `cli/log_event.py` — CLI interface. `services/trade_booking_service.py` — auto-logs TradeEvent on every WhatIf booking. |
 | 6 (System surfaces insights) | `ai_cotrader/` — structure exists. Feature extraction and RL agents stubbed. NOT YET WIRED TO LIVE DATA. |
 | 7 (Risk limits enforced) | `services/risk/var_calculator.py` — VaR. `services/risk/correlation.py`. `services/risk/concentration.py`. `services/risk/margin.py`. `services/risk/limits.py`. `services/position_mgmt/rules_engine.py` — exit rules. `services/risk_factors/` — risk factor resolution. `services/hedging/hedge_calculator.py` — hedge recommendations. |
-| 8 (AI/ML / RL) | `ai_cotrader/feature_engineering/feature_extractor.py` — 55-dimension state vectors. `ai_cotrader/learning/supervised.py` — pattern recognition (Decision Tree). `ai_cotrader/learning/reinforcement.py` — Q-Learning + DQN. `RewardFunction` defined. NEEDS DATA — usable after 500+ logged trades. |
+| 8 (AI/ML / RL) | `ai_cotrader/feature_engineering/feature_extractor.py` — 55-dimension state vectors. `ai_cotrader/learning/supervised.py` — pattern recognition (Decision Tree). `ai_cotrader/learning/reinforcement.py` — Q-Learning + DQN. `RewardFunction` defined. `services/performance_metrics_service.py` — OptionsKit-style metrics (win rate, CAGR, Sharpe, drawdown, expectancy, strategy breakdown, weekly P&L). Model Portfolio in `risk_config.yaml` requires rationale on every trade for training data. NEEDS DATA — usable after 500+ logged trades. |
 
 ---
 
@@ -202,6 +220,18 @@ COMMAND TO RUN:
   RULE: Claude appends one entry at TOP after every session. Never deletes.
   This is the permanent record of what got done.
 -->
+
+### Feb 15, 2026 (session 5)
+- BUILT: `config/risk_config.yaml` — 4 portfolio tiers (Core Holdings $200K, Medium Risk $20K, High Risk $10K, Model Portfolio $25K) with allowed strategies, risk limits, exit rule profiles, preferred underlyings
+- BUILT: `services/portfolio_manager.py` — initializes portfolios from YAML, validates allocations <=100%, routes trades, enforces strategy permissions
+- BUILT: `services/performance_metrics_service.py` — OptionsKit-style metrics: win rate, P&L, profit factor, expectancy, avg/biggest win/loss, max drawdown, CAGR, Sharpe, MAR ratio, strategy breakdown, weekly P&L
+- BUILT: `harness/steps/step14_portfolio_performance.py` — prints 4 tables: YAML config, DB portfolios, performance metrics, strategy permissions matrix
+- EXTENDED: `config/risk_config_loader.py` — added `PortfolioConfig`, `PortfoliosConfig`, `ExitRuleProfile`, `PortfolioRiskLimits` dataclasses + parsing
+- EXTENDED: `repositories/portfolio.py` — added `get_by_type()`, `get_by_account_id()`; fixed `to_domain()` and `create_from_domain()` to round-trip `initial_capital`, `portfolio_type`, `description`, `tags`, `max_portfolio_delta`, risk limits
+- EXTENDED: `services/trade_booking_service.py` — added `portfolio_name` parameter to `book_whatif_trade()` for portfolio-specific routing + strategy validation
+- EXTENDED: `harness/runner.py` — registered step 14
+- VERIFIED: All 4 portfolios create correctly, step 14 passes in 86ms
+- NEXT: Book WhatIf trades into specific portfolios, populate performance metrics with real trade data
 
 ### Feb 14, 2026 (session 4)
 - BUILT: `harness/steps/step13_strategy_templates.py` — books WhatIf trades for all 12 testable pure-option strategies with live DXLink Greeks
@@ -228,13 +258,12 @@ COMMAND TO RUN:
 
 | # | Question | Context | Decision |
 |---|----------|---------|----------|
-| 1 | What VaR confidence level matters to you? | Risk limits module is built, needs your thresholds | TBD |
+| 1 | What VaR confidence level matters to you? | Risk limits module is built, defaults to 95%. Needs your threshold | TBD |
 | 2 | Max portfolio VaR tolerance as % of equity? | Same — needs your number to enforce | TBD |
-| 3 | Concentration limit per underlying? | Default assumption is 20% — correct? | TBD |
-| 4 | Preferred exit rules? | 50% profit? 21 DTE roll? | TBD |
+| 3 | Concentration limit per underlying? | Defaulted to 10% (Core), 30% (Med), 40% (High) in YAML — correct? | TBD |
+| 4 | Preferred exit rules? | Defaults set in YAML: conservative (50% profit, 21 DTE roll), balanced (65%, 14 DTE), aggressive (80%, 7 DTE) — adjust? | TBD |
 | 5 | Is paper trading in scope before live trading? | Affects whether to add a paper portfolio type first | TBD |
-| 6 | Should `config/risk_config.yaml` be created? | Loader exists at `config/risk_config_loader.py` but the YAML file is missing | TBD |
-| 7 | Should playground/ scripts be promoted to runners/? | Currently sync_portfolio, portfolio_analyzer etc. live in playground/, not runners/ | TBD |
+| 6 | Should playground/ scripts be promoted to runners/? | Currently sync_portfolio, portfolio_analyzer etc. live in playground/, not runners/ | TBD |
 
 ---
 
@@ -297,10 +326,10 @@ with session_scope() as session:
 # Database setup
 python -m trading_cotrader.scripts.setup_database
 
-# Test harness (primary test/validation tool — 10 steps)
-python -m harness.runner --skip-sync   # use existing DB data, no broker needed
-python -m harness.runner --mock        # mock data, no broker
-python -m harness.runner               # full test with broker connection
+# Test harness (primary test/validation tool — 14 steps)
+python -m trading_cotrader.harness.runner --skip-sync   # use existing DB data, no broker needed
+python -m trading_cotrader.harness.runner --mock        # mock data, no broker
+python -m trading_cotrader.harness.runner               # full test with broker connection
 
 # Grid server (WebSocket + REST API for UI)
 python -m trading_cotrader.runners.run_grid_server
@@ -318,6 +347,36 @@ python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor
 # Tests (note: tests/ dir is currently empty — harness is the primary test tool)
 pytest
 pytest -v
+```
+
+### Testing today's work (Feb 15 — multi-tier portfolios + performance metrics)
+```bash
+# 1. Verify YAML config loads correctly (4 portfolios, 100% allocation)
+python -c "from trading_cotrader.config.risk_config_loader import RiskConfigLoader; c = RiskConfigLoader().load(); print(f'{len(c.portfolios.get_all())} portfolios, {c.portfolios.total_allocation_pct()}% allocated')"
+
+# 2. Run full harness — step 14 validates portfolios + metrics
+python -m trading_cotrader.harness.runner --skip-sync
+
+# 3. Verify portfolios exist in DB
+python -c "
+from trading_cotrader.core.database.session import session_scope
+from trading_cotrader.services.portfolio_manager import PortfolioManager
+with session_scope() as s:
+    pm = PortfolioManager(s)
+    for p in pm.get_all_managed_portfolios():
+        print(f'{p.name}: equity={p.total_equity}, delta_limit={p.max_portfolio_delta}')
+"
+
+# 4. Verify strategy validation works
+python -c "
+from trading_cotrader.core.database.session import session_scope
+from trading_cotrader.services.portfolio_manager import PortfolioManager
+with session_scope() as s:
+    pm = PortfolioManager(s)
+    print(pm.validate_trade_for_portfolio('core_holdings', 'covered_call'))
+    print(pm.validate_trade_for_portfolio('core_holdings', 'iron_condor'))
+    print(pm.validate_trade_for_portfolio('high_risk', 'iron_condor'))
+"
 ```
 
 ### Critical runtime notes
@@ -340,6 +399,8 @@ pytest -v
 | Event Sourcing | Custom (`core/models/events.py`) | ✅ Built |
 | AI/ML | Q-Learning + DQN (numpy) | ⚠️ Built, needs data |
 | Containers | Domain object state management (`containers/`) | ✅ Built |
+| Portfolio Mgmt | Multi-tier from YAML (`services/portfolio_manager.py`) | ✅ Built |
+| Performance | OptionsKit metrics (`services/performance_metrics_service.py`) | ✅ Built, needs trade data |
 
 ---
 
@@ -359,8 +420,8 @@ trading_cotrader/
 │   └── log_event.py                 ✅ CLI for logging trade decisions
 ├── config/
 │   ├── settings.py                  ✅
-│   ├── risk_config_loader.py        ✅ (NOTE: risk_config.yaml is MISSING — loader exists, file doesn't)
-│   └── risk_config.yaml             ❌ MISSING — needs to be created
+│   ├── risk_config_loader.py        ✅ (extended with PortfolioConfig, PortfoliosConfig, ExitRuleProfile)
+│   └── risk_config.yaml             ✅ 4 portfolio tiers, exit rules, underlyings, strategy rules
 ├── containers/
 │   ├── container_manager.py         ✅ Orchestrates all containers
 │   ├── portfolio_container.py       ✅ Portfolio state
@@ -376,7 +437,7 @@ trading_cotrader/
 │   ├── models/strategy_templates.py  ✅ 18 strategy templates (risk, bias, Greeks, exits)
 │   └── validation/validators.py     ✅
 ├── harness/                          ✅ TEST FRAMEWORK (replaces old debug_autotrader)
-│   ├── runner.py                    ✅ Main orchestrator (python -m harness.runner)
+│   ├── runner.py                    ✅ Main orchestrator (python -m trading_cotrader.harness.runner)
 │   ├── base.py                      ✅ Step base classes, rich output
 │   ├── run_containers.py            ✅ Container-based test variant
 │   └── steps/
@@ -393,7 +454,8 @@ trading_cotrader/
 │       ├── step10_ml_status.py      ✅ ML readiness check
 │       ├── step11_containers.py     ✅ Container integration
 │       ├── step12_trade_booking.py  ✅ Single WhatIf trade booking
-│       └── step13_strategy_templates.py ✅ All 12 strategy template bookings
+│       ├── step13_strategy_templates.py ✅ All 12 strategy template bookings
+│       └── step14_portfolio_performance.py ✅ Multi-tier portfolios + performance metrics
 ├── repositories/
 │   ├── base.py                      ✅
 │   ├── portfolio.py                 ✅
@@ -419,7 +481,9 @@ trading_cotrader/
 │   ├── data_service.py              ✅ General data service
 │   ├── snapshot_service.py          ✅ Portfolio snapshot service
 │   ├── option_grid_service.py       ✅ Option chain grid
-│   ├── trade_booking_service.py     ✅ End-to-end WhatIf booking (DXLink → DB → containers → ML)
+│   ├── trade_booking_service.py     ✅ End-to-end WhatIf booking (DXLink → DB → containers → ML) + portfolio routing
+│   ├── portfolio_manager.py         ✅ Multi-tier portfolio init from YAML, strategy routing, validation
+│   ├── performance_metrics_service.py ✅ Win rate, CAGR, Sharpe, drawdown, strategy breakdown, weekly P&L
 │   ├── risk_manager.py              ✅ Top-level risk orchestration
 │   ├── real_risk_check.py           ✅ Live risk validation
 │   ├── hedging/hedge_calculator.py  ✅ Hedge recommendations

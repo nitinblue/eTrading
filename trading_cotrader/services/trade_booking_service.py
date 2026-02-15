@@ -121,6 +121,7 @@ class TradeBookingService:
         notes: str = "",
         rationale: str = "",
         confidence: int = 5,
+        portfolio_name: Optional[str] = None,
     ) -> TradeBookingResult:
         """
         Book a WhatIf trade end-to-end.
@@ -132,11 +133,25 @@ class TradeBookingService:
             notes: Trade notes
             rationale: Why this trade (for AI learning)
             confidence: Confidence level 1-10
+            portfolio_name: Optional portfolio config name (e.g., "core_holdings").
+                           If provided, validates strategy is allowed and routes
+                           the trade to that portfolio.
 
         Returns:
             TradeBookingResult with full trade details
         """
         try:
+            # Step 0: Validate portfolio permissions if portfolio_name specified
+            if portfolio_name:
+                from trading_cotrader.services.portfolio_manager import PortfolioManager
+                with session_scope() as session:
+                    pm = PortfolioManager(session)
+                    check = pm.validate_trade_for_portfolio(portfolio_name, strategy_type)
+                    if not check['allowed']:
+                        return TradeBookingResult(
+                            success=False, error=check['reason']
+                        )
+
             # Step 1: Collect streamer symbols
             option_symbols = []
             equity_symbols = []
@@ -160,7 +175,7 @@ class TradeBookingService:
 
             # Step 4: Persist to DB
             event = self._create_event(trade, strategy_type, rationale, confidence)
-            self._persist_trade(trade, event)
+            self._persist_trade(trade, event, portfolio_name=portfolio_name)
 
             # Step 5: Update containers
             if self.container_manager:
@@ -464,27 +479,43 @@ class TradeBookingService:
             tags=['what_if', strategy_type],
         )
 
-    def _persist_trade(self, trade: dm.Trade, event: ev.TradeEvent) -> None:
+    def _persist_trade(
+        self,
+        trade: dm.Trade,
+        event: ev.TradeEvent,
+        portfolio_name: Optional[str] = None,
+    ) -> None:
         """Save trade and event to database."""
         with session_scope() as session:
             trade_repo = TradeRepository(session)
             event_repo = EventRepository(session)
-
-            # Get or create what-if portfolio
             portfolio_repo = PortfolioRepository(session)
-            whatif_portfolio = portfolio_repo.get_by_account(
-                broker='whatif', account_id='whatif'
-            )
-            if not whatif_portfolio:
-                whatif_portfolio = dm.Portfolio(
-                    name="What-If Portfolio",
-                    broker="whatif",
-                    account_id="whatif",
+
+            # Route to named portfolio if specified, otherwise default what-if
+            if portfolio_name:
+                target_portfolio = portfolio_repo.get_by_account(
+                    broker='cotrader', account_id=portfolio_name
                 )
-                whatif_portfolio = portfolio_repo.create_from_domain(whatif_portfolio)
+                if not target_portfolio:
+                    logger.warning(
+                        f"Portfolio '{portfolio_name}' not found, falling back to default what-if"
+                    )
+                    target_portfolio = None
+
+            if not portfolio_name or not target_portfolio:
+                target_portfolio = portfolio_repo.get_by_account(
+                    broker='whatif', account_id='whatif'
+                )
+                if not target_portfolio:
+                    target_portfolio = dm.Portfolio(
+                        name="What-If Portfolio",
+                        broker="whatif",
+                        account_id="whatif",
+                    )
+                    target_portfolio = portfolio_repo.create_from_domain(target_portfolio)
 
             # Save trade
-            created = trade_repo.create_from_domain(trade, whatif_portfolio.id)
+            created = trade_repo.create_from_domain(trade, target_portfolio.id)
             if not created:
                 raise RuntimeError(f"Failed to save trade {trade.id} to database")
             logger.info(f"Saved trade to DB: {trade.id}")
