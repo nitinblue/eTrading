@@ -22,10 +22,10 @@ def load_env_file():
     for path in possible_paths:
         if path.exists():
             load_dotenv(path)
-            print(f"✓ Loaded .env from: {path.absolute()}")
+            print(f"[OK] Loaded .env from: {path.absolute()}")
             return True
-    
-    print("⚠️  No .env file found, using environment variables")
+
+    print("[WARN] No .env file found, using environment variables")
     return False
 
 # Load .env before defining Settings

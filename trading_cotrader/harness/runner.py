@@ -11,10 +11,17 @@ Usage:
 """
 
 import sys
+import io
 import argparse
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
+
+# Force UTF-8 output on Windows (cp1252 cannot encode emoji/Unicode symbols)
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -36,6 +43,8 @@ from trading_cotrader.harness.steps.step07_risk_limits import RiskLimitsStep
 from trading_cotrader.harness.steps.step08_trades import TradeHistoryStep
 from trading_cotrader.harness.steps.step09_events import EventsStep
 from trading_cotrader.harness.steps.step10_ml_status import MLStatusStep
+from trading_cotrader.harness.steps.step12_trade_booking import TradeBookingStep
+from trading_cotrader.harness.steps.step13_strategy_templates import StrategyTemplateStep
 
 
 def run_harness(skip_sync: bool = False, use_mock: bool = False):
@@ -69,6 +78,8 @@ def run_harness(skip_sync: bool = False, use_mock: bool = False):
         TradeHistoryStep(context),
         #EventsStep(context),
         #MLStatusStep(context),
+        TradeBookingStep(context),
+        StrategyTemplateStep(context),
         ]
     
     # Run all steps

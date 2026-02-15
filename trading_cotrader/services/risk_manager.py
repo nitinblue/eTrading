@@ -411,22 +411,12 @@ class RiskManager:
         # (Would need calendar integration)
     
     def _is_defined_risk_trade(self, trade: dm.Trade) -> bool:
-        """Determine if trade has defined risk"""
+        """Determine if trade has defined risk (delegates to strategy templates)."""
         if not trade.strategy:
             return False
-        
-        # Defined risk strategies
-        defined_strategies = [
-            'vertical_spread',
-            'iron_condor',
-            'iron_butterfly',
-            'butterfly',
-            'condor',
-            'covered_call',
-            'protective_put'
-        ]
-        
-        return trade.strategy.strategy_type.value in defined_strategies
+
+        from trading_cotrader.core.models.strategy_templates import is_defined_risk
+        return is_defined_risk(trade.strategy.strategy_type)
     
     def get_limits_summary(self) -> Dict:
         """Get summary of all risk limits"""

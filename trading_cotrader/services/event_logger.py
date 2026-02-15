@@ -181,19 +181,9 @@ class EventLogger:
             )
     
     def _map_strategy_type(self, strategy: str) -> dm.StrategyType:
-        """Map strategy string to enum"""
-        strategy_map = {
-            'iron_condor': dm.StrategyType.IRON_CONDOR,
-            'vertical_spread': dm.StrategyType.VERTICAL_SPREAD,
-            'iron_butterfly': dm.StrategyType.IRON_BUTTERFLY,
-            'covered_call': dm.StrategyType.COVERED_CALL,
-            'protective_put': dm.StrategyType.PROTECTIVE_PUT,
-            'straddle': dm.StrategyType.STRADDLE,
-            'strangle': dm.StrategyType.STRANGLE,
-            'butterfly': dm.StrategyType.BUTTERFLY,
-            'condor': dm.StrategyType.CONDOR,
-        }
-        return strategy_map.get(strategy.lower(), dm.StrategyType.CUSTOM)
+        """Map strategy string to enum (delegates to strategy templates)."""
+        from trading_cotrader.core.models.strategy_templates import get_strategy_type_from_string
+        return get_strategy_type_from_string(strategy)
     
     def _map_outlook(self, outlook: str) -> events.MarketOutlook:
         """Map outlook string to enum"""

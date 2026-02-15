@@ -56,6 +56,7 @@ class TastytradeAdapter(BrokerAdapter):
 
         self.is_paper = is_paper
         self.session = None
+        self.data_session = None  # Always-live session for DXLink market data
         self.account = None
         self.accounts = {}
         self._account_number = account_number
@@ -95,7 +96,14 @@ class TastytradeAdapter(BrokerAdapter):
             self.client_secret = self._resolve_credential(mode_secret)
             self.refresh_token = self._resolve_credential(mode_token)
 
+            # Load data credentials for DXLink streaming (always live)
+            # Falls back to live credentials if 'data' section not present
+            data_section = creds["broker"].get('data') or creds["broker"]['live']
+            self.data_client_secret = self._resolve_credential(data_section['client_secret'])
+            self.data_refresh_token = self._resolve_credential(data_section['refresh_token'])
+
             logger.info(f"✓ Loaded credentials for {mode} mode (secret length: {len(self.client_secret)})")
+            logger.info(f"✓ Loaded data credentials for DXLink streaming")
 
         except Exception as e:
             logger.error(f"Failed to load credentials: {e}")
@@ -144,6 +152,20 @@ class TastytradeAdapter(BrokerAdapter):
                 self.account_id = self.account.account_number
                 logger.info(f"Using account: {self.account_id}")
 
+            # Create a separate live session for DXLink market data streaming
+            # Paper/cert environment does not stream prices or Greeks
+            if self.is_paper:
+                logger.info("Creating live data session for DXLink streaming (paper has no market data)")
+                self.data_session = Session(
+                    self.data_client_secret,
+                    self.data_refresh_token,
+                    is_test=False  # Always live for market data
+                )
+                logger.info("✓ Live data session created for streaming")
+            else:
+                # Live mode: same session works for both trading and streaming
+                self.data_session = self.session
+
             logger.info("✓ Authenticated successfully with Tastytrade")
             return True
 
@@ -188,7 +210,7 @@ class TastytradeAdapter(BrokerAdapter):
         timeout_seconds = 15  # Total timeout for all Greeks
 
         try:
-            async with DXLinkStreamer(self.session) as streamer:
+            async with DXLinkStreamer(self.data_session) as streamer:
                 # Subscribe to Greeks for all symbols
                 await streamer.subscribe(DXGreeks, streamer_symbols)
                 logger.info(f"Subscribed to Greeks for {len(streamer_symbols)} symbols")

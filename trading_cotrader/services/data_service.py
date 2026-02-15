@@ -659,7 +659,7 @@ class DataService:
         quotes = {}
 
         try:
-            async with DXLinkStreamer(self.broker.session) as streamer:
+            async with DXLinkStreamer(self.broker.data_session) as streamer:
                 await streamer.subscribe_quote(symbols)
 
                 # Wait for quotes
