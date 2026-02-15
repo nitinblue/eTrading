@@ -59,10 +59,12 @@ Status options: NOT STARTED → IN PROGRESS → USER CAN NOW DO THIS
   History of what you were focused on each day lives here permanently.
 -->
 
-### Feb 14, 2026
-Objective I am advancing today:
-Done looks like: User can _______________
-Not touching today:
+### Feb 15, 2026
+Objective:
+1. my 250K is in 2 accounts but here we will have, but we will have concept of dividing this into multiple portfolios with different timehorizon and risk profile. Please create portfolio for a. high risk (choose a better name, generally short term options) - allocate 10K (this will be real allocation), b. medium risk, allocate 20K medium term trades... c. Core holdings, wehre long term stocks but sometimes i wheel the stocks, or do covered calls... d. will be completely hypothetical model portfolio, where i will do trades that i know will win, will capture the comments, i will also do trades i know will lose, will capture comments, and this should serve as training data for AI/ML
+2. Develop Portfolio performance metrics , slice and dice by strategy type, by week, metrics to produce: equity curve, avg win, avg loss, win rate, expected value per trade, are we going to use the event log data to define the scope and values comes from sql lite table where we have snapshot ?? I am just wandering, see how do we define this.. lets stick with writting APIs and showing result in terminal, print using tabulate...You have already build what if trade, for 18 strategies, book bunch of what if trade and prepare a Model portfolio... 
+Done looks like: User can _______________ Strong feedback loop for AI/ML database to write models on how to keep optimizing daily profit based on the portfolio results...
+Not touching today: UI
 
 ---
 
@@ -73,17 +75,9 @@ Not touching today:
   Write this in claude.ai BEFORE opening Claude Code.
 -->
 
-FILE: trade booking service (create a new file)
-OBJECTIVE: Build a service to create a order object that can be send to tastytrade for booking. Focus here is not the final step to execute the order, rather define the full lifecycle of order which is using appropriate ORM (probably trade), create a what if trade, this will have a real streamer object for DXLink streaming data  follows a specific format required by DXfeed... 
-For stocks and ETFs, the streamer symbol is typically just the ticker symbol. 
-Example: AAPL, SPY 
-Equity Option Symbols
-These follow OCC convention but are formatted as strings for the streamer. 
-Format: Root Symbol + YYMMDD + Option Type (P/C) + Strike (8 digits with leading zeros)
-Example: AAPL 220617P00150000 (AAPL June 17, 2022 150 Put) 
-I do not want to put the onus on you to get the option chain from tasty trade which is very messy, you should expect this symbol from user.. Once you have it you have to go to tasty trade and get the price, greeks and other indicatives... Give a main function to test this thoroughly, may be somewhere in harness/steps .. Ensure to update the container with this what if trade, update the evnts table, and update the snapshot table, and update AI/ML tables.. This will be a solid end to end flow for what it.
-To get Greeks, you will use .. from tastytrade.streamer import DXLinkStreamer , from tastytrade.dxfeed import Greeks as DXGreeks.. 
-refer to trading_cotrader\adapters\tastytrade_adapter.py for handling of streamer symbol and fetching greeks
+FILE: 
+OBJECTIVE: 
+COMMAND TO RUN: 
 ---
 
 ## [CLAUDE OWNS] WHAT USER CAN DO TODAY

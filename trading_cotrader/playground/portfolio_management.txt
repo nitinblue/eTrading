@@ -1,0 +1,43 @@
+
+15th February 2026 - last class OptionsKit
+
+Topic: Portfolio Management
+
+Money management
+
+
+Risk management
+- Risk adjusted return
+
+Wealth growth
+
+
+Barbell strategy
+
+
+Capital allocation
+
+
+
+Position sizing
+
+strategy Selection
+- Buy leap only when there is a big correction in the market/stock
+- not all strategies are deployed all the time. 
+
+Long TErm (1 & 2 if low budget)
+- Shares
+- Leaps puts/Covered Calls
+- Collars
+
+Income Trades
+- Leaps Naked puts (with 4x buffer)
+- Leveraged ETF + Covered Calls ((this if low budget)) - when mkt down get in..
+- LEAPS + PMCC
+
+Active Trading (double calendar, calendar works in a bull market, iron man and iron Fly)
+- Calendar + Double Calendar
+- Iron man 0DTE
+- Iron Fly 0DTE
+- Call butterfly (small position)
+- QQQ strangle

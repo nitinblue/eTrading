@@ -578,8 +578,8 @@ def main():
         underlying="SPY",
         strategy_type="vertical_spread",
         legs=[
-            LegInput(streamer_symbol=".SPY260320P550", quantity=-1),
-            LegInput(streamer_symbol=".SPY260320P540", quantity=1),
+            LegInput(streamer_symbol=".SPY260320P682", quantity=-1),
+            LegInput(streamer_symbol=".SPY260320P677", quantity=1),
         ],
         notes="Test put credit spread via trade booking service",
         rationale="Testing end-to-end WhatIf booking flow",
