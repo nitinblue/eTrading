@@ -250,13 +250,13 @@ from sqlalchemy import Column, String
 from pydantic import Field
 
 # 3. Local
-from core.models.domain import Position, Trade
-from config.settings import get_settings
+from trading_cotrader.core.models.domain import Position, Trade
+from trading_cotrader.config.settings import get_settings
 ```
 
 ### DB session pattern (always this, never anything else)
 ```python
-from core.database.session import session_scope
+from trading_cotrader.core.database.session import session_scope
 
 with session_scope() as session:
     repo = SomeRepository(session)
