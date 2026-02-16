@@ -1,208 +1,165 @@
 """
 Step 10: AI/ML Status
-
-Wires existing ai_cotrader module:
-- ai_cotrader/data_pipeline.py → MLDataPipeline
-- ai_cotrader/feature_engineering → FeatureExtractor
-- ai_cotrader/learning/supervised.py → PatternRecognizer
-- ai_cotrader/learning/reinforcement.py → TradingAdvisor
+======================
 
 Shows:
-- ML data readiness (how many samples)
-- Feature extraction status
-- Model training status
-- Recommendations (if models trained)
+- ML data readiness (event counts, snapshot counts)
+- Trade table stats (total trades, by type, by status)
+- Top 5 recent trades
+- Feature extraction readiness
 """
 
-import logging
-from typing import Dict, Any, Optional
-from decimal import Decimal
 from trading_cotrader.harness.base import (
-    TestStep, StepResult, rich_table, format_currency, format_percent
+    TestStep, StepResult, rich_table, format_currency
 )
-logger = logging.getLogger(__name__)
 
 
 class MLStatusStep(TestStep):
-    """
-    Harness step for AI/ML status and recommendations.
-    
-    Usage:
-        python -m harness.runner
-        # Step 10 will display ML status
-    """
+    """Harness step for AI/ML status and data readiness."""
+
     name = "Step 10: AI/ML Status"
-    description = "Harness calls AI/ML module"
-    order = 10
-    
-    def __init__(self):
-        self.pipeline = None
-        self.advisor = None
-    
-    def run(self, context: Dict[str, Any]) -> bool:
-        """
-        Run ML status step.
-        
-        Args:
-            context: Dict containing:
-                - 'session': SQLAlchemy session
-                - 'portfolio': dm.Portfolio
-                - 'positions': List[dm.Position]
-        """
-        print(f"\n{'='*60}")
-        print(f"STEP {self.order}: {self.name}")
-        print('='*60)
-        
-        session = context.get('session')
-        portfolio = context.get('portfolio')
-        positions = context.get('positions', [])
-        
-        if not session:
-            print("  ⚠️  No session available")
-            return True
-        
-        # 1. Check ML data pipeline status
-        print("\n1. ML Data Pipeline Status:")
-        self._check_data_pipeline(session)
-        
-        # 2. Check feature extraction
-        print("\n2. Feature Extraction:")
-        self._check_feature_extraction(positions, portfolio)
-        
-        # 3. Check model status
-        print("\n3. Model Status:")
-        self._check_models()
-        
-        # 4. Show recommendation (if available)
-        print("\n4. AI Recommendation:")
-        self._get_recommendation(positions, portfolio)
-        
-        print(f"\n✓ {self.name} complete")
-        return True
-    
-    def _check_data_pipeline(self, session):
-        """Check ML data pipeline status"""
-        try:
-            from ai_cotrader.data_pipeline import MLDataPipeline
-            
-            self.pipeline = MLDataPipeline(session)
-            status = self.pipeline.get_ml_status()
-            
-            print(f"    Snapshots: {status.get('snapshots', 0)}")
-            print(f"    Total events: {status.get('total_events', 0)}")
-            print(f"    Events with outcomes: {status.get('events_with_outcomes', 0)}")
-            print(f"    Ready for supervised: {'✓' if status.get('ready_for_supervised') else '✗'} (need 100+)")
-            print(f"    Ready for RL: {'✓' if status.get('ready_for_rl') else '✗'} (need 500+)")
-            print(f"    → {status.get('recommendation', 'Keep trading!')}")
-            
-        except ImportError as e:
-            print(f"    ⚠️  Could not import MLDataPipeline: {e}")
-        except Exception as e:
-            print(f"    ⚠️  Pipeline error: {e}")
-    
-    def _check_feature_extraction(self, positions, portfolio):
-        """Test feature extraction on current state"""
-        try:
-            from ai_cotrader import FeatureExtractor, RLState
-            
-            extractor = FeatureExtractor()
-            
-            # Extract portfolio features
-            if portfolio:
-                portfolio_features = extractor._extract_portfolio_features(portfolio)
-                print(f"    Portfolio delta: {portfolio_features.portfolio_delta:.2f}")
-                print(f"    Portfolio theta: {portfolio_features.portfolio_theta:.2f}")
-                print(f"    Buying power used: {portfolio_features.buying_power_used:.1%}")
-            
-            # Extract position features for first position
-            if positions:
-                pos = positions[0]
-                pos_features = extractor._extract_position_features(pos)
-                print(f"    Sample position ({pos.symbol.ticker}):")
-                print(f"      Delta: {pos_features.position_delta:.2f}")
-                print(f"      DTE: {pos_features.days_to_expiry}")
-            
-            # Build full RL state
-            state = extractor.extract_from_event(None, positions[0] if positions else None, portfolio)
-            print(f"    Feature vector size: {len(state.to_vector())}")
-            
-        except ImportError as e:
-            print(f"    ⚠️  Could not import FeatureExtractor: {e}")
-        except Exception as e:
-            print(f"    ⚠️  Feature extraction error: {e}")
-    
-    def _check_models(self):
-        """Check if models are trained and loaded"""
-        try:
-            from ai_cotrader import PatternRecognizer, TradingAdvisor
-            from pathlib import Path
-            
-            # Check for saved models
-            model_path = Path('models')
-            
-            # Pattern recognizer
-            recognizer = PatternRecognizer()
-            if recognizer.is_fitted:
-                print("    ✓ Pattern recognizer: TRAINED")
-            else:
-                print("    ✗ Pattern recognizer: NOT TRAINED")
-            
-            # Trading advisor
-            self.advisor = TradingAdvisor(supervised_model=recognizer)
-            print("    ✓ Trading advisor: INITIALIZED")
-            
-            # Check for model files
-            if model_path.exists():
-                model_files = list(model_path.glob('*.pkl'))
-                if model_files:
-                    print(f"    Model files found: {[f.name for f in model_files]}")
-                else:
-                    print("    No saved model files yet")
-            else:
-                print("    Models directory not created yet")
-                
-        except ImportError as e:
-            print(f"    ⚠️  Could not import models: {e}")
-        except Exception as e:
-            print(f"    ⚠️  Model check error: {e}")
-    
-    def _get_recommendation(self, positions, portfolio):
-        """Get AI recommendation for current state"""
-        try:
-            if not self.advisor:
-                print("    Advisor not available")
-                return
-            
-            from ai_cotrader import FeatureExtractor
-            
-            # Build state
-            extractor = FeatureExtractor()
-            state = extractor.extract_from_event(
-                None, 
-                positions[0] if positions else None, 
-                portfolio
-            )
-            state_vector = state.to_vector()
-            
-            # Get recommendation
-            rec = self.advisor.recommend(
-                state_vector,
-                positions[0] if positions else None,
-                portfolio
-            )
-            
-            print(f"    Action: {rec.get('action', 'HOLD')}")
-            print(f"    Confidence: {rec.get('confidence', 0):.2f}")
-            print(f"    Source: {rec.get('source', 'rules')}")
-            
-            if 'reasoning' in rec:
-                print(f"    Reasoning: {rec['reasoning']}")
-            
-        except Exception as e:
-            print(f"    ⚠️  Could not get recommendation: {e}")
-            print("    (This is expected until models are trained)")
+    description = "Show ML data readiness, trade stats, and feature extraction status"
 
+    def execute(self) -> StepResult:
+        from trading_cotrader.core.database.session import session_scope
+        from trading_cotrader.core.database.schema import (
+            TradeORM, TradeEventORM
+        )
+        from sqlalchemy import func
 
-# For use in harness runner
-def create_step():
-    return MLStatusStep()
+        tables = []
+        messages = []
+
+        with session_scope() as session:
+            # 1. ML Data Pipeline stats
+            total_events = session.query(func.count(TradeEventORM.event_id)).scalar() or 0
+            events_with_outcomes = (
+                session.query(func.count(TradeEventORM.event_id))
+                .filter(TradeEventORM.outcome.isnot(None))
+                .scalar()
+            ) or 0
+
+            # Snapshot count (from MarketDataSnapshotORM if available)
+            total_snapshots = 0
+            try:
+                from trading_cotrader.core.database.schema import MarketDataSnapshotORM
+                total_snapshots = session.query(func.count(MarketDataSnapshotORM.id)).scalar() or 0
+            except Exception:
+                pass
+
+            # Trade counts
+            total_trades = session.query(func.count(TradeORM.id)).scalar() or 0
+
+            # By type
+            type_counts = (
+                session.query(TradeORM.trade_type, func.count(TradeORM.id))
+                .group_by(TradeORM.trade_type)
+                .all()
+            )
+
+            # By status
+            status_counts = (
+                session.query(TradeORM.trade_status, func.count(TradeORM.id))
+                .group_by(TradeORM.trade_status)
+                .all()
+            )
+
+            # ML readiness table
+            ready_supervised = events_with_outcomes >= 100
+            ready_rl = events_with_outcomes >= 500
+
+            ml_data = [
+                ["Total Events", total_events, ""],
+                ["Events with Outcomes", events_with_outcomes,
+                 "OK" if events_with_outcomes > 0 else "None yet"],
+                ["Portfolio Snapshots", total_snapshots, ""],
+                ["Total Trades", total_trades, ""],
+                ["", "", ""],
+                ["Supervised Learning", "READY" if ready_supervised else "NOT READY",
+                 f"Need {max(0, 100 - events_with_outcomes)} more outcomes"],
+                ["Reinforcement Learning", "READY" if ready_rl else "NOT READY",
+                 f"Need {max(0, 500 - events_with_outcomes)} more outcomes"],
+            ]
+
+            tables.append(rich_table(
+                ml_data,
+                headers=["Metric", "Value", "Note"],
+                title="ML Data Readiness"
+            ))
+
+            # Trade stats table
+            if total_trades > 0:
+                trade_stats = []
+                trade_stats.append(["Total Trades", total_trades, ""])
+                for trade_type, count in sorted(type_counts, key=lambda x: -x[1]):
+                    trade_stats.append([f"  type={trade_type}", count, ""])
+                trade_stats.append(["", "", ""])
+                for status, count in sorted(status_counts, key=lambda x: -x[1]):
+                    trade_stats.append([f"  status={status}", count, ""])
+
+                tables.append(rich_table(
+                    trade_stats,
+                    headers=["Category", "Count", "Note"],
+                    title="Trade Table Stats"
+                ))
+
+                # Top 5 recent trades
+                recent_trades = (
+                    session.query(TradeORM)
+                    .order_by(TradeORM.created_at.desc())
+                    .limit(5)
+                    .all()
+                )
+
+                if recent_trades:
+                    recent_data = []
+                    for t in recent_trades:
+                        created = t.created_at.strftime('%m/%d %H:%M') if t.created_at else '-'
+                        delta = f"{float(t.entry_delta):.2f}" if t.entry_delta else '-'
+                        theta = f"{float(t.entry_theta):.2f}" if t.entry_theta else '-'
+                        entry = format_currency(t.entry_price) if t.entry_price else '-'
+
+                        recent_data.append([
+                            t.underlying_symbol or '-',
+                            (t.trade_type or '-')[:8],
+                            (t.trade_status or '-')[:8],
+                            entry,
+                            delta,
+                            theta,
+                            created,
+                        ])
+
+                    tables.append(rich_table(
+                        recent_data,
+                        headers=["Underlying", "Type", "Status", "Entry",
+                                 "Delta", "Theta", "Created"],
+                        title="5 Most Recent Trades"
+                    ))
+
+            # 2. Feature extraction check
+            try:
+                from trading_cotrader.ai_cotrader.feature_engineering.feature_extractor import FeatureExtractor
+                extractor = FeatureExtractor()
+                messages.append("FeatureExtractor: importable, 55-dim state vectors")
+            except ImportError:
+                messages.append("FeatureExtractor: import failed")
+
+            # 3. Model check
+            try:
+                from trading_cotrader.ai_cotrader.learning.supervised import PatternRecognizer
+                recognizer = PatternRecognizer()
+                fitted = "TRAINED" if recognizer.is_fitted else "NOT TRAINED"
+                messages.append(f"PatternRecognizer: {fitted}")
+            except ImportError:
+                messages.append("PatternRecognizer: import failed")
+
+            try:
+                from trading_cotrader.ai_cotrader.learning.reinforcement import TradingAdvisor
+                messages.append("TradingAdvisor: importable")
+            except ImportError:
+                messages.append("TradingAdvisor: import failed")
+
+            messages.append(f"Summary: {total_trades} trades, {total_events} events, "
+                          f"{events_with_outcomes} with outcomes, {total_snapshots} snapshots")
+
+        return self._success_result(tables=tables, messages=messages)

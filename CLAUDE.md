@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 15, 2026 (session 5)
+# Last Updated: February 15, 2026 (session 6)
 
 ---
 
@@ -35,6 +35,15 @@ Never: "I have an iron condor." Always: "I have -150 SPY delta, +$450 theta/day.
   RULE: Add new entries at TOP with date. Never delete or overwrite prior entries.
   Change a status by adding a new dated row at top, not by editing old rows.
 -->
+
+### Feb 15, 2026 (Session 2)
+
+| # | Objective | Signal (observable behavior) | Status |
+|---|-----------|-------------------------------|--------|
+| 1 | Now that we have what if trade booking featrue, lets plug in screeners, based on which at the start of session or on demand, trade recommendation can be made (as a first class trade object), this is not based on portfolio or performance or risk. this is purely based on market regime, volatility, market conditions etc. Selection of Index, ETF and Stocks can be based on technicals, VIX, IV. I understand i need to define the universe of stocks. Thats the 2nd objective below | Not Started |
+| 2 | Create the universe of Stock on which screners can be run. Lets try fetching watchlist from TastyTrade.. /public-watchlists/{watchlist_name} Returns a requested tastyworks watchlist (start with Tom's Watchlis) if required i will create my watchlist| Not Started |
+| 3 | recommendation of watchlist should not be added to whatif portfolio, because i want to make a concious decision and add rational before accepting the recommendation at which point trade should be booked in what if portfolio, there is a likelihood i will send a real order for that.| Not Started |
+| 4 | To track performance every trade should be associated with where it originated from. I am also working on recommendation coming from astrology . So i may want to check performance of trades based on their sources.. please integrate a robust logic for this.| Not Started |
 
 ### Feb 15, 2026
 
@@ -97,9 +106,15 @@ COMMAND TO RUN:
 - User can sync portfolio and pull live positions with current market prices and Greeks
 - User can create a WhatIf trade (identical object to a real trade, just flagged as WHAT_IF)
 - User can book a WhatIf trade end-to-end via `TradeBookingService` with live DXLink Greeks/quotes → DB → containers → snapshot → ML
+- User can book a WhatIf trade from YAML via CLI: `python -m trading_cotrader.cli.book_trade --file trade.yaml [--no-broker] [--dry-run]`
+- User can book past-dated WhatIf trades (via `trade_date` field in YAML or `trade_date` param in `TradeBookingService`)
+- User can book trades with manual Greeks (no broker needed) — useful for historical/backtesting data
 - User can book any of 12 strategy types as WhatIf trades (single, vertical, iron condor, iron butterfly, straddle, strangle, butterfly, condor, jade lizard, big lizard, ratio spread, calendar spread)
 - User can look up strategy templates (risk category, bias, theta/vega profile, exit rules) via `strategy_templates.py`
-- User can run the test harness (`python -m harness.runner`) — steps 1-14 defined (12 books a single trade, 13 books all 12 testable strategies, 14 initializes multi-tier portfolios + performance metrics)
+- User can run the test harness (`python -m trading_cotrader.harness.runner`) — 13 steps in skip-sync mode (steps 9+10 now enabled with event/ML stats)
+- User can see all portfolios side by side in step 3 (virtual portfolios + broker + whatif, with trade counts, capital, P&L)
+- User can see event table stats (by type, by underlying, ML readiness) and top 5 recent events in step 9
+- User can see ML data readiness (trade stats, supervised/RL thresholds, model import status) in step 10
 - User can initialize 4 risk-tiered portfolios from YAML config (Core Holdings $200K, Medium Risk $20K, High Risk $10K, Model Portfolio $25K) via `PortfolioManager`
 - User can view performance metrics per portfolio (win rate, P&L, profit factor, expectancy, max drawdown, Sharpe, CAGR) via `PerformanceMetricsService`
 - User can see strategy permissions matrix — which strategies are allowed in which portfolio tier
@@ -112,6 +127,7 @@ COMMAND TO RUN:
 - WhatIf end-to-end lifecycle (intent → evaluate → execute → close) not yet validated
 - 6 strategies not yet testable via harness: covered call, protective put, collar (need equity legs), diagonal, calendar double (need two expirations), custom (no fixed structure)
 - UI exists as HTML/JSX prototypes (`ui/`) but is not a production React app yet
+- `base.py:create()` rollback on SymbolORM IntegrityError cascades and breaks event FK in same session — pre-existing repo pattern issue
 
 ---
 

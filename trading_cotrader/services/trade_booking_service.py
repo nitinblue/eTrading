@@ -122,6 +122,7 @@ class TradeBookingService:
         rationale: str = "",
         confidence: int = 5,
         portfolio_name: Optional[str] = None,
+        trade_date: Optional[date] = None,
     ) -> TradeBookingResult:
         """
         Book a WhatIf trade end-to-end.
@@ -136,6 +137,7 @@ class TradeBookingService:
             portfolio_name: Optional portfolio config name (e.g., "core_holdings").
                            If provided, validates strategy is allowed and routes
                            the trade to that portfolio.
+            trade_date: Optional date for past-dated trades (uses current time if None).
 
         Returns:
             TradeBookingResult with full trade details
@@ -170,11 +172,13 @@ class TradeBookingService:
 
             # Step 3: Build Trade domain object
             trade, leg_results = self._build_trade(
-                underlying, strategy_type, legs, greeks_map, quotes_map, notes
+                underlying, strategy_type, legs, greeks_map, quotes_map, notes,
+                trade_date=trade_date,
             )
 
             # Step 4: Persist to DB
-            event = self._create_event(trade, strategy_type, rationale, confidence)
+            event = self._create_event(trade, strategy_type, rationale, confidence,
+                                       trade_date=trade_date)
             self._persist_trade(trade, event, portfolio_name=portfolio_name)
 
             # Step 5: Update containers
@@ -331,6 +335,7 @@ class TradeBookingService:
         greeks_map: Dict[str, dm.Greeks],
         quotes_map: Dict[str, Dict],
         notes: str,
+        trade_date: Optional[date] = None,
     ) -> Tuple[dm.Trade, List[LegResult]]:
         """Build Trade domain object from inputs + market data."""
         trade_id = str(uuid.uuid4())
@@ -438,6 +443,11 @@ class TradeBookingService:
         # Resolve strategy type
         st = get_strategy_type_from_string(strategy_type)
 
+        extra_kwargs = {}
+        if trade_date:
+            created_at = datetime.combine(trade_date, datetime.min.time().replace(hour=12))
+            extra_kwargs['created_at'] = created_at
+
         trade = dm.Trade.create_what_if(
             underlying=underlying,
             strategy_type=st,
@@ -447,10 +457,13 @@ class TradeBookingService:
             entry_greeks=trade_greeks,
             current_greeks=trade_greeks,
             notes=notes,
+            **extra_kwargs,
         )
         # Override the auto-generated ID so we can track it
         object.__setattr__(trade, 'id', trade_id) if hasattr(trade, '__dataclass_fields__') else None
         trade.id = trade_id
+        if trade_date:
+            trade.intent_at = extra_kwargs['created_at']
 
         return trade, leg_results
 
@@ -460,11 +473,17 @@ class TradeBookingService:
         strategy_type: str,
         rationale: str,
         confidence: int,
+        trade_date: Optional[date] = None,
     ) -> ev.TradeEvent:
         """Create a TradeEvent for AI learning."""
+        timestamp = datetime.utcnow()
+        if trade_date:
+            timestamp = datetime.combine(trade_date, datetime.min.time().replace(hour=12))
+
         return ev.TradeEvent(
             event_type=ev.EventType.TRADE_OPENED,
             trade_id=trade.id,
+            timestamp=timestamp,
             strategy_type=strategy_type,
             underlying_symbol=trade.underlying_symbol,
             entry_delta=trade.entry_greeks.delta,

@@ -14,7 +14,8 @@
       "Bash(PYTHONIOENCODING=utf-8 python:*)",
       "Bash(wc:*)",
       "Bash(python -m harness.runner:*)",
-      "Bash(python -m trading_cotrader.harness.runner:*)"
+      "Bash(python -m trading_cotrader.harness.runner:*)",
+      "Bash(python -m trading_cotrader.cli.book_trade:*)"
     ]
   }
 }

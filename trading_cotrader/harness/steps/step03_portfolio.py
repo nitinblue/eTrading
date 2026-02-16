@@ -3,70 +3,78 @@ Step 3: Portfolio Sync
 ======================
 
 Sync portfolio from broker and display positions.
+In mock/skip-sync modes, loads whatif trades from DB.
+Always shows all virtual portfolios (cotrader-managed + whatif) side by side.
 """
 
 from datetime import date
 from decimal import Decimal
 from trading_cotrader.harness.base import (
-    TestStep, StepResult, rich_table, format_currency, format_greek, 
+    TestStep, StepResult, rich_table, format_currency, format_greek,
     format_quantity, format_percent, warning
 )
 
 
 class PortfolioSyncStep(TestStep):
     """Sync portfolio from broker and display positions."""
-    
+
     name = "Step 3: Portfolio Sync"
     description = "Sync positions from broker and display portfolio overview"
-    
+
     def execute(self) -> StepResult:
         tables = []
         messages = []
-        
-        # Mock mode
-        if self.context.get('use_mock'):
-            positions = self._get_mock_positions()
-            self.context['broker_positions'] = positions
-            messages.append(f"Using {len(positions)} mock positions")
-            
-            tables.append(self._positions_table(positions))
-            return self._success_result(tables=tables, messages=messages)
-        
-        # Skip sync mode - load from DB
-        if self.context.get('skip_sync'):
-            from repositories.portfolio import PortfolioRepository
-            from repositories.position import PositionRepository
-            from core.database.session import session_scope
-            
+
+        from trading_cotrader.repositories.portfolio import PortfolioRepository
+        from trading_cotrader.repositories.position import PositionRepository
+        from trading_cotrader.repositories.trade import TradeRepository
+        from trading_cotrader.core.database.session import session_scope
+
+        # Mock or skip-sync mode — load from DB (no broker needed)
+        if self.context.get('use_mock') or self.context.get('skip_sync'):
             with session_scope() as session:
                 portfolio_repo = PortfolioRepository(session)
-                portfolios = portfolio_repo.get_all_portfolios()
-                
-                if not portfolios:
-                    return self._fail_result("No portfolio found - run without --skip-sync first")
-                
-                portfolio = portfolios[0]
-                self.context['portfolio'] = portfolio
-                
+                trade_repo = TradeRepository(session)
                 position_repo = PositionRepository(session)
-                db_positions = position_repo.get_by_portfolio(portfolio.id)
-                
-                messages.append(f"Loaded {len(db_positions)} positions from DB")
-                tables.append(self._db_positions_table(db_positions))
-                tables.append(self._portfolio_summary_table(portfolio))
-                
+
+                all_portfolios = portfolio_repo.get_all_portfolios()
+
+                if not all_portfolios:
+                    return self._fail_result("No portfolios found in DB — run step 14 or book trades first")
+
+                # Set first portfolio in context for downstream steps
+                self.context['portfolio'] = all_portfolios[0]
+
+                # Show all virtual portfolios side by side
+                tables.append(self._all_portfolios_table(all_portfolios, trade_repo))
+
+                # Show whatif trades if any exist
+                whatif_trades = trade_repo.get_by_type('what_if')
+                if whatif_trades:
+                    tables.append(self._whatif_trades_table(whatif_trades))
+                    messages.append(f"Found {len(whatif_trades)} WhatIf trades in DB")
+                else:
+                    messages.append("No WhatIf trades found — book some via step 12/13")
+
+                # Show DB positions if any
+                for portfolio in all_portfolios:
+                    db_positions = position_repo.get_by_portfolio(portfolio.id)
+                    if db_positions:
+                        tables.append(self._db_positions_table(db_positions, portfolio.name))
+                        self.context['db_positions'] = db_positions
+                        break  # Show first portfolio with positions
+
+                messages.append(f"Loaded {len(all_portfolios)} portfolios from DB")
+
             return self._success_result(tables=tables, messages=messages)
-        
+
         # Full sync from broker
         broker = self.context.get('broker')
         if not broker:
             return self._fail_result("No broker connection")
-        
-        from services.portfolio_sync import PortfolioSyncService
-        from repositories.portfolio import PortfolioRepository
-        from repositories.position import PositionRepository
-        from core.database.session import session_scope
-        
+
+        from trading_cotrader.services.portfolio_sync import PortfolioSyncService
+
         # Get raw positions for market data container FIRST (before sync might fail)
         try:
             broker_positions = broker.get_positions()
@@ -75,15 +83,15 @@ class PortfolioSyncStep(TestStep):
         except Exception as e:
             messages.append(f"Warning: Could not fetch raw positions: {e}")
             broker_positions = []
-        
+
         # Show raw positions table regardless of sync outcome
         if broker_positions:
             tables.append(self._positions_table(broker_positions))
-        
+
         with session_scope() as session:
             sync_service = PortfolioSyncService(session, broker)
             result = sync_service.sync_portfolio()
-            
+
             if not result.success:
                 messages.append(f"Sync had errors: {result.error}")
                 # Don't fail completely - we still have raw positions for market data
@@ -91,27 +99,96 @@ class PortfolioSyncStep(TestStep):
                     messages.append("Continuing with raw broker positions for market data")
                     return self._success_result(tables=tables, messages=messages)
                 return self._fail_result(f"Sync failed: {result.error}")
-            
+
             portfolio_repo = PortfolioRepository(session)
+            trade_repo = TradeRepository(session)
+            position_repo = PositionRepository(session)
+
             portfolio = portfolio_repo.get_by_id(result.portfolio_id)
             self.context['portfolio'] = portfolio
-            
-            position_repo = PositionRepository(session)
+
             db_positions = position_repo.get_by_portfolio(portfolio.id)
-            
-            # Store DB positions as well (for steps that need domain objects)
             self.context['db_positions'] = db_positions
-            
+
             # Create tables
             tables.append(self._sync_summary_table(result))
             if db_positions:
-                tables.append(self._db_positions_table(db_positions))
-            tables.append(self._portfolio_summary_table(portfolio))
-            
+                tables.append(self._db_positions_table(db_positions, portfolio.name))
+
+            # Show all virtual portfolios side by side
+            all_portfolios = portfolio_repo.get_all_portfolios()
+            tables.append(self._all_portfolios_table(all_portfolios, trade_repo))
+
             messages.append(f"Synced {result.positions_synced} positions")
-        
+
         return self._success_result(tables=tables, messages=messages)
-    
+
+    def _all_portfolios_table(self, portfolios: list, trade_repo) -> str:
+        """Show all portfolios side by side with trade counts."""
+        data = []
+        for p in sorted(portfolios, key=lambda x: x.name):
+            # Count trades for this portfolio
+            trades = trade_repo.get_by_portfolio(p.id)
+            open_trades = [t for t in trades if getattr(t, 'trade_status', None)
+                          and t.trade_status.value != 'closed']
+
+            portfolio_type = p.portfolio_type.value if hasattr(p.portfolio_type, 'value') else str(p.portfolio_type)
+            broker_label = p.broker or '-'
+
+            data.append([
+                p.name[:25],
+                portfolio_type[:10],
+                broker_label,
+                p.account_id or '-',
+                format_currency(p.initial_capital),
+                format_currency(p.total_equity),
+                len(trades),
+                len(open_trades),
+                format_currency(p.total_pnl),
+            ])
+
+        return rich_table(
+            data,
+            headers=["Portfolio", "Type", "Broker", "Account", "Capital",
+                      "Equity", "Trades", "Open", "P&L"],
+            title="All Portfolios"
+        )
+
+    def _whatif_trades_table(self, trades: list) -> str:
+        """Show whatif trades summary."""
+        data = []
+        for t in sorted(trades, key=lambda x: x.created_at or x.opened_at or '', reverse=True)[:15]:
+            strategy = t.strategy.strategy_type.value if t.strategy else '-'
+            status = t.trade_status.value if hasattr(t.trade_status, 'value') else str(t.trade_status)
+
+            # Entry Greeks
+            delta = format_greek(t.entry_greeks.delta) if t.entry_greeks else '-'
+            theta = format_greek(t.entry_greeks.theta) if t.entry_greeks else '-'
+
+            created = ''
+            if t.created_at:
+                created = t.created_at.strftime('%m/%d %H:%M')
+            elif t.opened_at:
+                created = t.opened_at.strftime('%m/%d %H:%M')
+
+            data.append([
+                t.underlying_symbol or '-',
+                strategy[:18],
+                status[:8],
+                format_currency(t.entry_price),
+                delta,
+                theta,
+                len(t.legs),
+                created,
+            ])
+
+        return rich_table(
+            data,
+            headers=["Underlying", "Strategy", "Status", "Entry$",
+                      "Delta", "Theta", "Legs", "Created"],
+            title=f"WhatIf Trades ({len(trades)} total, showing latest 15)"
+        )
+
     def _positions_table(self, positions: list) -> str:
         """Create table from broker positions (handles both dicts and Position objects)."""
         data = []
@@ -133,7 +210,7 @@ class PortfolioSyncStep(TestStep):
                 underlying = p.get('underlying_symbol', '-')
                 strike = p.get('strike_price', '-')
                 expiry = str(p.get('expiration_date', '-'))[:10] if p.get('expiration_date') else '-'
-            
+
             data.append([
                 str(symbol)[:30],
                 inst_type,
@@ -142,29 +219,29 @@ class PortfolioSyncStep(TestStep):
                 strike,
                 expiry,
             ])
-        
+
         return rich_table(
             data,
             headers=["Symbol", "Type", "Qty", "Underlying", "Strike", "Expiry"],
-            title=f"📋 Broker Positions ({len(positions)} total)"
+            title=f"Broker Positions ({len(positions)} total)"
         )
-    
-    def _db_positions_table(self, positions: list) -> str:
+
+    def _db_positions_table(self, positions: list, portfolio_name: str = "Portfolio") -> str:
         """Create table from DB positions with Greeks."""
         data = []
-        
+
         for p in sorted(positions, key=lambda x: (x.symbol.ticker, str(x.symbol.expiration or ''))):
             symbol = p.symbol
             greeks = p.greeks
-            
+
             # Calculate DTE
             dte = "-"
             if symbol.expiration:
                 dte = (symbol.expiration - date.today()).days
-            
+
             # P&L
             pnl = p.unrealized_pnl() if hasattr(p, 'unrealized_pnl') else Decimal(0)
-            
+
             data.append([
                 symbol.ticker,
                 symbol.asset_type.value[:6],
@@ -179,76 +256,53 @@ class PortfolioSyncStep(TestStep):
                 format_greek(greeks.vega) if greeks else "-",
                 format_currency(pnl),
             ])
-        
+
         return rich_table(
             data,
-            headers=["Ticker", "Type", "P/C", "Strike", "DTE", "Qty", 
-                    "Value", "Δ", "Γ", "Θ", "V", "P&L"],
-            title=f"📊 Portfolio Positions ({len(positions)} positions)"
+            headers=["Ticker", "Type", "P/C", "Strike", "DTE", "Qty",
+                    "Value", "Delta", "Gamma", "Theta", "Vega", "P&L"],
+            title=f"{portfolio_name} Positions ({len(positions)} positions)"
         )
-    
+
     def _portfolio_summary_table(self, portfolio) -> str:
         """Portfolio summary with aggregated Greeks."""
         greeks = portfolio.portfolio_greeks
-        
+
         data = [
             ["Total Equity", format_currency(portfolio.total_equity), ""],
-            ["Total P&L", format_currency(portfolio.total_pnl), 
-             "🟢" if portfolio.total_pnl > 0 else "🔴" if portfolio.total_pnl < 0 else ""],
+            ["Total P&L", format_currency(portfolio.total_pnl),
+             "+" if portfolio.total_pnl > 0 else "-" if portfolio.total_pnl < 0 else ""],
         ]
-        
+
         if greeks:
             data.extend([
-                ["Portfolio Delta", format_greek(greeks.delta), 
+                ["Portfolio Delta", format_greek(greeks.delta),
                  "Long" if greeks.delta > 0 else "Short" if greeks.delta < 0 else "Neutral"],
                 ["Portfolio Gamma", format_greek(greeks.gamma, 4), ""],
-                ["Portfolio Theta", format_greek(greeks.theta), 
+                ["Portfolio Theta", format_greek(greeks.theta),
                  f"${float(greeks.theta):,.0f}/day"],
                 ["Portfolio Vega", format_greek(greeks.vega), ""],
             ])
-        
+
         return rich_table(
             data,
             headers=["Metric", "Value", "Note"],
-            title="💼 Portfolio Summary"
+            title="Portfolio Summary"
         )
-    
+
     def _sync_summary_table(self, result) -> str:
         """Sync operation summary."""
         data = [
-            ["Positions Synced", result.positions_synced, "✓"],
-            ["Positions Failed", result.positions_failed, 
-             "✓" if result.positions_failed == 0 else "⚠"],
+            ["Positions Synced", result.positions_synced, "OK"],
+            ["Positions Failed", result.positions_failed,
+             "OK" if result.positions_failed == 0 else "WARN"],
             ["New Positions", getattr(result, 'new_positions', '-'), ""],
             ["Updated Positions", getattr(result, 'updated_positions', '-'), ""],
             ["Closed Positions", getattr(result, 'closed_positions', '-'), ""],
         ]
-        
+
         return rich_table(
             data,
             headers=["Metric", "Count", "Status"],
-            title="🔄 Sync Summary"
+            title="Sync Summary"
         )
-    
-    def _get_mock_positions(self) -> list:
-        """Generate mock positions for testing."""
-        return [
-            {"symbol": "MSFT", "instrument_type": "EQUITY", "quantity": 100,
-             "underlying_symbol": "MSFT"},
-            {"symbol": "MSFT  260331P00400000", "instrument_type": "EQUITY_OPTION",
-             "underlying_symbol": "MSFT", "strike_price": "400.00",
-             "expiration_date": "2026-03-31", "option_type": "PUT", 
-             "multiplier": 100, "quantity": -2},
-            {"symbol": "SPY   260331C00600000", "instrument_type": "EQUITY_OPTION",
-             "underlying_symbol": "SPY", "strike_price": "600.00",
-             "expiration_date": "2026-03-31", "option_type": "CALL",
-             "multiplier": 100, "quantity": 5},
-            {"symbol": "AAPL  260331P00180000", "instrument_type": "EQUITY_OPTION",
-             "underlying_symbol": "AAPL", "strike_price": "180.00",
-             "expiration_date": "2026-03-31", "option_type": "PUT",
-             "multiplier": 100, "quantity": -3},
-            {"symbol": "QQQ   260228P00480000", "instrument_type": "EQUITY_OPTION",
-             "underlying_symbol": "QQQ", "strike_price": "480.00",
-             "expiration_date": "2026-02-28", "option_type": "PUT",
-             "multiplier": 100, "quantity": -4},
-        ]
