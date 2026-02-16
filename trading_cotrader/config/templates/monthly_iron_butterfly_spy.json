@@ -1,0 +1,97 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_iron_butterfly_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "iron_butterfly",
+  "portfolio_name": "high_risk",
+  "notes": "SPY iron butterfly 590/600/600/610, Apr expiry",
+  "rationale": "Max premium collection, expecting pin at 600",
+  "confidence": 6,
+  "entry_conditions": {
+    "iv_rank_min": 30,
+    "market_outlook": [
+      "neutral"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "rsi_range": [
+      35,
+      65
+    ],
+    "directional_regime": "Flat (no strong trend)",
+    "notes": "Maximum premium collection strategy. Enter when expecting price to pin near center strike. Tighter RSI range than iron condor \u00e2\u20ac\u201d needs strong conviction on range."
+  },
+  "pnl_drivers": {
+    "max_profit": "Net credit received (largest of any neutral strategy)",
+    "max_loss": "Wing width - net credit",
+    "primary_driver": "Theta decay \u00e2\u20ac\u201d ATM options have highest time value to decay",
+    "secondary_driver": "IV crush \u00e2\u20ac\u201d short ATM options have highest vega",
+    "greeks_profile": {
+      "theta": "strongly positive \u00e2\u20ac\u201d ATM options decay fastest",
+      "vega": "strongly negative \u00e2\u20ac\u201d ATM options most sensitive to IV",
+      "delta": "near zero at entry (ATM straddle center)",
+      "gamma": "strongly negative \u00e2\u20ac\u201d high risk if price moves away from center"
+    },
+    "ideal_scenario": "Price pins at center strike at expiry. Collect massive premium. Best risk/reward of neutral strategies if price cooperates."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P590",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".SPY260417P600",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417C600",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417C610",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 0.25,
+        "gamma": 0.004,
+        "theta": -0.05,
+        "vega": 0.16,
+        "mid_price": 4.5,
+        "bid": 4.4,
+        "ask": 4.6
+      },
+      {
+        "delta": -0.48,
+        "gamma": 0.006,
+        "theta": 0.1,
+        "vega": -0.22,
+        "mid_price": 9.2,
+        "bid": 9.1,
+        "ask": 9.3
+      },
+      {
+        "delta": -0.52,
+        "gamma": 0.006,
+        "theta": 0.1,
+        "vega": -0.22,
+        "mid_price": 9.8,
+        "bid": 9.7,
+        "ask": 9.9
+      },
+      {
+        "delta": 0.28,
+        "gamma": 0.005,
+        "theta": -0.05,
+        "vega": 0.17,
+        "mid_price": 5.0,
+        "bid": 4.9,
+        "ask": 5.1
+      }
+    ]
+  }
+}

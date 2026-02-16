@@ -1,0 +1,79 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/custom_combo_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "custom",
+  "portfolio_name": "model_portfolio",
+  "notes": "Custom SPY combo: long 600C + short 2x 620C + long 580P (skewed risk reversal + ratio)",
+  "rationale": "Custom structure for specific market view \u00e2\u20ac\u201d training data",
+  "confidence": 4,
+  "entry_conditions": {
+    "iv_rank_min": null,
+    "market_outlook": [
+      "any"
+    ],
+    "dte_range": [
+      1,
+      365
+    ],
+    "notes": "Custom strategy: user-defined combination. No standard entry criteria \u00e2\u20ac\u201d depends on specific construction. Use this template for non-standard combinations like ratio backspreads, double diagonals, or any experimental structure. Document your own entry rationale."
+  },
+  "pnl_drivers": {
+    "max_profit": "Depends on construction \u00e2\u20ac\u201d calculate from individual legs",
+    "max_loss": "Depends on construction \u00e2\u20ac\u201d may be defined or undefined",
+    "primary_driver": "Strategy-specific \u00e2\u20ac\u201d document in rationale field",
+    "secondary_driver": "Strategy-specific",
+    "greeks_profile": {
+      "theta": "depends on net short/long balance",
+      "vega": "depends on net short/long balance",
+      "delta": "depends on construction",
+      "gamma": "depends on construction"
+    },
+    "ideal_scenario": "User-defined \u00e2\u20ac\u201d document expected outcome in notes and rationale fields."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417C600",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".SPY260417C620",
+      "quantity": -2
+    },
+    {
+      "streamer_symbol": ".SPY260417P580",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 0.52,
+        "gamma": 0.006,
+        "theta": -0.1,
+        "vega": 0.22,
+        "mid_price": 9.8,
+        "bid": 9.7,
+        "ask": 9.9
+      },
+      {
+        "delta": -0.28,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.17,
+        "mid_price": 5.5,
+        "bid": 5.4,
+        "ask": 5.6
+      },
+      {
+        "delta": -0.3,
+        "gamma": 0.005,
+        "theta": -0.12,
+        "vega": 0.18,
+        "mid_price": 5.8,
+        "bid": 5.7,
+        "ask": 5.9
+      }
+    ]
+  }
+}

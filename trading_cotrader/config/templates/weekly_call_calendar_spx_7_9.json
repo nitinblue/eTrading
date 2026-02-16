@@ -1,0 +1,111 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/weekly_call_calendar_spx_7_9.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "_source": "OptionsKit SPX 7/9 Call Calendar \u00e2\u20ac\u201d 82.1% win rate, 64% CAGR, $10K\u00e2\u2020\u2019$60.7K (May 2022 - Dec 2025)",
+  "underlying": "SPX",
+  "strategy_type": "calendar_spread",
+  "portfolio_name": "medium_risk",
+  "notes": "SPX weekly 7/9 call calendar: sell 40\u00ce\u201d call 7 DTE, buy same strike call 9 DTE. Every Wednesday at 3:00 PM.",
+  "rationale": "Highest CAGR weekly income strategy (64%). 82% win rate over 173 trades. $94 avg profit per lot. Exploit 2-day theta differential on SPX weeklies.",
+  "confidence": 8,
+  "entry_conditions": {
+    "iv_environment": "Works across IV regimes \u00e2\u20ac\u201d not IV-dependent like diagonals",
+    "market_outlook": [
+      "neutral",
+      "range_bound"
+    ],
+    "entry_day": "Every Wednesday",
+    "entry_time": "3:00 PM ET",
+    "frequency": "Weekly \u00e2\u20ac\u201d repeatable income trade",
+    "sell_leg": {
+      "option_type": "call",
+      "delta": 40,
+      "dte": 7,
+      "note": "Use exact DTE (7 days). 40 delta call = slightly ITM, higher premium."
+    },
+    "buy_leg": {
+      "option_type": "call",
+      "delta_offset": 0,
+      "dte": 9,
+      "note": "Same strike as sell leg (calendar = same strike). 9 DTE = 2 days more than short."
+    },
+    "position_sizing": "Allocate 10% of portfolio per trade",
+    "strike_offset": "Use exact strike offsets (0 = same strike for calendar)",
+    "futures_expiry_awareness": {
+      "why_wednesday": "Wednesday entry gives 7 DTE to next Wednesday SPX expiry (or Friday). SPX has M/W/F expirations.",
+      "avoid_quarterly_expiry": "Skip weeks with quarterly futures expiry (3rd Friday of Mar/Jun/Sep/Dec) \u00e2\u20ac\u201d unusual gamma and pin risk",
+      "vix_expiry": "VIX expires ~30 days before monthly OpEx (usually a Wednesday) \u00e2\u20ac\u201d extra volatility that week"
+    },
+    "notes": "From OptionsKit backtest: SPX 7/9 call calendar. Open every Wednesday at 3 PM. Short 40\u00ce\u201d call 7 DTE, long same-strike call 9 DTE. Profit target 30%. Cap profits. 82% win rate, $94 avg per lot. The 2-day theta edge is the income engine \u00e2\u20ac\u201d short leg decays faster with less time remaining."
+  },
+  "pnl_drivers": {
+    "max_profit": "Value of 9 DTE option minus 7 DTE option at short expiry (typically 30%+ of debit)",
+    "max_loss": "Net debit paid (difference between 9 DTE and 7 DTE option price)",
+    "primary_driver": "Theta differential \u00e2\u20ac\u201d 7 DTE option decays faster than 9 DTE option (theta curve is non-linear, steeper near expiry)",
+    "secondary_driver": "Price staying near the 40 delta strike \u00e2\u20ac\u201d max profit when underlying at strike at front expiry",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d 7 DTE decays faster than 9 DTE, you keep the differential",
+      "vega": "slightly positive \u00e2\u20ac\u201d 9 DTE has marginally more vega, small IV expansion benefit",
+      "delta": "near neutral (same strike calendar), slight positive delta from 40\u00ce\u201d call selection",
+      "gamma": "short leg has higher gamma \u00e2\u20ac\u201d risk if SPX moves sharply away from strike"
+    },
+    "backtest_metrics": {
+      "win_rate": "82.1%",
+      "cagr": "64%",
+      "max_drawdown": "-16.3%",
+      "mar_ratio": 3.9,
+      "avg_profit_per_lot": "$94",
+      "avg_winner": "$259/lot",
+      "avg_loser": "-$660/lot",
+      "max_winner": "$820/lot",
+      "max_loser": "-$1,308/lot",
+      "avg_days_in_trade": 4.9,
+      "total_trades": 173,
+      "winners": 142,
+      "total_premium": "$403,410",
+      "capture_rate": "12.6%",
+      "starting_capital": "$10,000",
+      "ending_capital": "$60,716",
+      "opening_fees": 1.25,
+      "closing_fees": 1.25
+    },
+    "exit_rules": {
+      "profit_target_pct": 30,
+      "cap_profits": true,
+      "require_two_prices": true
+    },
+    "ideal_scenario": "SPX stays near the 40\u00ce\u201d strike over the week. 7 DTE option decays to near zero, 9 DTE retains some value. Close at 30% profit. Repeat every Wednesday."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPX260225C6000",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPX260227C6000",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.4,
+        "gamma": 0.008,
+        "theta": 0.35,
+        "vega": -0.08,
+        "mid_price": 28.0,
+        "bid": 27.5,
+        "ask": 28.5
+      },
+      {
+        "delta": 0.4,
+        "gamma": 0.007,
+        "theta": -0.28,
+        "vega": 0.1,
+        "mid_price": 32.0,
+        "bid": 31.5,
+        "ask": 32.5
+      }
+    ]
+  }
+}

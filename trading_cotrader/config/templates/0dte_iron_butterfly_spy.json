@@ -1,0 +1,113 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/0dte_iron_butterfly_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "_notes": "0DTE iron butterfly \u00e2\u20ac\u201d same-day expiry. Update YYMMDD to today's date. SPY ~600, adjust strikes to current ATM.",
+  "underlying": "SPY",
+  "strategy_type": "iron_butterfly",
+  "portfolio_name": "high_risk",
+  "trade_date": null,
+  "notes": "SPY 0DTE iron butterfly 595/600/600/605, same-day expiry. Tight wings for max premium collection.",
+  "rationale": "0DTE iron fly: max theta decay, price expected to pin near 600. High gamma risk managed by tight wings ($5 wide). Target 50% profit or close by 2:30 PM ET.",
+  "confidence": 7,
+  "entry_conditions": {
+    "iv_rank_min": 20,
+    "market_outlook": [
+      "neutral",
+      "range_bound"
+    ],
+    "dte_range": [
+      0,
+      0
+    ],
+    "rsi_range": [
+      40,
+      60
+    ],
+    "directional_regime": "Flat \u00e2\u20ac\u201d no strong trend intraday",
+    "time_of_day": "Enter between 9:45 AM - 11:00 AM ET (let opening volatility settle)",
+    "avoid": [
+      "FOMC days",
+      "CPI/PPI release days",
+      "quad witching",
+      "ex-dividend days for SPY"
+    ],
+    "notes": "0DTE iron butterfly is a high-conviction theta play. Very profitable when market is range-bound but VERY high gamma risk near expiry. Use tight wings ($5) to limit max loss. Close at 50% profit or by 2:30 PM ET to avoid pin risk. Never hold to expiry."
+  },
+  "pnl_drivers": {
+    "max_profit": "Net credit received (ATM put + ATM call premium minus wing cost). Typically $3-5 per contract on SPY.",
+    "max_loss": "Wing width ($5) - net credit. Typically $1.50-2.50 per contract.",
+    "primary_driver": "Theta decay \u00e2\u20ac\u201d 0DTE options lose ALL time value today. Fastest theta of any DTE.",
+    "secondary_driver": "Price pin \u00e2\u20ac\u201d SPY has known 0DTE pin behavior due to dealer gamma hedging",
+    "greeks_profile": {
+      "theta": "EXTREMELY positive \u00e2\u20ac\u201d 0DTE ATM options have maximum theta, decay accelerates intraday",
+      "vega": "negative but less relevant \u00e2\u20ac\u201d IV changes matter less with 0 days left",
+      "delta": "near zero at entry \u00e2\u20ac\u201d but changes RAPIDLY (high gamma)",
+      "gamma": "EXTREMELY negative \u00e2\u20ac\u201d this is the key risk. Small price move = large delta change. Must manage actively."
+    },
+    "risk_management": {
+      "profit_target": "50% of max credit",
+      "stop_loss": "100% of credit received (1x)",
+      "time_stop": "Close by 2:30 PM ET regardless of P&L",
+      "adjustment": "If tested on one side, roll untested wing closer to collect more credit. Or close for loss if breach is decisive."
+    },
+    "ideal_scenario": "SPY opens, settles into a range after first 30 min. Enter iron fly at 600 ATM. Theta melts premium all day. Close at 50% profit by early afternoon. Repeat next session."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260216P595",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".SPY260216P600",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260216C600",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260216C605",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 0.3,
+        "gamma": 0.015,
+        "theta": -0.2,
+        "vega": 0.03,
+        "mid_price": 1.8,
+        "bid": 1.75,
+        "ask": 1.85
+      },
+      {
+        "delta": -0.5,
+        "gamma": 0.025,
+        "theta": 0.45,
+        "vega": -0.04,
+        "mid_price": 3.5,
+        "bid": 3.45,
+        "ask": 3.55
+      },
+      {
+        "delta": -0.5,
+        "gamma": 0.025,
+        "theta": 0.45,
+        "vega": -0.04,
+        "mid_price": 3.5,
+        "bid": 3.45,
+        "ask": 3.55
+      },
+      {
+        "delta": 0.3,
+        "gamma": 0.015,
+        "theta": -0.2,
+        "vega": 0.03,
+        "mid_price": 1.8,
+        "bid": 1.75,
+        "ask": 1.85
+      }
+    ]
+  }
+}

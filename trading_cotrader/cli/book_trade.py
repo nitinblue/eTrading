@@ -7,13 +7,20 @@ Usage:
     python -m trading_cotrader.cli.book_trade --file trade.json --dry-run
     python -m trading_cotrader.cli.book_trade --file trade.json --no-broker
 
+Multi-strategy file (strategies array):
+    python -m trading_cotrader.cli.book_trade --file strategy_trade_templates.json --index 2 --no-broker
+    python -m trading_cotrader.cli.book_trade --file strategy_trade_templates.json --all --no-broker
+    python -m trading_cotrader.cli.book_trade --file strategy_trade_templates.json --list
+
 Template:
     See trading_cotrader/config/trade_template.json
+    See trading_cotrader/config/strategy_trade_templates.json (all 18 strategies)
 
 Supports:
     - Past-dated trades via trade_date field
     - Manual Greeks override (no broker needed)
     - Portfolio routing with strategy validation
+    - Multi-strategy files with --index or --all
 """
 
 import argparse
@@ -30,8 +37,8 @@ from trading_cotrader.services.trade_booking_service import (
 from trading_cotrader.harness.base import rich_table, format_currency, format_greek
 
 
-def load_trade_file(filepath: str) -> Dict[str, Any]:
-    """Load and validate a trade JSON or YAML file (auto-detects by extension)."""
+def load_raw_file(filepath: str) -> Dict[str, Any]:
+    """Load a JSON or YAML file (auto-detects by extension). Returns raw dict."""
     path = Path(filepath)
     if not path.exists():
         print(f"ERROR: File not found: {filepath}")
@@ -41,12 +48,14 @@ def load_trade_file(filepath: str) -> Dict[str, Any]:
     if ext in ('.yaml', '.yml'):
         import yaml
         with open(path, 'r') as f:
-            data = yaml.safe_load(f)
+            return yaml.safe_load(f)
     else:
         with open(path, 'r') as f:
-            data = json.load(f)
+            return json.load(f)
 
-    # Validate required fields
+
+def validate_trade_data(data: Dict[str, Any]) -> None:
+    """Validate a single trade dict has required fields."""
     required = ['underlying', 'strategy_type', 'legs']
     for field in required:
         if field not in data:
@@ -65,7 +74,60 @@ def load_trade_file(filepath: str) -> Dict[str, Any]:
             print(f"ERROR: Leg {i} missing quantity")
             sys.exit(1)
 
+
+def load_trade_file(filepath: str, index: int = None) -> Dict[str, Any]:
+    """Load and validate a trade JSON or YAML file.
+
+    If the file has a 'strategies' array:
+      - index=N returns the Nth strategy
+      - index=None returns the first strategy (for backward compat)
+    Otherwise returns the file as a single trade dict.
+    """
+    data = load_raw_file(filepath)
+
+    # Multi-strategy file
+    if 'strategies' in data:
+        strategies = data['strategies']
+        if index is not None:
+            if index < 0 or index >= len(strategies):
+                print(f"ERROR: Index {index} out of range (0-{len(strategies)-1})")
+                sys.exit(1)
+            trade = strategies[index]
+        else:
+            trade = strategies[0]
+        validate_trade_data(trade)
+        return trade
+
+    # Single trade file
+    validate_trade_data(data)
     return data
+
+
+def list_strategies(filepath: str) -> None:
+    """List all strategies in a multi-strategy file."""
+    data = load_raw_file(filepath)
+    if 'strategies' not in data:
+        print("Not a multi-strategy file (no 'strategies' array).")
+        return
+
+    strategies = data['strategies']
+    print(f"\n{'='*70}")
+    print(f"  {len(strategies)} strategies in {filepath}")
+    print(f"{'='*70}\n")
+
+    rows = []
+    for s in strategies:
+        idx = s.get('_index', '?')
+        name = s.get('_name', s.get('strategy_type', '?'))
+        underlying = s.get('underlying', '?')
+        portfolio = s.get('portfolio_name', '—')
+        legs = len(s.get('legs', []))
+        rows.append([str(idx), name, underlying, portfolio, str(legs)])
+
+    print(rich_table(rows, headers=["#", "Strategy", "Underlying", "Portfolio", "Legs"],
+                     title="Available Strategy Templates"))
+    print(f"\nBook one:  python -m trading_cotrader.cli.book_trade --file {filepath} --index 2 --no-broker")
+    print(f"Book all:  python -m trading_cotrader.cli.book_trade --file {filepath} --all --no-broker")
 
 
 def book_with_manual_greeks(
@@ -364,64 +426,117 @@ def display_result(result: TradeBookingResult) -> None:
         ))
 
 
+def _book_one(trade_data: Dict[str, Any], no_broker: bool, dry_run: bool, label: str = "") -> bool:
+    """Book a single trade. Returns True on success."""
+    prefix = f"[{label}] " if label else ""
+
+    print(f"  {prefix}Underlying: {trade_data['underlying']}")
+    print(f"  {prefix}Strategy: {trade_data['strategy_type']}")
+    print(f"  {prefix}Legs: {len(trade_data['legs'])}")
+    if trade_data.get('portfolio_name'):
+        print(f"  {prefix}Portfolio: {trade_data['portfolio_name']}")
+    print()
+
+    trade_date = None
+    if trade_data.get('trade_date'):
+        trade_date = datetime.strptime(str(trade_data['trade_date']), '%Y-%m-%d').date()
+
+    if dry_run:
+        print(f"  {prefix}DRY RUN — validated but not booked")
+        for i, leg in enumerate(trade_data['legs']):
+            print(f"    Leg {i}: {leg['streamer_symbol']} x {leg['quantity']}")
+        print()
+        return True
+
+    if no_broker or trade_data.get('manual_greeks'):
+        result = book_with_manual_greeks(trade_data, trade_date)
+    else:
+        result = book_with_broker(trade_data, trade_date)
+
+    display_result(result)
+    return result.success
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Book a WhatIf trade from JSON (or YAML)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m trading_cotrader.cli.book_trade --file trade.json
+  # Single trade
   python -m trading_cotrader.cli.book_trade --file trade.json --no-broker
-  python -m trading_cotrader.cli.book_trade --file trade.json --dry-run
 
-Template:
-  See trading_cotrader/config/trade_template.json
+  # Multi-strategy file
+  python -m trading_cotrader.cli.book_trade --file strategy_trade_templates.json --list
+  python -m trading_cotrader.cli.book_trade --file strategy_trade_templates.json --index 2 --no-broker
+  python -m trading_cotrader.cli.book_trade --file strategy_trade_templates.json --all --no-broker
         """
     )
 
-    parser.add_argument('--file', '-f', required=True, help='Path to trade JSON file (YAML also supported)')
+    parser.add_argument('--file', '-f', required=True, help='Path to trade JSON file')
+    parser.add_argument('--index', '-i', type=int, default=None,
+                       help='Strategy index in multi-strategy file (0-based)')
+    parser.add_argument('--all', action='store_true',
+                       help='Book ALL strategies in a multi-strategy file')
+    parser.add_argument('--list', action='store_true',
+                       help='List all strategies in a multi-strategy file')
     parser.add_argument('--dry-run', action='store_true', help='Parse and validate only, do not book')
     parser.add_argument('--no-broker', action='store_true',
-                       help='Book without broker (uses manual_greeks from YAML or zeros)')
+                       help='Book without broker (uses manual_greeks or zeros)')
 
     args = parser.parse_args()
 
-    # Load YAML
-    trade_data = load_trade_file(args.file)
+    # --list: just show what's available
+    if args.list:
+        list_strategies(args.file)
+        return 0
+
+    # --all: book every strategy in the array
+    if args.all:
+        raw = load_raw_file(args.file)
+        if 'strategies' not in raw:
+            print("ERROR: --all requires a file with 'strategies' array")
+            return 1
+
+        strategies = raw['strategies']
+        print("=" * 60)
+        print(f"  BOOKING ALL {len(strategies)} STRATEGIES")
+        print("=" * 60)
+        print()
+
+        success = 0
+        failed = 0
+        for s in strategies:
+            idx = s.get('_index', '?')
+            name = s.get('_name', s.get('strategy_type', '?'))
+            print(f"--- [{idx}] {name} ---")
+            validate_trade_data(s)
+            if _book_one(s, args.no_broker, args.dry_run, label=str(idx)):
+                success += 1
+            else:
+                failed += 1
+            print()
+
+        print("=" * 60)
+        print(f"  Done: {success} booked, {failed} failed, {len(strategies)} total")
+        print("=" * 60)
+        return 0 if failed == 0 else 1
+
+    # Single trade (or --index from multi-strategy)
+    trade_data = load_trade_file(args.file, index=args.index)
 
     print("=" * 60)
     print("  TRADE BOOKING")
     print("=" * 60)
     print(f"  File: {args.file}")
-    print(f"  Underlying: {trade_data['underlying']}")
-    print(f"  Strategy: {trade_data['strategy_type']}")
-    print(f"  Legs: {len(trade_data['legs'])}")
-    if trade_data.get('portfolio_name'):
-        print(f"  Portfolio: {trade_data['portfolio_name']}")
-    if trade_data.get('trade_date'):
-        print(f"  Trade Date: {trade_data['trade_date']}")
-    print()
+    if args.index is not None:
+        print(f"  Index: {args.index}")
+        name = trade_data.get('_name', '')
+        if name:
+            print(f"  Name: {name}")
 
-    # Parse trade_date
-    trade_date = None
-    if trade_data.get('trade_date'):
-        trade_date = datetime.strptime(str(trade_data['trade_date']), '%Y-%m-%d').date()
-
-    if args.dry_run:
-        print("DRY RUN — trade validated but not booked")
-        for i, leg in enumerate(trade_data['legs']):
-            print(f"  Leg {i}: {leg['streamer_symbol']} x {leg['quantity']}")
-        return 0
-
-    # Book the trade
-    if args.no_broker or trade_data.get('manual_greeks'):
-        print("Booking with manual Greeks (no broker)...")
-        result = book_with_manual_greeks(trade_data, trade_date)
-    else:
-        result = book_with_broker(trade_data, trade_date)
-
-    display_result(result)
-    return 0 if result.success else 1
+    ok = _book_one(trade_data, args.no_broker, args.dry_run)
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

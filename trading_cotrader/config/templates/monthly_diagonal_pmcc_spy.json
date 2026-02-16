@@ -1,0 +1,84 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_diagonal_pmcc_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "diagonal_spread",
+  "portfolio_name": "medium_risk",
+  "notes": "SPY PMCC: long deep ITM Jun 560C, short OTM Apr 620C",
+  "rationale": "Bullish, leveraged covered call without owning shares",
+  "confidence": 7,
+  "entry_conditions": {
+    "iv_environment": "Enter when IV is LOW \u00e2\u20ac\u201d diagonal benefits from RISING IV after entry",
+    "iv_rank_min": 15,
+    "iv_rank_preferred": "below 30 (cheap long leg, sell premium as IV rises)",
+    "market_outlook": [
+      "bullish",
+      "bearish",
+      "neutral"
+    ],
+    "buy_leg": {
+      "delta_range": [
+        50,
+        70
+      ],
+      "dte_months": "3-4 months (90-120 DTE)",
+      "strike": "ATM or ITM \u00e2\u20ac\u201d provides stock-like exposure"
+    },
+    "sell_leg": {
+      "delta_range": [
+        30,
+        50
+      ],
+      "dte_months": "1 month before buy side (30 DTE before buy expiry)",
+      "strike": "OTM \u00e2\u20ac\u201d provides income via theta"
+    },
+    "notes": "This is the monthly income playbook from the PDF. Buy long-dated ATM/ITM (50-70 delta, 3-4 months), sell short-dated OTM (30-50 delta, 1 month before buy). Theta positive, defined risk, benefits from rising IV. Can be bullish (call diagonal), bearish (put diagonal), or neutral. PMCC variant uses deep ITM LEAPS (70+ delta). Inverse diagonal: buy lower delta, sell higher delta for credit."
+  },
+  "pnl_drivers": {
+    "max_profit": "Short strike - long strike - net debit + front-month premium collected (if price at short strike at front expiry)",
+    "max_loss": "Net debit paid (if stock moves sharply against direction)",
+    "primary_driver": "Theta from short leg \u00e2\u20ac\u201d short-dated option decays faster than long-dated. Roll short leg monthly for income.",
+    "secondary_driver": "IV expansion \u00e2\u20ac\u201d LONG VEGA position. Enter when IV is low, profit as IV rises. Long leg gains more than short leg from IV increase.",
+    "tertiary_driver": "Directional move \u00e2\u20ac\u201d ATM/ITM long leg appreciates from delta exposure",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d short front-month decays faster than long back-month",
+      "vega": "POSITIVE \u00e2\u20ac\u201d long vega, benefits from rising IV (enter when IV is LOW)",
+      "delta": "directional \u00e2\u20ac\u201d bullish call diagonal ~+30-50 net delta, bearish put diagonal ~-30-50",
+      "gamma": "slightly positive \u00e2\u20ac\u201d LEAPS has low gamma, short call has higher gamma"
+    },
+    "rolling_strategy": "At front-month expiry, close or let short leg expire, sell new short leg 1 month out. Repeat for monthly income. This is the income engine.",
+    "ideal_scenario": "Stock moves gradually in your direction. Short leg decays to near zero, rolled monthly. Long leg appreciates from delta + vega. 88% win rate on QQQ put diagonal variant (OptionsKit backtest)."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260619C560",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".SPY260417C620",
+      "quantity": -1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 0.8,
+        "gamma": 0.003,
+        "theta": -0.05,
+        "vega": 0.25,
+        "mid_price": 48.0,
+        "bid": 47.8,
+        "ask": 48.2
+      },
+      {
+        "delta": -0.28,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.17,
+        "mid_price": 5.5,
+        "bid": 5.4,
+        "ask": 5.6
+      }
+    ]
+  }
+}

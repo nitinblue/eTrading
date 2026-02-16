@@ -1,0 +1,93 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_condor_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "condor",
+  "portfolio_name": "high_risk",
+  "notes": "SPY put condor 580/590/610/620, Apr expiry",
+  "rationale": "Wider profit zone than butterfly, still defined risk",
+  "confidence": 6,
+  "entry_conditions": {
+    "iv_rank_min": 20,
+    "market_outlook": [
+      "neutral",
+      "range_bound"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "notes": "Long condor: defined risk bet on price staying between inner strikes. Wider profit zone than butterfly but lower max profit. Good when range-bound but unsure of exact pin."
+  },
+  "pnl_drivers": {
+    "max_profit": "Difference between outer and inner strikes - net debit (if price between inner strikes at expiry)",
+    "max_loss": "Net debit paid",
+    "primary_driver": "Price stays between inner strikes at expiration",
+    "secondary_driver": "Theta \u00e2\u20ac\u201d positive when price in profit zone near expiry",
+    "greeks_profile": {
+      "theta": "mixed \u00e2\u20ac\u201d positive near expiry in profit zone, negative otherwise",
+      "vega": "slightly negative \u00e2\u20ac\u201d benefits from IV decrease near expiry",
+      "delta": "near neutral at entry",
+      "gamma": "mixed \u00e2\u20ac\u201d depends on proximity to strikes"
+    },
+    "ideal_scenario": "Price stays between inner strikes (590-610) through expiry. Wider zone of profitability vs butterfly."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P580",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".SPY260417P590",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417P610",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417P620",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 0.2,
+        "gamma": 0.004,
+        "theta": -0.04,
+        "vega": 0.15,
+        "mid_price": 3.4,
+        "bid": 3.3,
+        "ask": 3.5
+      },
+      {
+        "delta": -0.25,
+        "gamma": 0.004,
+        "theta": 0.05,
+        "vega": -0.16,
+        "mid_price": 4.5,
+        "bid": 4.4,
+        "ask": 4.6
+      },
+      {
+        "delta": -0.35,
+        "gamma": 0.005,
+        "theta": 0.07,
+        "vega": -0.19,
+        "mid_price": 7.0,
+        "bid": 6.9,
+        "ask": 7.1
+      },
+      {
+        "delta": 0.3,
+        "gamma": 0.005,
+        "theta": -0.06,
+        "vega": 0.18,
+        "mid_price": 5.8,
+        "bid": 5.7,
+        "ask": 5.9
+      }
+    ]
+  }
+}

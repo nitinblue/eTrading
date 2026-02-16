@@ -1,0 +1,71 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_vertical_spread_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "vertical_spread",
+  "portfolio_name": "medium_risk",
+  "notes": "SPY bull put spread 580/570, Apr expiry",
+  "rationale": "Selling premium below support, defined risk",
+  "confidence": 7,
+  "entry_conditions": {
+    "iv_rank_min": 20,
+    "market_outlook": [
+      "bullish",
+      "bearish"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "rsi_range": [
+      20,
+      80
+    ],
+    "notes": "Bull put spread (credit): sell higher strike put, buy lower. Bear call spread: sell lower strike call, buy higher. Enter when directional bias is clear."
+  },
+  "pnl_drivers": {
+    "max_profit": "Net credit received",
+    "max_loss": "Width of strikes - net credit",
+    "primary_driver": "Directional move away from short strike",
+    "secondary_driver": "Theta decay erodes short option faster",
+    "greeks_profile": {
+      "theta": "positive (credit spread) \u00e2\u20ac\u201d profits from time decay",
+      "vega": "negative (credit spread) \u00e2\u20ac\u201d profits from IV decrease",
+      "delta": "directional \u00e2\u20ac\u201d positive for bull put, negative for bear call",
+      "gamma": "negative near short strike \u00e2\u20ac\u201d risk accelerates if tested"
+    },
+    "ideal_scenario": "Underlying moves away from short strike, both options expire worthless, keep full credit."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P580",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417P570",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.3,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.18,
+        "mid_price": 5.8,
+        "bid": 5.7,
+        "ask": 5.9
+      },
+      {
+        "delta": 0.2,
+        "gamma": 0.004,
+        "theta": -0.04,
+        "vega": 0.15,
+        "mid_price": 3.4,
+        "bid": 3.3,
+        "ask": 3.5
+      }
+    ]
+  }
+}

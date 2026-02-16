@@ -1,0 +1,67 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_protective_put_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "protective_put",
+  "portfolio_name": "core_holdings",
+  "notes": "SPY protective put: long 100 shares + long 580P Apr expiry",
+  "rationale": "Protect SPY holding against >3% decline",
+  "confidence": 7,
+  "entry_conditions": {
+    "iv_rank_min": 10,
+    "market_outlook": [
+      "bullish"
+    ],
+    "dte_range": [
+      30,
+      90
+    ],
+    "requires": "stock_ownership",
+    "notes": "Protective put: own 100 shares + buy OTM put for downside protection. Insurance strategy. Enter when bullish but concerned about near-term downside (earnings, macro risk). Buy when IV is LOW (cheap insurance). Expensive in high IV."
+  },
+  "pnl_drivers": {
+    "max_profit": "Unlimited upside from stock appreciation minus put cost",
+    "max_loss": "Stock cost basis - put strike + put premium paid (floor established)",
+    "primary_driver": "Stock appreciation (long delta)",
+    "secondary_driver": "Put acts as insurance \u00e2\u20ac\u201d limits downside to put strike",
+    "greeks_profile": {
+      "theta": "negative \u00e2\u20ac\u201d long put decays (insurance cost over time)",
+      "vega": "positive \u00e2\u20ac\u201d long put benefits from IV increase (insurance worth more in crisis)",
+      "delta": "positive (long stock ~100 delta + long put ~-20 delta = ~80 net)",
+      "gamma": "slightly positive \u00e2\u20ac\u201d long put gamma provides more protection as stock drops"
+    },
+    "ideal_scenario": "Stock rises, put expires worthless (small insurance cost). In crash: put protects portfolio, loss limited to put strike."
+  },
+  "legs": [
+    {
+      "streamer_symbol": "SPY",
+      "quantity": 100
+    },
+    {
+      "streamer_symbol": ".SPY260417P580",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 1.0,
+        "gamma": 0.0,
+        "theta": 0.0,
+        "vega": 0.0,
+        "mid_price": 600.0,
+        "bid": 599.9,
+        "ask": 600.1
+      },
+      {
+        "delta": -0.3,
+        "gamma": 0.005,
+        "theta": -0.12,
+        "vega": 0.18,
+        "mid_price": 5.8,
+        "bid": 5.7,
+        "ask": 5.9
+      }
+    ]
+  }
+}

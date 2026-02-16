@@ -1,0 +1,68 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_covered_call_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "covered_call",
+  "portfolio_name": "core_holdings",
+  "notes": "SPY covered call: long 100 shares + short 620C Apr expiry",
+  "rationale": "Income on existing SPY position, willing to sell at 620",
+  "confidence": 8,
+  "entry_conditions": {
+    "iv_rank_min": 20,
+    "market_outlook": [
+      "neutral",
+      "slightly_bullish"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "requires": "stock_ownership",
+    "notes": "Covered call: own 100 shares + sell OTM call. Income strategy on existing holdings. Enter when mildly bullish or neutral \u00e2\u20ac\u201d willing to sell at strike if assigned. Higher IV = more premium. Pick strikes above resistance for comfort."
+  },
+  "pnl_drivers": {
+    "max_profit": "Call premium + (strike - stock cost basis)",
+    "max_loss": "Stock cost basis - call premium (if stock goes to zero)",
+    "primary_driver": "Call premium income \u00e2\u20ac\u201d theta decay of short call",
+    "secondary_driver": "Stock appreciation up to strike price",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d short call decays, providing income",
+      "vega": "negative \u00e2\u20ac\u201d short call benefits from IV decrease",
+      "delta": "positive (long stock ~100 delta, short call reduces by ~-30 delta = ~70 net)",
+      "gamma": "slightly negative \u00e2\u20ac\u201d short call gamma reduces delta if stock rises"
+    },
+    "ideal_scenario": "Stock rises to just below strike at expiry. Keep shares + collect full call premium. Roll to next month."
+  },
+  "legs": [
+    {
+      "streamer_symbol": "SPY",
+      "quantity": 100
+    },
+    {
+      "streamer_symbol": ".SPY260417C620",
+      "quantity": -1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 1.0,
+        "gamma": 0.0,
+        "theta": 0.0,
+        "vega": 0.0,
+        "mid_price": 600.0,
+        "bid": 599.9,
+        "ask": 600.1
+      },
+      {
+        "delta": -0.28,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.17,
+        "mid_price": 5.5,
+        "bid": 5.4,
+        "ask": 5.6
+      }
+    ]
+  }
+}

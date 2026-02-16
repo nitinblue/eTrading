@@ -1,0 +1,79 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_butterfly_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "butterfly",
+  "portfolio_name": "high_risk",
+  "notes": "SPY put butterfly 590/600/610, Apr expiry",
+  "rationale": "Low cost, max profit if SPY pins at 600",
+  "confidence": 5,
+  "entry_conditions": {
+    "iv_rank_min": 20,
+    "market_outlook": [
+      "neutral"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "notes": "Long butterfly: low cost, defined risk bet on price pin at middle strike. Works well in low-IV environments (cheap to enter). Best when you expect price to settle at a specific level."
+  },
+  "pnl_drivers": {
+    "max_profit": "Width of one wing - net debit (at middle strike at expiry)",
+    "max_loss": "Net debit paid",
+    "primary_driver": "Price convergence toward middle strike at expiration",
+    "secondary_driver": "Theta \u00e2\u20ac\u201d positive near expiry when price is near center, negative far from expiry",
+    "greeks_profile": {
+      "theta": "slightly positive near expiry if price near center, negative far out",
+      "vega": "negative near expiry \u00e2\u20ac\u201d profits from IV decrease as expiry approaches",
+      "delta": "near neutral at entry",
+      "gamma": "positive far from expiry, negative near expiry at center \u00e2\u20ac\u201d risk reversal near expiry"
+    },
+    "ideal_scenario": "Price pins at middle strike (600) at expiration. Maximum profit achieved. Low cost entry means small loss if wrong."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P590",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".SPY260417P600",
+      "quantity": -2
+    },
+    {
+      "streamer_symbol": ".SPY260417P610",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 0.25,
+        "gamma": 0.004,
+        "theta": -0.05,
+        "vega": 0.16,
+        "mid_price": 4.5,
+        "bid": 4.4,
+        "ask": 4.6
+      },
+      {
+        "delta": -0.48,
+        "gamma": 0.006,
+        "theta": 0.1,
+        "vega": -0.22,
+        "mid_price": 9.2,
+        "bid": 9.1,
+        "ask": 9.3
+      },
+      {
+        "delta": 0.35,
+        "gamma": 0.005,
+        "theta": -0.07,
+        "vega": 0.19,
+        "mid_price": 7.0,
+        "bid": 6.9,
+        "ask": 7.1
+      }
+    ]
+  }
+}

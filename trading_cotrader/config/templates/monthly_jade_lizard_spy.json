@@ -1,0 +1,80 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_jade_lizard_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "jade_lizard",
+  "portfolio_name": "model_portfolio",
+  "notes": "SPY jade lizard: short 580P + short 620/630 call spread, Apr expiry",
+  "rationale": "Bullish bias, credit exceeds call spread width = no upside risk",
+  "confidence": 7,
+  "entry_conditions": {
+    "iv_rank_min": 30,
+    "market_outlook": [
+      "bullish",
+      "slightly_bullish"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "notes": "Jade lizard: short naked put + short call vertical. Collect enough credit to exceed call spread width, eliminating upside risk. Downside risk remains (like naked put). Best in elevated IV with bullish bias."
+  },
+  "pnl_drivers": {
+    "max_profit": "Total net credit received",
+    "max_loss": "Downside: short put strike - net credit (naked put risk). Upside: ZERO if credit > call spread width",
+    "primary_driver": "Theta decay on short put and short call spread",
+    "secondary_driver": "IV crush \u00e2\u20ac\u201d selling premium on multiple legs",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d multiple short options decaying",
+      "vega": "negative \u00e2\u20ac\u201d profits from IV contraction",
+      "delta": "slightly positive (bullish bias from short put)",
+      "gamma": "negative \u00e2\u20ac\u201d risk if stock drops sharply through short put"
+    },
+    "ideal_scenario": "Stock stays flat or rises modestly. All options expire worthless. If credit > call spread width, NO upside risk."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P580",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417C620",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417C630",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.3,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.18,
+        "mid_price": 5.8,
+        "bid": 5.7,
+        "ask": 5.9
+      },
+      {
+        "delta": -0.28,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.17,
+        "mid_price": 5.5,
+        "bid": 5.4,
+        "ask": 5.6
+      },
+      {
+        "delta": 0.18,
+        "gamma": 0.004,
+        "theta": -0.03,
+        "vega": 0.14,
+        "mid_price": 3.1,
+        "bid": 3.0,
+        "ask": 3.2
+      }
+    ]
+  }
+}

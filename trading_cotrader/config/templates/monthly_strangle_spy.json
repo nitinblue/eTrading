@@ -1,0 +1,74 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_strangle_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "strangle",
+  "portfolio_name": "high_risk",
+  "notes": "SPY short strangle 580/620, Apr expiry",
+  "rationale": "Wide strikes, high probability of profit",
+  "confidence": 7,
+  "entry_conditions": {
+    "iv_rank_min": 40,
+    "iv_rank_preferred": 60,
+    "market_outlook": [
+      "neutral"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "rsi_range": [
+      30,
+      70
+    ],
+    "directional_regime": "Flat (no strong trend)",
+    "min_iv_percentile": 40,
+    "requires": "undefined_risk_approval",
+    "notes": "Short strangle: sell OTM put + OTM call. Wider range than straddle but less premium. UNDEFINED RISK. Best in highest IV environments."
+  },
+  "pnl_drivers": {
+    "max_profit": "Total premium received (put + call)",
+    "max_loss": "UNLIMITED on upside, substantial on downside",
+    "primary_driver": "Theta decay \u00e2\u20ac\u201d both options lose time value daily",
+    "secondary_driver": "IV crush \u00e2\u20ac\u201d short vega profits from volatility contraction",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d both short options decay",
+      "vega": "negative \u00e2\u20ac\u201d profits from IV decrease",
+      "delta": "near neutral (slightly directional based on strikes chosen)",
+      "gamma": "negative \u00e2\u20ac\u201d UNDEFINED RISK, accelerates on big moves"
+    },
+    "ideal_scenario": "Price stays between short strikes, IV contracts, both options expire worthless."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P580",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417C620",
+      "quantity": -1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.3,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.18,
+        "mid_price": 5.8,
+        "bid": 5.7,
+        "ask": 5.9
+      },
+      {
+        "delta": -0.28,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.17,
+        "mid_price": 5.5,
+        "bid": 5.4,
+        "ask": 5.6
+      }
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_single_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "single",
+  "portfolio_name": "high_risk",
+  "notes": "SPY long put, 580 strike, Apr expiry",
+  "rationale": "Bearish directional bet on SPY pullback",
+  "confidence": 6,
+  "entry_conditions": {
+    "iv_rank_min": 20,
+    "market_outlook": [
+      "bullish",
+      "bearish",
+      "neutral"
+    ],
+    "dte_range": [
+      30,
+      60
+    ],
+    "notes": "For CSP (cash-secured put): sell when IV rank elevated, bullish or neutral bias. For long options: buy when IV is low, strong directional conviction."
+  },
+  "pnl_drivers": {
+    "max_profit": "Premium received (short) or unlimited (long call) / strike - premium (long put)",
+    "max_loss": "Strike price - premium (short put) or premium paid (long)",
+    "primary_driver": "Directional move in underlying",
+    "secondary_driver": "Theta decay (short side profits), IV change",
+    "greeks_profile": {
+      "theta": "positive if short, negative if long",
+      "vega": "negative if short (profits from IV crush), positive if long",
+      "delta": "directional \u00e2\u20ac\u201d positive for calls, negative for puts",
+      "gamma": "negative if short (acceleration risk), positive if long"
+    },
+    "ideal_scenario": "Short put: stock stays above strike, collect full premium. Long put: sharp decline."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P580",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.3,
+        "gamma": 0.005,
+        "theta": -0.12,
+        "vega": 0.18,
+        "mid_price": 5.8,
+        "bid": 5.7,
+        "ask": 5.9
+      }
+    ]
+  }
+}

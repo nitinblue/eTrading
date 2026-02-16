@@ -1,0 +1,113 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/weekly_double_calendar_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "calendar_double_spread",
+  "portfolio_name": "medium_risk",
+  "notes": "SPY weekly double calendar: 585P + 615C, short Feb 20 / long Feb 27",
+  "rationale": "Weekly income, neutral bias, profit from front-month theta decay",
+  "confidence": 7,
+  "entry_conditions": {
+    "iv_environment": "Enter when IV is LOW to moderate \u00e2\u20ac\u201d benefits from rising IV",
+    "iv_rank_min": 20,
+    "market_outlook": [
+      "neutral",
+      "range_bound"
+    ],
+    "dte_range": [
+      5,
+      14
+    ],
+    "entry_timing": {
+      "preferred_day": "Wednesday (for Friday-expiring front legs)",
+      "preferred_time": "2:00 PM - 3:00 PM ET (afternoon, after morning volatility settles)",
+      "frequency": "Weekly \u00e2\u20ac\u201d repeatable income trade",
+      "futures_expiry_awareness": {
+        "monthly_opex": "3rd Friday \u00e2\u20ac\u201d avoid entering double calendars that straddle monthly OpEx (pin risk + unusual gamma)",
+        "quarterly_futures": "March/June/Sept/Dec 3rd Friday \u00e2\u20ac\u201d ES/NQ/RTY futures expiry causes extra volatility, widen strikes or skip",
+        "weekly_options": "SPX M/W/F expirations, SPY Friday expirations \u00e2\u20ac\u201d align short leg to nearest weekly expiry",
+        "vix_expiry": "Usually Wednesday, 30 days before next monthly OpEx \u00e2\u20ac\u201d avoid if VIX expiry within front-leg DTE",
+        "roll_timing": "Roll front leg day BEFORE expiry (Thursday for Friday expiry) to avoid assignment/exercise risk"
+      }
+    },
+    "strike_selection": {
+      "put_side": "1 standard deviation below current price (or at strong support level)",
+      "call_side": "1 standard deviation above current price (or at strong resistance level)",
+      "width": "Put and call strikes equidistant from current price for neutral delta"
+    },
+    "notes": "Double calendar: two calendar spreads (put side + call side) around current price. Weekly income strategy. Enter Wednesday afternoon for Friday-expiring front legs. Avoid weeks with FOMC, CPI/PPI, quarterly futures expiry (extra gamma). Use standard deviation or technical support/resistance for strike selection."
+  },
+  "pnl_drivers": {
+    "max_profit": "Combined value of far-month options minus total debit (at either strike at near-month expiry)",
+    "max_loss": "Total net debit paid",
+    "primary_driver": "Theta differential \u00e2\u20ac\u201d near-week options decay fastest in last 2-3 days",
+    "secondary_driver": "IV expansion \u00e2\u20ac\u201d LONG VEGA position, profits if IV stays elevated or increases",
+    "tertiary_driver": "Gamma scalping \u00e2\u20ac\u201d as front leg approaches expiry, gamma accelerates. If price stays in range, this works for you.",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d near-week decay faster than far-week on both sides",
+      "vega": "POSITIVE \u00e2\u20ac\u201d long vega, profits if IV stays elevated or increases",
+      "delta": "near neutral \u00e2\u20ac\u201d put and call calendars offset each other",
+      "gamma": "slightly positive \u00e2\u20ac\u201d near-month gamma higher, but flips negative if price moves to one side"
+    },
+    "risk_events": "Avoid: FOMC announcement days, CPI/PPI release, quarterly futures/options expiry (quad witching), earnings if underlying is single stock",
+    "ideal_scenario": "Stock stays between the two calendar strikes through front-leg expiry. Both near-term options expire worthless. Far-term options retain time value. Close far-term legs for profit, or sell new front-month legs to repeat."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260220P585",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260227P585",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".SPY260220C615",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260227C615",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.35,
+        "gamma": 0.01,
+        "theta": 0.15,
+        "vega": -0.08,
+        "mid_price": 2.8,
+        "bid": 2.7,
+        "ask": 2.9
+      },
+      {
+        "delta": -0.33,
+        "gamma": 0.008,
+        "theta": -0.1,
+        "vega": 0.12,
+        "mid_price": 3.9,
+        "bid": 3.8,
+        "ask": 4.0
+      },
+      {
+        "delta": -0.32,
+        "gamma": 0.01,
+        "theta": 0.14,
+        "vega": -0.08,
+        "mid_price": 2.6,
+        "bid": 2.5,
+        "ask": 2.7
+      },
+      {
+        "delta": -0.3,
+        "gamma": 0.008,
+        "theta": -0.09,
+        "vega": 0.11,
+        "mid_price": 3.7,
+        "bid": 3.6,
+        "ask": 3.8
+      }
+    ]
+  }
+}

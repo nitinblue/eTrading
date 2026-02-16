@@ -1,0 +1,100 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_iron_condor_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "iron_condor",
+  "portfolio_name": "high_risk",
+  "notes": "SPY iron condor 570/580/620/630, Apr expiry",
+  "rationale": "High IV rank, selling premium in range-bound market",
+  "confidence": 8,
+  "entry_conditions": {
+    "iv_rank_min": 30,
+    "iv_rank_preferred": 50,
+    "market_outlook": [
+      "neutral",
+      "range_bound"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "rsi_range": [
+      30,
+      70
+    ],
+    "directional_regime": "Flat (no strong trend)",
+    "min_atr_percent": 0.008,
+    "notes": "Best when IV is elevated (sell expensive premium) and market is range-bound. Avoid during trending markets or ahead of major catalysts."
+  },
+  "pnl_drivers": {
+    "max_profit": "Net credit received (both spreads expire OTM)",
+    "max_loss": "Width of widest spread - net credit",
+    "primary_driver": "Theta decay \u00e2\u20ac\u201d time value erosion on 4 short/long options",
+    "secondary_driver": "IV crush \u00e2\u20ac\u201d vega negative position profits from volatility contraction",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d profits from time decay every day",
+      "vega": "negative \u00e2\u20ac\u201d profits from IV decrease",
+      "delta": "near neutral at entry \u00e2\u20ac\u201d no directional bias",
+      "gamma": "negative \u00e2\u20ac\u201d risk increases as price approaches short strikes"
+    },
+    "ideal_scenario": "Price stays between short strikes, IV contracts, collect full credit at expiry."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P570",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".SPY260417P580",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417C620",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417C630",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 0.2,
+        "gamma": 0.004,
+        "theta": -0.04,
+        "vega": 0.15,
+        "mid_price": 3.4,
+        "bid": 3.3,
+        "ask": 3.5
+      },
+      {
+        "delta": -0.3,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.18,
+        "mid_price": 5.8,
+        "bid": 5.7,
+        "ask": 5.9
+      },
+      {
+        "delta": -0.28,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.17,
+        "mid_price": 5.5,
+        "bid": 5.4,
+        "ask": 5.6
+      },
+      {
+        "delta": 0.18,
+        "gamma": 0.004,
+        "theta": -0.03,
+        "vega": 0.14,
+        "mid_price": 3.1,
+        "bid": 3.0,
+        "ask": 3.2
+      }
+    ]
+  }
+}

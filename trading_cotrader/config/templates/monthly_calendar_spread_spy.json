@@ -1,0 +1,80 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_calendar_spread_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "calendar_spread",
+  "portfolio_name": "medium_risk",
+  "notes": "SPY put calendar: short Mar 600P, long Apr 600P",
+  "rationale": "Sell near-term theta, benefit from IV expansion in back month",
+  "confidence": 6,
+  "entry_conditions": {
+    "iv_environment": "Enter when IV is LOW \u00e2\u20ac\u201d calendar benefits from RISING IV after entry",
+    "iv_rank_min": 15,
+    "iv_rank_preferred": "below 30 (cheap to enter, profits as IV expands)",
+    "market_outlook": [
+      "neutral",
+      "bullish",
+      "bearish"
+    ],
+    "sell_leg": {
+      "delta_range": [
+        20,
+        35
+      ],
+      "dte_months": "1-3 months (30-90 DTE)",
+      "strike": "OTM \u00e2\u20ac\u201d at a technical price target or support/resistance level"
+    },
+    "buy_leg": {
+      "delta_range": "same strike, same delta at entry",
+      "dte_months": "1 month AFTER the short expiration",
+      "strike": "SAME strike as short leg"
+    },
+    "notes": "Monthly income playbook from PDF. Sell short-term OTM (20-35 delta, 1-3 months), buy same strike 1 month after short expiry. Theta positive, cheap, less volatile. Benefits from rising IV. Smaller gap between expirations = higher theta but more risk. Use technical levels (support/resistance) for strike selection. Neutral = ATM, bullish = OTM call, bearish = OTM put."
+  },
+  "pnl_drivers": {
+    "max_profit": "Value of far-month option minus debit paid (at strike price at front-month expiry)",
+    "max_loss": "Net debit paid (if stock moves far away from strike in either direction)",
+    "primary_driver": "Theta differential \u00e2\u20ac\u201d near-month decays faster than far-month. You pocket the difference.",
+    "secondary_driver": "IV expansion \u00e2\u20ac\u201d LONG VEGA position. Enter when IV is low, profit as IV rises after entry.",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d near-month decays faster, you pocket the differential every day",
+      "vega": "POSITIVE \u00e2\u20ac\u201d long volatility strategy, profits from IV increase",
+      "delta": "near neutral at entry (same strike, different months)",
+      "gamma": "slightly positive \u00e2\u20ac\u201d near-month gamma is higher"
+    },
+    "backtest_reference": "SPX 7/9 call calendar (OptionsKit): 82.1% win rate, 64% CAGR, every Wednesday at 3 PM. SPX 9/12 variant: 79.6% win rate, 50.8% CAGR.",
+    "ideal_scenario": "Stock stays at strike through near-month expiry. Near-month expires worthless. Far-month retains significant time value + any IV expansion. Roll to next month."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260320P600",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417P600",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.5,
+        "gamma": 0.008,
+        "theta": 0.15,
+        "vega": -0.15,
+        "mid_price": 7.0,
+        "bid": 6.9,
+        "ask": 7.1
+      },
+      {
+        "delta": -0.48,
+        "gamma": 0.006,
+        "theta": -0.1,
+        "vega": 0.22,
+        "mid_price": 9.2,
+        "bid": 9.1,
+        "ask": 9.3
+      }
+    ]
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_ratio_spread_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "ratio_spread",
+  "portfolio_name": "model_portfolio",
+  "notes": "SPY 1x2 put ratio: long 1x 600P, short 2x 590P, Apr expiry",
+  "rationale": "Free or credit spread, profits from moderate decline",
+  "confidence": 5,
+  "entry_conditions": {
+    "iv_rank_min": 25,
+    "market_outlook": [
+      "bearish",
+      "neutral"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "notes": "Put ratio spread (1x2): buy 1 ATM put, sell 2 OTM puts. Can enter for credit or small debit. Risk: if stock drops below lower strike, exposed to naked put risk on extra short. Best in moderate IV with mild bearish view."
+  },
+  "pnl_drivers": {
+    "max_profit": "At short strike at expiry: (long strike - short strike) + net credit (or - net debit)",
+    "max_loss": "Downside: UNDEFINED below short strike minus max profit (extra naked short put). Upside: net debit (if debit entry) or zero/small (if credit entry)",
+    "primary_driver": "Stock moves to short put strike and stays there",
+    "secondary_driver": "Theta \u00e2\u20ac\u201d net positive from extra short option, IV crush helps",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d 2 short options decay faster than 1 long",
+      "vega": "mixed \u00e2\u20ac\u201d net short vega from extra short option",
+      "delta": "slightly negative (bearish bias, but less than naked long put)",
+      "gamma": "negative below short strike \u00e2\u20ac\u201d UNDEFINED RISK if stock tanks"
+    },
+    "ideal_scenario": "Stock drops to short put strike (590) by expiry. Long put is ITM, both short puts are ATM. Maximum profit point."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P600",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".SPY260417P590",
+      "quantity": -2
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.48,
+        "gamma": 0.006,
+        "theta": -0.1,
+        "vega": 0.22,
+        "mid_price": 9.2,
+        "bid": 9.1,
+        "ask": 9.3
+      },
+      {
+        "delta": 0.25,
+        "gamma": 0.004,
+        "theta": 0.05,
+        "vega": -0.16,
+        "mid_price": 4.5,
+        "bid": 4.4,
+        "ask": 4.6
+      }
+    ]
+  }
+}

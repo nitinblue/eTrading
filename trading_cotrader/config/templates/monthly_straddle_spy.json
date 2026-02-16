@@ -1,0 +1,72 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_straddle_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "straddle",
+  "portfolio_name": "high_risk",
+  "notes": "SPY short straddle 600, Apr expiry",
+  "rationale": "Elevated IV, expecting low realized vol through expiry",
+  "confidence": 5,
+  "entry_conditions": {
+    "iv_rank_min": 40,
+    "market_outlook": [
+      "neutral"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "rsi_range": [
+      35,
+      65
+    ],
+    "directional_regime": "Flat",
+    "requires": "undefined_risk_approval",
+    "notes": "Short straddle: sell ATM put + ATM call. Maximum premium but UNDEFINED RISK on both sides. Only when very high IV and strong pin expectation. Requires margin."
+  },
+  "pnl_drivers": {
+    "max_profit": "Total premium received (put + call)",
+    "max_loss": "UNLIMITED on upside, substantial on downside (strike - premium)",
+    "primary_driver": "Theta decay \u00e2\u20ac\u201d ATM options have maximum time premium",
+    "secondary_driver": "IV crush \u00e2\u20ac\u201d selling expensive volatility",
+    "greeks_profile": {
+      "theta": "strongly positive \u00e2\u20ac\u201d maximum theta of any strategy",
+      "vega": "strongly negative \u00e2\u20ac\u201d maximum IV sensitivity",
+      "delta": "near zero at entry",
+      "gamma": "strongly negative \u00e2\u20ac\u201d UNDEFINED RISK, position accelerates against you"
+    },
+    "ideal_scenario": "Price pins at strike, IV collapses, collect all premium. Must manage aggressively if price moves."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P600",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417C600",
+      "quantity": -1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.48,
+        "gamma": 0.006,
+        "theta": 0.1,
+        "vega": -0.22,
+        "mid_price": 9.2,
+        "bid": 9.1,
+        "ask": 9.3
+      },
+      {
+        "delta": -0.52,
+        "gamma": 0.006,
+        "theta": 0.1,
+        "vega": -0.22,
+        "mid_price": 9.8,
+        "bid": 9.7,
+        "ask": 9.9
+      }
+    ]
+  }
+}

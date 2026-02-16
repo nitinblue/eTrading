@@ -18,7 +18,11 @@
       "Bash(python -m trading_cotrader.cli.book_trade:*)",
       "Bash(python -m trading_cotrader.scripts.setup_database:*)",
       "Bash(python -m pytest:*)",
-      "Bash(PYTHONUTF8=1 python:*)"
+      "Bash(PYTHONUTF8=1 python:*)",
+      "Bash(PYTHONUTF8=1 pytest:*)",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(pytest:*)"
     ]
   }
 }

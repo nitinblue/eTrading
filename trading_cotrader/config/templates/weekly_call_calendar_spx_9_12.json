@@ -1,0 +1,112 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/weekly_call_calendar_spx_9_12.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "_source": "OptionsKit SPX 9/12 Call Calendar (Conservative) \u00e2\u20ac\u201d 79.6% win rate, 50.8% CAGR, $20K\u00e2\u2020\u2019$72.6K (Oct 2022 - Dec 2025)",
+  "underlying": "SPX",
+  "strategy_type": "calendar_spread",
+  "portfolio_name": "medium_risk",
+  "notes": "SPX weekly 9/12 call calendar (conservative): sell 30\u00ce\u201d call 9 DTE, buy same strike call 12 DTE. Every Wednesday at 2:00 PM.",
+  "rationale": "More conservative variant with wider DTE gap and lower delta. 80% win rate. Better risk management with call-tested exit at -20 delta. Max $2K allocation.",
+  "confidence": 8,
+  "entry_conditions": {
+    "iv_environment": "Works across IV regimes",
+    "market_outlook": [
+      "neutral",
+      "range_bound"
+    ],
+    "entry_day": "Every Wednesday",
+    "entry_time": "2:00 PM ET (earlier than aggressive variant \u00e2\u20ac\u201d more time to manage)",
+    "frequency": "Weekly \u00e2\u20ac\u201d repeatable income trade",
+    "sell_leg": {
+      "option_type": "call",
+      "delta": 30,
+      "dte": 9,
+      "note": "Use exact DTE (9 days). 30 delta call = more OTM than 7/9 variant, less premium but wider margin of safety."
+    },
+    "buy_leg": {
+      "option_type": "call",
+      "delta_offset": 0,
+      "dte": 12,
+      "note": "Same strike as sell leg. 12 DTE = 3 days more than short leg."
+    },
+    "position_sizing": "Max allocation $2,000 per trade. Allocate 10% of portfolio.",
+    "futures_expiry_awareness": {
+      "why_wednesday": "Wednesday entry for weekly SPX options. 9 DTE lands on next Friday (or following week).",
+      "avoid_quarterly_expiry": "Skip quarterly futures expiry weeks \u00e2\u20ac\u201d unusual gamma",
+      "additional_exit": "Exit when call tested at -20 delta (risk management not in 7/9 variant)"
+    },
+    "notes": "Conservative variant of the SPX call calendar. Lower delta (30 vs 40), wider DTE gap (9/12 vs 7/9), earlier entry time (2 PM vs 3 PM), max allocation $2K, AND exit when call tested at -20 delta. Slightly lower CAGR (51% vs 64%) but better max drawdown management."
+  },
+  "pnl_drivers": {
+    "max_profit": "Profit target 50% of debit (more conservative than 30% in 7/9 variant)",
+    "max_loss": "Net debit paid OR triggered at -20 delta test (whichever comes first)",
+    "primary_driver": "Theta differential \u00e2\u20ac\u201d 9 DTE decays faster than 12 DTE",
+    "secondary_driver": "OTM positioning (30\u00ce\u201d) means less gamma risk than 40\u00ce\u201d variant",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d 9 DTE decays faster than 12 DTE",
+      "vega": "slightly positive \u00e2\u20ac\u201d 12 DTE has marginally more vega",
+      "delta": "slightly positive \u00e2\u20ac\u201d 30\u00ce\u201d call selection, more OTM",
+      "gamma": "lower than 7/9 variant \u00e2\u20ac\u201d 30\u00ce\u201d has less gamma than 40\u00ce\u201d"
+    },
+    "backtest_metrics": {
+      "win_rate": "79.6%",
+      "cagr": "50.8%",
+      "max_drawdown": "-17.7%",
+      "mar_ratio": 2.9,
+      "avg_profit_per_lot": "$48",
+      "avg_winner": "$132/lot",
+      "avg_loser": "-$281/lot",
+      "max_winner": "$425/lot",
+      "max_loser": "-$513/lot",
+      "avg_days_in_trade": 5.7,
+      "total_trades": 152,
+      "winners": 121,
+      "total_premium": "$282,780",
+      "capture_rate": "18.6%",
+      "starting_capital": "$20,000",
+      "ending_capital": "$72,618",
+      "opening_fees": 1.25,
+      "closing_fees": 1.25
+    },
+    "exit_rules": {
+      "profit_target_pct": 50,
+      "call_tested_exit_delta": -20,
+      "cap_profits": true,
+      "require_two_prices": true,
+      "note": "Exit when call tested at -20 delta \u00e2\u20ac\u201d this risk management rule reduces max loser from $1,308 (7/9) to $513 (9/12)"
+    },
+    "ideal_scenario": "SPX stays below 30\u00ce\u201d strike. 9 DTE option decays, 12 DTE retains value. Close at 50% profit or exit if delta reaches -20. Avg 5.7 days in trade."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPX260227C5950",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPX260302C5950",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.3,
+        "gamma": 0.006,
+        "theta": 0.28,
+        "vega": -0.09,
+        "mid_price": 22.0,
+        "bid": 21.5,
+        "ask": 22.5
+      },
+      {
+        "delta": 0.3,
+        "gamma": 0.005,
+        "theta": -0.22,
+        "vega": 0.11,
+        "mid_price": 26.5,
+        "bid": 26.0,
+        "ask": 27.0
+      }
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_collar_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "collar",
+  "portfolio_name": "core_holdings",
+  "notes": "SPY collar: long 100 shares + long 580P + short 620C, Apr expiry",
+  "rationale": "Protect downside while capping upside, near zero-cost",
+  "confidence": 8,
+  "entry_conditions": {
+    "iv_rank_min": 20,
+    "market_outlook": [
+      "neutral",
+      "slightly_bullish"
+    ],
+    "dte_range": [
+      30,
+      60
+    ],
+    "requires": "stock_ownership",
+    "notes": "Collar: own 100 shares + buy OTM put (protection) + sell OTM call (pays for put). Zero-cost or low-cost protection. Enter when you want to protect holdings but not pay for full insurance. Caps both upside and downside."
+  },
+  "pnl_drivers": {
+    "max_profit": "Call strike - stock cost basis + net credit/debit from options",
+    "max_loss": "Stock cost basis - put strike + net debit (if any)",
+    "primary_driver": "Stock stays in range between put and call strikes",
+    "secondary_driver": "Net theta often near zero (short call theta offsets long put theta)",
+    "greeks_profile": {
+      "theta": "near zero \u00e2\u20ac\u201d short call decay offsets long put decay",
+      "vega": "near zero \u00e2\u20ac\u201d short call vega offsets long put vega",
+      "delta": "positive but reduced (stock ~100, put ~-20, call ~-30 = ~50 net delta)",
+      "gamma": "mixed \u00e2\u20ac\u201d long put positive gamma, short call negative gamma"
+    },
+    "ideal_scenario": "Stock stays between put (580) and call (620) strikes. Both options expire worthless. Keep shares, protection was free."
+  },
+  "legs": [
+    {
+      "streamer_symbol": "SPY",
+      "quantity": 100
+    },
+    {
+      "streamer_symbol": ".SPY260417P580",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".SPY260417C620",
+      "quantity": -1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 1.0,
+        "gamma": 0.0,
+        "theta": 0.0,
+        "vega": 0.0,
+        "mid_price": 600.0,
+        "bid": 599.9,
+        "ask": 600.1
+      },
+      {
+        "delta": -0.3,
+        "gamma": 0.005,
+        "theta": -0.12,
+        "vega": 0.18,
+        "mid_price": 5.8,
+        "bid": 5.7,
+        "ask": 5.9
+      },
+      {
+        "delta": -0.28,
+        "gamma": 0.005,
+        "theta": 0.06,
+        "vega": -0.17,
+        "mid_price": 5.5,
+        "bid": 5.4,
+        "ask": 5.6
+      }
+    ]
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/weekly_put_diagonal_qqq.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "_source": "OptionsKit Rolling Put Diagonal \u00e2\u20ac\u201d 88% win rate, 20.2% CAGR, $10K\u00e2\u2020\u2019$19.3K (May 2022 - Dec 2025)",
+  "underlying": "QQQ",
+  "strategy_type": "diagonal_spread",
+  "portfolio_name": "medium_risk",
+  "notes": "QQQ weekly rolling put diagonal: sell 50\u00ce\u201d put 7 DTE, buy put 10\u00ce\u201d lower 10 DTE. Every Friday at 1:30 PM.",
+  "rationale": "Proven weekly income strategy. 88% win rate over 83 trades. Avg $86/lot profit. Enter every Friday. Profit from theta differential between 7 and 10 DTE puts.",
+  "confidence": 8,
+  "entry_conditions": {
+    "iv_environment": "VIX minimum 16 \u00e2\u20ac\u201d need sufficient premium to sell",
+    "vix_min": 16,
+    "market_outlook": [
+      "neutral",
+      "slightly_bullish"
+    ],
+    "entry_day": "Every Friday",
+    "entry_time": "1:30 PM ET",
+    "frequency": "Weekly \u00e2\u20ac\u201d repeatable income trade",
+    "sell_leg": {
+      "option_type": "put",
+      "delta": 50,
+      "dte": 7,
+      "note": "Use exact DTE (7 days), sell ATM-ish put"
+    },
+    "buy_leg": {
+      "option_type": "put",
+      "delta_offset": -10,
+      "dte": 10,
+      "note": "Buy put 10 delta points lower than sell leg, 10 DTE (3 days more than short)"
+    },
+    "position_sizing": "Allocate 10% of portfolio per trade",
+    "strike_offset": "Use exact strike offsets (10 delta lower = roughly $10-15 lower on QQQ)",
+    "notes": "From OptionsKit backtest: QQQ rolling put diagonal. Open every Friday at 1:30 PM. Short leg 50\u00ce\u201d put 7 DTE, long leg -10\u00ce\u201d offset 10 DTE. VIX must be 16+. 88% win rate, $86 avg profit per lot. Cap profits, require two prices for profit target."
+  },
+  "pnl_drivers": {
+    "max_profit": "Profit target $1.50 per contract (cap profits early)",
+    "max_loss": "Net debit paid + strike width difference",
+    "primary_driver": "Theta differential \u00e2\u20ac\u201d 7 DTE decays faster than 10 DTE put",
+    "secondary_driver": "Put skew \u00e2\u20ac\u201d OTM puts typically have higher IV, benefiting the spread",
+    "greeks_profile": {
+      "theta": "positive \u00e2\u20ac\u201d short 7 DTE put decays faster than long 10 DTE put",
+      "vega": "slightly positive \u00e2\u20ac\u201d longer-dated leg has more vega",
+      "delta": "slightly negative (both puts, but short has higher delta)",
+      "gamma": "mixed \u00e2\u20ac\u201d short leg has higher gamma near expiry"
+    },
+    "backtest_metrics": {
+      "win_rate": "88%",
+      "cagr": "20.2%",
+      "max_drawdown": "-11.7%",
+      "mar_ratio": 1.7,
+      "avg_profit_per_lot": "$86",
+      "avg_winner": "$163/lot",
+      "avg_loser": "-$480/lot",
+      "max_winner": "$280/lot",
+      "max_loser": "-$688/lot",
+      "avg_days_in_trade": 4.8,
+      "total_trades": 83,
+      "winners": 73,
+      "capture_rate": "33.6%",
+      "starting_capital": "$10,000",
+      "ending_capital": "$19,327"
+    },
+    "exit_rules": {
+      "profit_target": "$1.50 per contract",
+      "require_two_prices": true,
+      "cap_profits": true
+    },
+    "ideal_scenario": "QQQ stays flat or rises slightly over the week. Short 7 DTE put decays to zero, long 10 DTE retains some value. Close at $1.50 profit. Repeat next Friday."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".QQQ260227P510",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".QQQ260302P500",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.5,
+        "gamma": 0.012,
+        "theta": 0.25,
+        "vega": -0.1,
+        "mid_price": 8.5,
+        "bid": 8.4,
+        "ask": 8.6
+      },
+      {
+        "delta": 0.4,
+        "gamma": 0.01,
+        "theta": -0.18,
+        "vega": 0.13,
+        "mid_price": 10.2,
+        "bid": 10.1,
+        "ask": 10.3
+      }
+    ]
+  }
+}

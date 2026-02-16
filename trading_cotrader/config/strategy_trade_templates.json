@@ -1,0 +1,413 @@
+{
+  "_comment": "Trade templates for ALL 18 strategy types. Use with: python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/strategy_trade_templates.json --no-broker --index 0",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (e.g. .SPY260417P580 = SPY Put, strike 580, expiry 2026-04-17)",
+  "_quantity": "positive = buy (long), negative = sell (short)",
+  "_underlying": "SPY ~$600. All use April 17, 2026 expiry (~60 DTE) unless noted.",
+  "_manual_greeks": "Included on every template so --no-broker works. Remove manual_greeks to fetch live from DXLink.",
+
+  "strategies": [
+
+    {
+      "_index": 0,
+      "_name": "Single — Long Put (directional bearish)",
+      "underlying": "SPY",
+      "strategy_type": "single",
+      "portfolio_name": "high_risk",
+      "notes": "SPY long put, 580 strike, Apr expiry",
+      "rationale": "Bearish directional bet on SPY pullback",
+      "confidence": 6,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P580", "quantity": 1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": -0.30, "gamma": 0.005, "theta": -0.12, "vega": 0.18, "mid_price": 5.80, "bid": 5.70, "ask": 5.90 }
+        ]
+      }
+    },
+
+    {
+      "_index": 1,
+      "_name": "Vertical Spread — Bull Put Credit Spread",
+      "underlying": "SPY",
+      "strategy_type": "vertical_spread",
+      "portfolio_name": "medium_risk",
+      "notes": "SPY bull put spread 580/570, Apr expiry",
+      "rationale": "Selling premium below support, defined risk",
+      "confidence": 7,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P580", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417P570", "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": -0.30, "gamma": 0.005, "theta": 0.06, "vega": -0.18, "mid_price": 5.80, "bid": 5.70, "ask": 5.90 },
+          { "delta":  0.20, "gamma": 0.004, "theta": -0.04, "vega":  0.15, "mid_price": 3.40, "bid": 3.30, "ask": 3.50 }
+        ]
+      }
+    },
+
+    {
+      "_index": 2,
+      "_name": "Iron Condor — Neutral premium selling",
+      "underlying": "SPY",
+      "strategy_type": "iron_condor",
+      "portfolio_name": "high_risk",
+      "notes": "SPY iron condor 570/580/620/630, Apr expiry",
+      "rationale": "High IV rank, selling premium in range-bound market",
+      "confidence": 8,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P570", "quantity":  1 },
+        { "streamer_symbol": ".SPY260417P580", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417C620", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417C630", "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta":  0.20, "gamma": 0.004, "theta": -0.04, "vega":  0.15, "mid_price": 3.40, "bid": 3.30, "ask": 3.50 },
+          { "delta": -0.30, "gamma": 0.005, "theta":  0.06, "vega": -0.18, "mid_price": 5.80, "bid": 5.70, "ask": 5.90 },
+          { "delta": -0.28, "gamma": 0.005, "theta":  0.06, "vega": -0.17, "mid_price": 5.50, "bid": 5.40, "ask": 5.60 },
+          { "delta":  0.18, "gamma": 0.004, "theta": -0.03, "vega":  0.14, "mid_price": 3.10, "bid": 3.00, "ask": 3.20 }
+        ]
+      }
+    },
+
+    {
+      "_index": 3,
+      "_name": "Iron Butterfly — ATM short straddle with wings",
+      "underlying": "SPY",
+      "strategy_type": "iron_butterfly",
+      "portfolio_name": "high_risk",
+      "notes": "SPY iron butterfly 590/600/600/610, Apr expiry",
+      "rationale": "Max premium collection, expecting pin at 600",
+      "confidence": 6,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P590", "quantity":  1 },
+        { "streamer_symbol": ".SPY260417P600", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417C600", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417C610", "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta":  0.25, "gamma": 0.004, "theta": -0.05, "vega":  0.16, "mid_price": 4.50, "bid": 4.40, "ask": 4.60 },
+          { "delta": -0.48, "gamma": 0.006, "theta":  0.10, "vega": -0.22, "mid_price": 9.20, "bid": 9.10, "ask": 9.30 },
+          { "delta": -0.52, "gamma": 0.006, "theta":  0.10, "vega": -0.22, "mid_price": 9.80, "bid": 9.70, "ask": 9.90 },
+          { "delta":  0.28, "gamma": 0.005, "theta": -0.05, "vega":  0.17, "mid_price": 5.00, "bid": 4.90, "ask": 5.10 }
+        ]
+      }
+    },
+
+    {
+      "_index": 4,
+      "_name": "Straddle — Short ATM straddle (undefined risk)",
+      "underlying": "SPY",
+      "strategy_type": "straddle",
+      "portfolio_name": "high_risk",
+      "notes": "SPY short straddle 600, Apr expiry",
+      "rationale": "Elevated IV, expecting low realized vol through expiry",
+      "confidence": 5,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P600", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417C600", "quantity": -1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": -0.48, "gamma": 0.006, "theta": 0.10, "vega": -0.22, "mid_price": 9.20, "bid": 9.10, "ask": 9.30 },
+          { "delta": -0.52, "gamma": 0.006, "theta": 0.10, "vega": -0.22, "mid_price": 9.80, "bid": 9.70, "ask": 9.90 }
+        ]
+      }
+    },
+
+    {
+      "_index": 5,
+      "_name": "Strangle — Short OTM strangle (undefined risk)",
+      "underlying": "SPY",
+      "strategy_type": "strangle",
+      "portfolio_name": "high_risk",
+      "notes": "SPY short strangle 580/620, Apr expiry",
+      "rationale": "Wide strikes, high probability of profit",
+      "confidence": 7,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P580", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417C620", "quantity": -1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": -0.30, "gamma": 0.005, "theta": 0.06, "vega": -0.18, "mid_price": 5.80, "bid": 5.70, "ask": 5.90 },
+          { "delta": -0.28, "gamma": 0.005, "theta": 0.06, "vega": -0.17, "mid_price": 5.50, "bid": 5.40, "ask": 5.60 }
+        ]
+      }
+    },
+
+    {
+      "_index": 6,
+      "_name": "Butterfly — Long put butterfly (defined risk)",
+      "underlying": "SPY",
+      "strategy_type": "butterfly",
+      "portfolio_name": "high_risk",
+      "notes": "SPY put butterfly 590/600/610, Apr expiry",
+      "rationale": "Low cost, max profit if SPY pins at 600",
+      "confidence": 5,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P590", "quantity":  1 },
+        { "streamer_symbol": ".SPY260417P600", "quantity": -2 },
+        { "streamer_symbol": ".SPY260417P610", "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta":  0.25, "gamma": 0.004, "theta": -0.05, "vega":  0.16, "mid_price": 4.50, "bid": 4.40, "ask": 4.60 },
+          { "delta": -0.48, "gamma": 0.006, "theta":  0.10, "vega": -0.22, "mid_price": 9.20, "bid": 9.10, "ask": 9.30 },
+          { "delta":  0.35, "gamma": 0.005, "theta": -0.07, "vega":  0.19, "mid_price": 7.00, "bid": 6.90, "ask": 7.10 }
+        ]
+      }
+    },
+
+    {
+      "_index": 7,
+      "_name": "Condor — Long put condor (defined risk, wider profit zone)",
+      "underlying": "SPY",
+      "strategy_type": "condor",
+      "portfolio_name": "high_risk",
+      "notes": "SPY put condor 580/590/610/620, Apr expiry",
+      "rationale": "Wider profit zone than butterfly, still defined risk",
+      "confidence": 6,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P580", "quantity":  1 },
+        { "streamer_symbol": ".SPY260417P590", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417P610", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417P620", "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta":  0.20, "gamma": 0.004, "theta": -0.04, "vega":  0.15, "mid_price": 3.40, "bid": 3.30, "ask": 3.50 },
+          { "delta": -0.25, "gamma": 0.004, "theta":  0.05, "vega": -0.16, "mid_price": 4.50, "bid": 4.40, "ask": 4.60 },
+          { "delta": -0.35, "gamma": 0.005, "theta":  0.07, "vega": -0.19, "mid_price": 7.00, "bid": 6.90, "ask": 7.10 },
+          { "delta":  0.30, "gamma": 0.005, "theta": -0.06, "vega":  0.18, "mid_price": 5.80, "bid": 5.70, "ask": 5.90 }
+        ]
+      }
+    },
+
+    {
+      "_index": 8,
+      "_name": "Jade Lizard — Short put + bear call spread (mixed risk)",
+      "underlying": "SPY",
+      "strategy_type": "jade_lizard",
+      "portfolio_name": "model_portfolio",
+      "notes": "SPY jade lizard: short 580P + short 620/630 call spread, Apr expiry",
+      "rationale": "Bullish bias, credit exceeds call spread width = no upside risk",
+      "confidence": 7,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P580", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417C620", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417C630", "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": -0.30, "gamma": 0.005, "theta": 0.06, "vega": -0.18, "mid_price": 5.80, "bid": 5.70, "ask": 5.90 },
+          { "delta": -0.28, "gamma": 0.005, "theta": 0.06, "vega": -0.17, "mid_price": 5.50, "bid": 5.40, "ask": 5.60 },
+          { "delta":  0.18, "gamma": 0.004, "theta": -0.03, "vega":  0.14, "mid_price": 3.10, "bid": 3.00, "ask": 3.20 }
+        ]
+      }
+    },
+
+    {
+      "_index": 9,
+      "_name": "Big Lizard — Short straddle + long OTM call (undefined risk)",
+      "underlying": "SPY",
+      "strategy_type": "big_lizard",
+      "portfolio_name": "model_portfolio",
+      "notes": "SPY big lizard: short 600 straddle + long 620C, Apr expiry",
+      "rationale": "High premium with upside protection, undefined downside risk",
+      "confidence": 5,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P600", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417C600", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417C620", "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": -0.48, "gamma": 0.006, "theta": 0.10, "vega": -0.22, "mid_price": 9.20, "bid": 9.10, "ask": 9.30 },
+          { "delta": -0.52, "gamma": 0.006, "theta": 0.10, "vega": -0.22, "mid_price": 9.80, "bid": 9.70, "ask": 9.90 },
+          { "delta":  0.28, "gamma": 0.005, "theta": -0.05, "vega":  0.17, "mid_price": 5.50, "bid": 5.40, "ask": 5.60 }
+        ]
+      }
+    },
+
+    {
+      "_index": 10,
+      "_name": "Ratio Spread — 1x2 put ratio (undefined risk)",
+      "underlying": "SPY",
+      "strategy_type": "ratio_spread",
+      "portfolio_name": "model_portfolio",
+      "notes": "SPY 1x2 put ratio: long 1x 600P, short 2x 590P, Apr expiry",
+      "rationale": "Free or credit spread, profits from moderate decline",
+      "confidence": 5,
+      "legs": [
+        { "streamer_symbol": ".SPY260417P600", "quantity":  1 },
+        { "streamer_symbol": ".SPY260417P590", "quantity": -2 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": -0.48, "gamma": 0.006, "theta": -0.10, "vega": 0.22, "mid_price": 9.20, "bid": 9.10, "ask": 9.30 },
+          { "delta":  0.25, "gamma": 0.004, "theta":  0.05, "vega": -0.16, "mid_price": 4.50, "bid": 4.40, "ask": 4.60 }
+        ]
+      }
+    },
+
+    {
+      "_index": 11,
+      "_name": "Calendar Spread — Same strike, different expirations",
+      "underlying": "SPY",
+      "strategy_type": "calendar_spread",
+      "portfolio_name": "medium_risk",
+      "notes": "SPY put calendar: short Mar 600P, long Apr 600P",
+      "rationale": "Sell near-term theta, benefit from IV expansion in back month",
+      "confidence": 6,
+      "legs": [
+        { "streamer_symbol": ".SPY260320P600", "quantity": -1 },
+        { "streamer_symbol": ".SPY260417P600", "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": -0.50, "gamma": 0.008, "theta":  0.15, "vega": -0.15, "mid_price": 7.00, "bid": 6.90, "ask": 7.10 },
+          { "delta": -0.48, "gamma": 0.006, "theta": -0.10, "vega":  0.22, "mid_price": 9.20, "bid": 9.10, "ask": 9.30 }
+        ]
+      }
+    },
+
+    {
+      "_index": 12,
+      "_name": "Calendar Double Spread — Weekly, two calendars at different strikes",
+      "underlying": "SPY",
+      "strategy_type": "calendar_double_spread",
+      "portfolio_name": "medium_risk",
+      "notes": "SPY weekly double calendar: 585P + 615C, short Feb 20 / long Feb 27",
+      "rationale": "Weekly income, neutral bias, profit from front-month theta decay",
+      "confidence": 7,
+      "legs": [
+        { "streamer_symbol": ".SPY260220P585", "quantity": -1 },
+        { "streamer_symbol": ".SPY260227P585", "quantity":  1 },
+        { "streamer_symbol": ".SPY260220C615", "quantity": -1 },
+        { "streamer_symbol": ".SPY260227C615", "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": -0.35, "gamma": 0.010, "theta":  0.15, "vega": -0.08, "mid_price": 2.80, "bid": 2.70, "ask": 2.90 },
+          { "delta": -0.33, "gamma": 0.008, "theta": -0.10, "vega":  0.12, "mid_price": 3.90, "bid": 3.80, "ask": 4.00 },
+          { "delta": -0.32, "gamma": 0.010, "theta":  0.14, "vega": -0.08, "mid_price": 2.60, "bid": 2.50, "ask": 2.70 },
+          { "delta": -0.30, "gamma": 0.008, "theta": -0.09, "vega":  0.11, "mid_price": 3.70, "bid": 3.60, "ask": 3.80 }
+        ]
+      }
+    },
+
+    {
+      "_index": 13,
+      "_name": "Diagonal Spread — PMCC (Poor Man's Covered Call)",
+      "underlying": "SPY",
+      "strategy_type": "diagonal_spread",
+      "portfolio_name": "medium_risk",
+      "notes": "SPY PMCC: long deep ITM Jun 560C, short OTM Apr 620C",
+      "rationale": "Bullish, leveraged covered call without owning shares",
+      "confidence": 7,
+      "legs": [
+        { "streamer_symbol": ".SPY260619C560", "quantity":  1 },
+        { "streamer_symbol": ".SPY260417C620", "quantity": -1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta":  0.80, "gamma": 0.003, "theta": -0.05, "vega": 0.25, "mid_price": 48.00, "bid": 47.80, "ask": 48.20 },
+          { "delta": -0.28, "gamma": 0.005, "theta":  0.06, "vega": -0.17, "mid_price": 5.50, "bid": 5.40, "ask": 5.60 }
+        ]
+      }
+    },
+
+    {
+      "_index": 14,
+      "_name": "Covered Call — Long stock + short call",
+      "underlying": "SPY",
+      "strategy_type": "covered_call",
+      "portfolio_name": "core_holdings",
+      "notes": "SPY covered call: long 100 shares + short 620C Apr expiry",
+      "rationale": "Income on existing SPY position, willing to sell at 620",
+      "confidence": 8,
+      "legs": [
+        { "streamer_symbol": "SPY",             "quantity": 100 },
+        { "streamer_symbol": ".SPY260417C620",  "quantity": -1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": 1.00, "gamma": 0.0, "theta": 0.0, "vega": 0.0, "mid_price": 600.00, "bid": 599.90, "ask": 600.10 },
+          { "delta": -0.28, "gamma": 0.005, "theta": 0.06, "vega": -0.17, "mid_price": 5.50, "bid": 5.40, "ask": 5.60 }
+        ]
+      }
+    },
+
+    {
+      "_index": 15,
+      "_name": "Protective Put — Long stock + long put (insurance)",
+      "underlying": "SPY",
+      "strategy_type": "protective_put",
+      "portfolio_name": "core_holdings",
+      "notes": "SPY protective put: long 100 shares + long 580P Apr expiry",
+      "rationale": "Protect SPY holding against >3% decline",
+      "confidence": 7,
+      "legs": [
+        { "streamer_symbol": "SPY",             "quantity": 100 },
+        { "streamer_symbol": ".SPY260417P580",  "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": 1.00, "gamma": 0.0, "theta": 0.0, "vega": 0.0, "mid_price": 600.00, "bid": 599.90, "ask": 600.10 },
+          { "delta": -0.30, "gamma": 0.005, "theta": -0.12, "vega": 0.18, "mid_price": 5.80, "bid": 5.70, "ask": 5.90 }
+        ]
+      }
+    },
+
+    {
+      "_index": 16,
+      "_name": "Collar — Long stock + long put + short call",
+      "underlying": "SPY",
+      "strategy_type": "collar",
+      "portfolio_name": "core_holdings",
+      "notes": "SPY collar: long 100 shares + long 580P + short 620C, Apr expiry",
+      "rationale": "Protect downside while capping upside, near zero-cost",
+      "confidence": 8,
+      "legs": [
+        { "streamer_symbol": "SPY",             "quantity": 100 },
+        { "streamer_symbol": ".SPY260417P580",  "quantity":  1 },
+        { "streamer_symbol": ".SPY260417C620",  "quantity": -1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta": 1.00, "gamma": 0.0, "theta": 0.0, "vega": 0.0, "mid_price": 600.00, "bid": 599.90, "ask": 600.10 },
+          { "delta": -0.30, "gamma": 0.005, "theta": -0.12, "vega": 0.18, "mid_price": 5.80, "bid": 5.70, "ask": 5.90 },
+          { "delta": -0.28, "gamma": 0.005, "theta": 0.06, "vega": -0.17, "mid_price": 5.50, "bid": 5.40, "ask": 5.60 }
+        ]
+      }
+    },
+
+    {
+      "_index": 17,
+      "_name": "Custom — User-defined multi-leg",
+      "underlying": "SPY",
+      "strategy_type": "custom",
+      "portfolio_name": "model_portfolio",
+      "notes": "Custom SPY combo: long 600C + short 2x 620C + long 580P (skewed risk reversal + ratio)",
+      "rationale": "Custom structure for specific market view — training data",
+      "confidence": 4,
+      "legs": [
+        { "streamer_symbol": ".SPY260417C600", "quantity":  1 },
+        { "streamer_symbol": ".SPY260417C620", "quantity": -2 },
+        { "streamer_symbol": ".SPY260417P580", "quantity":  1 }
+      ],
+      "manual_greeks": {
+        "legs": [
+          { "delta":  0.52, "gamma": 0.006, "theta": -0.10, "vega":  0.22, "mid_price": 9.80, "bid": 9.70, "ask": 9.90 },
+          { "delta": -0.28, "gamma": 0.005, "theta":  0.06, "vega": -0.17, "mid_price": 5.50, "bid": 5.40, "ask": 5.60 },
+          { "delta": -0.30, "gamma": 0.005, "theta": -0.12, "vega":  0.18, "mid_price": 5.80, "bid": 5.70, "ask": 5.90 }
+        ]
+      }
+    }
+
+  ]
+}

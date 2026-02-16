@@ -1,0 +1,81 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_big_lizard_spy.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "underlying": "SPY",
+  "strategy_type": "big_lizard",
+  "portfolio_name": "model_portfolio",
+  "notes": "SPY big lizard: short 600 straddle + long 620C, Apr expiry",
+  "rationale": "High premium with upside protection, undefined downside risk",
+  "confidence": 5,
+  "entry_conditions": {
+    "iv_rank_min": 40,
+    "market_outlook": [
+      "neutral",
+      "slightly_bullish"
+    ],
+    "dte_range": [
+      30,
+      45
+    ],
+    "requires": "undefined_risk_approval",
+    "notes": "Big lizard: short straddle + long OTM call for upside protection. Collects straddle premium but caps upside risk. Downside remains undefined. Best in high IV when you want straddle income with upside hedge."
+  },
+  "pnl_drivers": {
+    "max_profit": "Net credit received (premium from straddle minus call cost)",
+    "max_loss": "Downside: UNDEFINED (short put strike - net credit, theoretically to zero). Upside: capped by long call",
+    "primary_driver": "Theta decay from short straddle",
+    "secondary_driver": "IV crush \u00e2\u20ac\u201d short vega from straddle dominates",
+    "greeks_profile": {
+      "theta": "strongly positive \u00e2\u20ac\u201d short straddle provides max theta",
+      "vega": "negative \u00e2\u20ac\u201d short straddle vega dominates long call vega",
+      "delta": "slightly positive (long call offsets some short call delta)",
+      "gamma": "negative on downside (UNDEFINED), reduced on upside (long call)"
+    },
+    "ideal_scenario": "Stock pins at ATM strike. Straddle decays to zero. Long call expires worthless (small cost). Keep full straddle premium."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".SPY260417P600",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417C600",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".SPY260417C620",
+      "quantity": 1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": -0.48,
+        "gamma": 0.006,
+        "theta": 0.1,
+        "vega": -0.22,
+        "mid_price": 9.2,
+        "bid": 9.1,
+        "ask": 9.3
+      },
+      {
+        "delta": -0.52,
+        "gamma": 0.006,
+        "theta": 0.1,
+        "vega": -0.22,
+        "mid_price": 9.8,
+        "bid": 9.7,
+        "ask": 9.9
+      },
+      {
+        "delta": 0.28,
+        "gamma": 0.005,
+        "theta": -0.05,
+        "vega": 0.17,
+        "mid_price": 5.5,
+        "bid": 5.4,
+        "ask": 5.6
+      }
+    ]
+  }
+}
