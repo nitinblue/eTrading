@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 16, 2026 (session 16, continued)
+# Last Updated: February 16, 2026 (session 18)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -43,7 +43,7 @@ but most definitely System needs to be smart enough to continously improve the p
 | 4 | **Capital deployment accountability** — Track deployed vs idle capital per portfolio. Days since last trade. Recs ignored. Time-to-decision. | AccountabilityAgent queries DecisionLogORM + TradeORM. Writes accountability_metrics to context. | DONE (s13) |
 | 5 | **Trade plan compliance** — Every execution compared to template. Deviations flagged: wrong strikes, wrong DTE, wrong timing, wrong portfolio, skipped entry conditions. "Did you follow the playbook?" metric. Source comparison: system recs vs manual overrides, with performance tracking on both. | Monthly compliance report: "87% of trades followed template. Manual overrides underperformed system recs by 12%." | NOT STARTED |
 | 6 | **Workflow scheduling** — Calendar-aware via exchange_calendars (NYSE holidays). FOMC dates in YAML. Cadences: 0DTE daily, weekly Wed/Fri, monthly by DTE window. APScheduler for continuous mode. | CalendarAgent + WorkflowScheduler. Morning boot 9:25, monitoring every 30 min, EOD 3:30, report 4:15 ET. | DONE (s13) |
-| 7 | **WhatIf → Order conversion** — Paper mode default. ExecutorAgent books via RecommendationService.accept_recommendation(). | `--paper` mode (default). `--live` flag exists but double-confirmation not yet implemented. | PARTIAL (s13) |
+| 7 | **WhatIf → Order conversion** — Pick WhatIf trade, dry-run preview with margin/fees, confirm to place LIMIT order on TastyTrade. Auto-fill detection. | CLI: `execute <trade_id>` (preview) → `execute <trade_id> --confirm` (place). Web: `POST /api/execute/{id}`. `orders` polls fill status. | DONE (s18) |
 | 8 | **Daily/weekly reporting** — ReporterAgent generates structured reports: trades, P&L, portfolio snapshot, pending decisions, risk, calendar. | ReporterAgent → daily_report in context → NotifierAgent sends. Weekly digest framework built. | DONE (s13) |
 | 9 | **Circuit breakers & trading halts** — GuardianAgent checks: daily loss (3%), weekly loss (5%), VIX>35, per-portfolio drawdown, consecutive losses. Override requires written rationale. All thresholds from YAML. | GuardianAgent tested: breakers trip correctly, override denied without rationale, granted with it. | DONE (s13) |
 | 10 | **Rule-based trading constraints** — Max trades/day (3), max/week/portfolio (5), no first 15 min, no last 30 min, undefined risk approval, no adding to losers without rationale. All in workflow_rules.yaml. | GuardianAgent.check_trading_constraints() enforced before every execution. | DONE (s13) |
@@ -92,7 +92,18 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 
 ## [CLAUDE OWNS] WHAT USER CAN DO TODAY
 
-**Web Approval Dashboard (NEW — Session 17):**
+**Live Order Execution (NEW — Session 18):**
+- `execute <trade_id>` — dry-run preview of a WhatIf trade: legs, mid-price, margin impact, fees, Greeks
+- `execute <trade_id> --confirm` — place the real LIMIT order on TastyTrade
+- `orders` — poll live/recent order status, auto-update filled trades to EXECUTED
+- Web API: `POST /api/execute/{id}` (with `{"confirm": false}` or `{"confirm": true}`), `GET /api/orders`
+- Config: `execution_defaults` in `workflow_rules.yaml` — order_type, time_in_force, price_strategy, allowed_brokers
+- Price calculated as bid-ask midpoint from live quotes via DXLink
+- 2-step confirmation: preview stores state in `engine.context['pending_execution']`, confirm reads it
+- All TastyTrade SDK order imports confined to `adapters/tastytrade_adapter.py`
+- Adapter ABC: `place_order()`, `get_order()`, `get_live_orders()` — ManualBrokerAdapter/ReadOnlyAdapter raise NotImplementedError
+
+**Web Approval Dashboard (Session 17):**
 - `python -m trading_cotrader.runners.run_workflow --web --port 8080` — starts dashboard embedded in workflow engine
 - Dashboard at `http://localhost:8080` — dark theme, auto-refresh every 15s, approve/reject/defer from browser
 - Both CLI and web work simultaneously (same process, same `handle_user_intent()` code path)
@@ -204,7 +215,7 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 **Blocked / Not Yet Working:**
 - AI/ML model training not wired (need data first — 100+ closed trades)
 - AI/ML recommendations not integrated into workflow (need trained models)
-- Live broker order execution (paper mode only — `--live` needs double-confirmation UI)
+- Live order execution for non-TastyTrade brokers (Fidelity/Zerodha/Stallion)
 - Trade plan compliance tracking (template comparison, deviation flagging)
 - Email notifications (framework built, SMTP not configured)
 - Liquidity check on entry screeners not yet wired (exit-side only)
@@ -234,7 +245,7 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 | **Execution** | `agents/execution/executor.py`, `agents/execution/broker_router.py` (per-broker routing), `agents/execution/notifier.py`, `agents/execution/reporter.py` |
 | **Decision** | `agents/decision/interaction.py` (InteractionManager — routes user commands) |
 | **Learning** | `agents/learning/accountability.py` (decision tracking), `agents/learning/session_objectives.py` (agent self-assessment), `agents/learning/qa_agent.py` (daily QA assessment) |
-| **Workflow Config** | `config/workflow_rules.yaml`, `config/workflow_config_loader.py` |
+| **Workflow Config** | `config/workflow_rules.yaml` (incl. `execution_defaults`), `config/workflow_config_loader.py` (`ExecutionConfig`) |
 | **Broker Adapters** | `adapters/base.py` (BrokerAdapterBase ABC, ManualBrokerAdapter, ReadOnlyAdapter), `adapters/factory.py` (BrokerAdapterFactory), `adapters/tastytrade_adapter.py` (TastyTrade SDK — all `tastytrade` imports confined here) |
 | **Broker Config** | `config/brokers.yaml` (4 brokers), `config/broker_config_loader.py` (BrokerRegistry) |
 | **Containers** | `containers/portfolio_bundle.py` (per-portfolio bundle), `containers/container_manager.py` (Dict[str, PortfolioBundle]), `containers/portfolio_container.py`, `containers/position_container.py` |
@@ -333,6 +344,11 @@ python -m trading_cotrader.cli.load_stallion --dry-run                         #
 
 # Web dashboard (embedded in workflow)
 # python -m trading_cotrader.runners.run_workflow --web --port 8080 --no-broker --mock
+
+# Live order execution (within workflow CLI):
+#   execute <trade_id>           # dry-run preview
+#   execute <trade_id> --confirm # place real order
+#   orders                       # check fill status
 ```
 
 ### Critical runtime notes

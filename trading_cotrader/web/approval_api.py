@@ -47,6 +47,10 @@ class ResumeBody(BaseModel):
     rationale: str
 
 
+class ExecuteBody(BaseModel):
+    confirm: bool = False
+
+
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
@@ -119,6 +123,196 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
             logger.warning(f"Could not load portfolio names: {e}")
             return {"portfolios": []}
 
+    @app.get("/api/portfolios/detail")
+    async def get_portfolios_detail():
+        """Full portfolio data: capital, Greeks, P&L."""
+        from trading_cotrader.core.database.schema import PortfolioORM
+        with session_scope() as session:
+            portfolios = (
+                session.query(PortfolioORM)
+                .filter(PortfolioORM.portfolio_type != 'deprecated')
+                .order_by(PortfolioORM.name)
+                .all()
+            )
+            return [
+                {
+                    "id": p.id, "name": p.name,
+                    "broker": p.broker, "portfolio_type": p.portfolio_type,
+                    "initial_capital": float(p.initial_capital or 0),
+                    "total_equity": float(p.total_equity or 0),
+                    "cash_balance": float(p.cash_balance or 0),
+                    "buying_power": float(p.buying_power or 0),
+                    "total_pnl": float(p.total_pnl or 0),
+                    "daily_pnl": float(p.daily_pnl or 0),
+                    "portfolio_delta": float(p.portfolio_delta or 0),
+                    "portfolio_gamma": float(p.portfolio_gamma or 0),
+                    "portfolio_theta": float(p.portfolio_theta or 0),
+                    "portfolio_vega": float(p.portfolio_vega or 0),
+                    "max_portfolio_delta": float(p.max_portfolio_delta or 500),
+                    "max_portfolio_gamma": float(p.max_portfolio_gamma or 50),
+                    "min_portfolio_theta": float(p.min_portfolio_theta or -500),
+                    "max_portfolio_vega": float(p.max_portfolio_vega or 1000),
+                    "var_1d_95": float(p.var_1d_95 or 0),
+                    "var_1d_99": float(p.var_1d_99 or 0),
+                }
+                for p in portfolios
+            ]
+
+    @app.get("/api/positions")
+    async def get_positions():
+        """Open trades with Greeks."""
+        from trading_cotrader.core.database.schema import TradeORM
+        with session_scope() as session:
+            trades = (
+                session.query(TradeORM)
+                .filter(TradeORM.is_open == True)
+                .order_by(TradeORM.underlying_symbol)
+                .all()
+            )
+            return [
+                {
+                    "id": t.id, "underlying": t.underlying_symbol,
+                    "strategy_type": t.strategy.strategy_type if t.strategy else None,
+                    "trade_status": t.trade_status,
+                    "entry_price": float(t.entry_price) if t.entry_price else None,
+                    "current_price": float(t.current_price) if t.current_price else None,
+                    "total_pnl": float(t.total_pnl or 0),
+                    "current_delta": float(t.current_delta or 0),
+                    "current_gamma": float(t.current_gamma or 0),
+                    "current_theta": float(t.current_theta or 0),
+                    "current_vega": float(t.current_vega or 0),
+                    "trade_source": t.trade_source,
+                    "opened_at": t.opened_at.isoformat() if t.opened_at else None,
+                }
+                for t in trades
+            ]
+
+    @app.get("/api/greeks")
+    async def get_greeks():
+        """Portfolio Greeks with limits."""
+        from trading_cotrader.core.database.schema import PortfolioORM
+        with session_scope() as session:
+            portfolios = (
+                session.query(PortfolioORM)
+                .filter(PortfolioORM.portfolio_type != 'deprecated')
+                .order_by(PortfolioORM.name)
+                .all()
+            )
+            return [
+                {
+                    "name": p.name,
+                    "delta": float(p.portfolio_delta or 0),
+                    "gamma": float(p.portfolio_gamma or 0),
+                    "theta": float(p.portfolio_theta or 0),
+                    "vega": float(p.portfolio_vega or 0),
+                    "max_delta": float(p.max_portfolio_delta or 500),
+                    "max_gamma": float(p.max_portfolio_gamma or 50),
+                    "min_theta": float(p.min_portfolio_theta or -500),
+                    "max_vega": float(p.max_portfolio_vega or 1000),
+                    "delta_pct": abs(float(p.portfolio_delta or 0)) / float(p.max_portfolio_delta or 500) * 100
+                        if float(p.max_portfolio_delta or 500) else 0,
+                    "gamma_pct": abs(float(p.portfolio_gamma or 0)) / float(p.max_portfolio_gamma or 50) * 100
+                        if float(p.max_portfolio_gamma or 50) else 0,
+                    "theta_pct": abs(float(p.portfolio_theta or 0)) / abs(float(p.min_portfolio_theta or -500)) * 100
+                        if float(p.min_portfolio_theta or -500) else 0,
+                    "vega_pct": abs(float(p.portfolio_vega or 0)) / float(p.max_portfolio_vega or 1000) * 100
+                        if float(p.max_portfolio_vega or 1000) else 0,
+                }
+                for p in portfolios
+            ]
+
+    @app.get("/api/capital")
+    async def get_capital():
+        """Capital utilization per portfolio."""
+        from trading_cotrader.core.database.schema import PortfolioORM
+        ctx_capital = engine.context.get('capital_utilization', {})
+        ctx_portfolios = ctx_capital.get('portfolios', {})
+
+        with session_scope() as session:
+            portfolios = (
+                session.query(PortfolioORM)
+                .filter(PortfolioORM.portfolio_type.in_(['real', 'paper']))
+                .order_by(PortfolioORM.name)
+                .all()
+            )
+            result = []
+            for p in portfolios:
+                equity = float(p.total_equity or 0)
+                cash = float(p.cash_balance or 0)
+                deployed_pct = ((equity - cash) / equity * 100) if equity else 0
+                row = {
+                    "name": p.name,
+                    "initial_capital": float(p.initial_capital or 0),
+                    "total_equity": equity,
+                    "cash_balance": cash,
+                    "deployed_pct": round(deployed_pct, 1),
+                    "idle_capital": cash,
+                    "severity": "—",
+                }
+                pdata = ctx_portfolios.get(p.name, {})
+                if pdata:
+                    row["severity"] = pdata.get("severity", "—")
+                    if pdata.get("opp_cost_daily") is not None:
+                        row["opp_cost_daily"] = float(pdata["opp_cost_daily"])
+                result.append(row)
+            return result
+
+    @app.get("/api/trades/today")
+    async def get_trades_today():
+        """Today's trades."""
+        from trading_cotrader.core.database.schema import TradeORM
+        from datetime import date as date_cls
+        today_start = datetime.combine(date_cls.today(), datetime.min.time())
+
+        with session_scope() as session:
+            trades = (
+                session.query(TradeORM)
+                .filter(TradeORM.created_at >= today_start)
+                .order_by(TradeORM.created_at.desc())
+                .all()
+            )
+            return [
+                {
+                    "id": t.id, "underlying": t.underlying_symbol,
+                    "strategy_type": t.strategy.strategy_type if t.strategy else None,
+                    "trade_status": t.trade_status,
+                    "trade_source": t.trade_source,
+                    "entry_price": float(t.entry_price) if t.entry_price else None,
+                    "total_pnl": float(t.total_pnl or 0),
+                    "created_at": t.created_at.isoformat() if t.created_at else None,
+                }
+                for t in trades
+            ]
+
+    @app.get("/api/risk")
+    async def get_risk():
+        """VaR, macro, circuit breakers."""
+        ctx = engine.context
+        risk = ctx.get('risk_snapshot', {})
+        macro = ctx.get('macro_assessment', {})
+        guardian = ctx.get('guardian_status', {})
+
+        return {
+            "var": {
+                "var_95": risk.get('var_95'),
+                "var_99": risk.get('var_99'),
+                "expected_shortfall_95": risk.get('expected_shortfall_95'),
+            },
+            "macro": {
+                "regime": macro.get('regime'),
+                "vix": ctx.get('vix'),
+                "confidence": macro.get('confidence'),
+                "rationale": macro.get('rationale', '')[:120],
+            },
+            "circuit_breakers": guardian.get('circuit_breakers', {}),
+            "trading_constraints": {
+                "trades_today": ctx.get('trades_today_count', 0),
+                "max_trades_per_day": 3,
+                "halted": bool(ctx.get('halt_reason')),
+                "halt_reason": ctx.get('halt_reason'),
+            },
+        }
+
     # ------------------------------------------------------------------
     # Action endpoints
     # ------------------------------------------------------------------
@@ -169,5 +363,44 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
         intent = UserIntent(action="resume", rationale=body.rationale)
         response = engine.handle_user_intent(intent)
         return {"message": response.message}
+
+    # ------------------------------------------------------------------
+    # Execution endpoints — WhatIf → Live Order
+    # ------------------------------------------------------------------
+
+    @app.post("/api/execute/{trade_id}")
+    async def execute_trade(trade_id: str, body: ExecuteBody):
+        """
+        Execute a WhatIf trade as a live order.
+
+        - confirm=false (default): dry-run preview with margin/fees
+        - confirm=true: place the real order on the broker
+        """
+        params = {'confirm': body.confirm}
+        intent = UserIntent(
+            action="execute",
+            target=trade_id,
+            parameters=params,
+        )
+        response = engine.handle_user_intent(intent)
+        return {
+            "message": response.message,
+            "data": response.data,
+            "requires_action": response.requires_action,
+        }
+
+    @app.get("/api/orders")
+    async def get_orders():
+        """
+        Get live/recent orders and auto-update fill status.
+
+        Polls the broker for pending orders and auto-marks filled trades.
+        """
+        intent = UserIntent(action="orders")
+        response = engine.handle_user_intent(intent)
+        return {
+            "message": response.message,
+            "data": response.data,
+        }
 
     return app

@@ -66,6 +66,47 @@ class BrokerAdapterBase(ABC):
         If name is given, returns the watchlist data."""
         raise NotImplementedError(f"{self.name} does not support watchlists")
 
+    def place_order(
+        self,
+        legs: List[Dict[str, Any]],
+        price: Decimal,
+        order_type: str = "limit",
+        time_in_force: str = "Day",
+        dry_run: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Place an order (or dry-run preflight) at the broker.
+
+        Args:
+            legs: List of dicts with keys: occ_symbol, action, quantity, instrument_type
+            price: Net limit price (positive=debit, negative=credit)
+            order_type: 'limit' only
+            time_in_force: 'Day'
+            dry_run: If True, validates without submitting
+
+        Returns:
+            Dict with order_id, status, buying_power_effect, fees, warnings, errors
+        """
+        raise NotImplementedError(f"{self.name} does not support order placement")
+
+    def get_order(self, broker_order_id: str) -> Dict[str, Any]:
+        """
+        Get status of a specific order by broker order ID.
+
+        Returns:
+            Dict with order_id, status, legs, filled_quantity, average_fill_price
+        """
+        raise NotImplementedError(f"{self.name} does not support order queries")
+
+    def get_live_orders(self) -> List[Dict[str, Any]]:
+        """
+        Get all live (working) orders at the broker.
+
+        Returns:
+            List of order dicts with order_id, status, legs, etc.
+        """
+        raise NotImplementedError(f"{self.name} does not support order queries")
+
 
 class ManualBrokerAdapter(BrokerAdapterBase):
     """

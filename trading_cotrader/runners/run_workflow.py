@@ -55,6 +55,9 @@ def parse_cli_intent(raw: str):
         elif parts[i] == '--notes' and i + 1 < len(parts):
             rationale = ' '.join(parts[i + 1:])
             break
+        elif parts[i] == '--confirm':
+            parameters['confirm'] = True
+            i += 1
         elif target is None and not parts[i].startswith('--'):
             target = parts[i]
             i += 1

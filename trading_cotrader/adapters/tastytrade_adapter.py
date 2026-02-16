@@ -19,6 +19,10 @@ from tastytrade import Session, Account
 from tastytrade.instruments import Equity, Option
 from tastytrade.streamer import DXLinkStreamer
 from tastytrade.dxfeed import Greeks as DXGreeks
+from tastytrade.order import (
+    NewOrder, Leg as TTLeg, OrderAction, OrderType,
+    OrderTimeInForce, InstrumentType,
+)
 import os
 import re
 
@@ -614,6 +618,208 @@ class TastytradeAdapter(BrokerAdapterBase):
             return [wl.name for wl in counts_response] if counts_response else []
         else:
             return PublicWatchlists.get_public_watchlists(self.session, name)
+
+    # -----------------------------------------------------------------
+    # Order placement & management
+    # -----------------------------------------------------------------
+
+    def _domain_symbol_to_occ(self, symbol: dm.Symbol) -> str:
+        """
+        Convert a domain Symbol to OCC format for the TastyTrade API.
+
+        OCC format: {TICKER(6 chars padded)}{YYMMDD}{C|P}{STRIKE*1000 zero-padded 8 digits}
+        Example: SPY put at $500 expiring 2026-03-20 → 'SPY   260320P00500000'
+        """
+        if symbol.asset_type != dm.AssetType.OPTION:
+            return symbol.ticker
+
+        exp = symbol.expiration
+        if hasattr(exp, 'date') and callable(exp.date):
+            exp = exp.date()
+        exp_str = exp.strftime('%y%m%d')
+
+        opt_char = 'C' if symbol.option_type == dm.OptionType.CALL else 'P'
+
+        # Strike in OCC: multiply by 1000, zero-pad to 8 digits
+        strike_int = int(symbol.strike * 1000)
+        strike_str = f"{strike_int:08d}"
+
+        ticker_padded = f"{symbol.ticker:<6}"
+        return f"{ticker_padded}{exp_str}{opt_char}{strike_str}"
+
+    def place_order(
+        self,
+        legs: List[Dict[str, Any]],
+        price: Decimal,
+        order_type: str = "limit",
+        time_in_force: str = "Day",
+        dry_run: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Place an order (or dry-run preflight) on TastyTrade.
+
+        Args:
+            legs: List of dicts with keys:
+                - occ_symbol: str (OCC format for options, ticker for equity)
+                - action: str ('BUY_TO_OPEN', 'SELL_TO_OPEN', 'BUY_TO_CLOSE', 'SELL_TO_CLOSE')
+                - quantity: int
+                - instrument_type: str ('EQUITY_OPTION' or 'EQUITY')
+            price: Net limit price. TastyTrade convention: positive=credit, negative=debit.
+            order_type: 'limit' only
+            time_in_force: 'Day'
+            dry_run: If True, validates without submitting
+
+        Returns:
+            Dict with order details and preflight info
+        """
+        if not self.session or not self.account:
+            raise ValueError("Not authenticated — call authenticate() first")
+
+        # Map string actions to SDK enums
+        action_map = {
+            'BUY_TO_OPEN': OrderAction.BUY_TO_OPEN,
+            'BUY_TO_CLOSE': OrderAction.BUY_TO_CLOSE,
+            'SELL_TO_OPEN': OrderAction.SELL_TO_OPEN,
+            'SELL_TO_CLOSE': OrderAction.SELL_TO_CLOSE,
+            'BUY': OrderAction.BUY,
+            'SELL': OrderAction.SELL,
+        }
+
+        instrument_type_map = {
+            'EQUITY_OPTION': InstrumentType.EQUITY_OPTION,
+            'EQUITY': InstrumentType.EQUITY,
+        }
+
+        # Build SDK legs
+        sdk_legs = []
+        for leg in legs:
+            sdk_leg = TTLeg(
+                instrument_type=instrument_type_map.get(
+                    leg['instrument_type'], InstrumentType.EQUITY_OPTION
+                ),
+                symbol=leg['occ_symbol'],
+                action=action_map[leg['action']],
+                quantity=int(leg['quantity']),
+            )
+            sdk_legs.append(sdk_leg)
+
+        # Build order
+        order = NewOrder(
+            time_in_force=OrderTimeInForce.DAY,
+            order_type=OrderType.LIMIT,
+            price=price,
+            legs=sdk_legs,
+        )
+
+        logger.info(
+            f"{'DRY-RUN' if dry_run else 'LIVE'} order: "
+            f"{len(sdk_legs)} legs, price={price}, "
+            f"account={self.account_id}"
+        )
+
+        # Place via SDK
+        response = self.account.place_order(self.session, order, dry_run=dry_run)
+
+        # Normalize response
+        result = {
+            'order_id': response.order.id if response.order else None,
+            'status': response.order.status.value if response.order else 'UNKNOWN',
+            'dry_run': dry_run,
+            'buying_power_effect': {},
+            'fees': 0.0,
+            'warnings': [],
+            'errors': [],
+        }
+
+        if response.buying_power_effect:
+            bp = response.buying_power_effect
+            result['buying_power_effect'] = {
+                'change_in_buying_power': float(bp.change_in_buying_power),
+                'current_buying_power': float(bp.current_buying_power),
+                'new_buying_power': float(bp.new_buying_power),
+                'change_in_margin_requirement': float(bp.change_in_margin_requirement),
+                'isolated_order_margin_requirement': float(bp.isolated_order_margin_requirement),
+            }
+
+        if response.fee_calculation:
+            result['fees'] = float(response.fee_calculation.total_fees)
+            result['fee_detail'] = {
+                'regulatory': float(response.fee_calculation.regulatory_fees),
+                'clearing': float(response.fee_calculation.clearing_fees),
+                'commission': float(response.fee_calculation.commission),
+            }
+
+        if response.warnings:
+            result['warnings'] = [w.message for w in response.warnings if hasattr(w, 'message')]
+
+        if response.errors:
+            result['errors'] = [e.message for e in response.errors if hasattr(e, 'message')]
+
+        logger.info(
+            f"Order response: id={result['order_id']}, status={result['status']}, "
+            f"fees=${result['fees']:.2f}, warnings={len(result['warnings'])}"
+        )
+
+        return result
+
+    def _placed_order_to_dict(self, order) -> Dict[str, Any]:
+        """Convert a PlacedOrder SDK object to a normalized dict."""
+        legs_info = []
+        for leg in (order.legs or []):
+            leg_dict = {
+                'symbol': leg.symbol,
+                'action': leg.action.value if leg.action else None,
+                'quantity': int(leg.quantity) if leg.quantity else 0,
+                'remaining_quantity': int(leg.remaining_quantity) if leg.remaining_quantity else 0,
+                'instrument_type': leg.instrument_type.value if leg.instrument_type else None,
+            }
+            # Fill info
+            if leg.fills:
+                leg_dict['fills'] = [
+                    {
+                        'quantity': float(f.quantity) if f.quantity else 0,
+                        'price': float(f.fill_price) if hasattr(f, 'fill_price') and f.fill_price else 0,
+                    }
+                    for f in leg.fills
+                ]
+            legs_info.append(leg_dict)
+
+        filled_qty = 0
+        avg_price = None
+        if order.legs:
+            for leg in order.legs:
+                if leg.fills:
+                    for fill in leg.fills:
+                        filled_qty += int(fill.quantity) if fill.quantity else 0
+
+        return {
+            'order_id': order.id,
+            'status': order.status.value if order.status else 'UNKNOWN',
+            'underlying': order.underlying_symbol,
+            'price': float(order.price) if order.price else None,
+            'legs': legs_info,
+            'filled_quantity': filled_qty,
+            'received_at': order.received_at.isoformat() if order.received_at else None,
+            'live_at': order.live_at.isoformat() if order.live_at else None,
+            'cancellable': order.cancellable,
+            'reject_reason': order.reject_reason,
+        }
+
+    def get_order(self, broker_order_id: str) -> Dict[str, Any]:
+        """Get status of a specific order by broker order ID."""
+        if not self.session or not self.account:
+            raise ValueError("Not authenticated — call authenticate() first")
+
+        placed = self.account.get_order(self.session, int(broker_order_id))
+        return self._placed_order_to_dict(placed)
+
+    def get_live_orders(self) -> List[Dict[str, Any]]:
+        """Get all live (working) orders at TastyTrade."""
+        if not self.session or not self.account:
+            raise ValueError("Not authenticated — call authenticate() first")
+
+        orders = self.account.get_live_orders(self.session)
+        return [self._placed_order_to_dict(o) for o in orders]
 
 
 if __name__ == "__main__":

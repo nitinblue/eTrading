@@ -129,6 +129,17 @@ class CapitalDeploymentConfig:
 
 
 @dataclass
+class ExecutionConfig:
+    """Live order execution defaults."""
+    order_type: str = "limit"
+    time_in_force: str = "Day"
+    price_strategy: str = "mid"
+    price_offset: float = 0.0
+    require_dry_run: bool = True
+    allowed_brokers: List[str] = field(default_factory=lambda: ["tastytrade"])
+
+
+@dataclass
 class WorkflowConfig:
     """Complete workflow configuration."""
     cycle_frequency_minutes: int = 30
@@ -142,6 +153,7 @@ class WorkflowConfig:
     decision_timeouts: DecisionTimeoutsConfig = field(default_factory=DecisionTimeoutsConfig)
     notifications: NotificationsConfig = field(default_factory=NotificationsConfig)
     capital_deployment: CapitalDeploymentConfig = field(default_factory=CapitalDeploymentConfig)
+    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
 
 
 # Default search paths for the config file
@@ -272,6 +284,18 @@ def _parse_config(raw: dict) -> WorkflowConfig:
             escalation=cd.get('escalation', {}),
             target_annual_return_pct=cd.get('target_annual_return_pct', {}),
             staggered=staggered_cfg,
+        )
+
+    # Execution defaults
+    ex = raw.get('execution_defaults', {})
+    if ex:
+        config.execution = ExecutionConfig(
+            order_type=ex.get('order_type', 'limit'),
+            time_in_force=ex.get('time_in_force', 'Day'),
+            price_strategy=ex.get('price_strategy', 'mid'),
+            price_offset=ex.get('price_offset', 0.0),
+            require_dry_run=ex.get('require_dry_run', True),
+            allowed_brokers=ex.get('allowed_brokers', ['tastytrade']),
         )
 
     logger.info("Workflow configuration loaded")

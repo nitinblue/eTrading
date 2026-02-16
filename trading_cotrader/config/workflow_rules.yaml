@@ -89,6 +89,15 @@ capital_deployment:
       zerodha: 25.0
       stallion: 15.0
 
+execution_defaults:
+  order_type: "limit"              # limit only (no market orders)
+  time_in_force: "Day"             # DAY orders only
+  price_strategy: "mid"            # bid-ask midpoint
+  price_offset: 0.00               # adjust mid by this amount (negative = more aggressive)
+  require_dry_run: true            # always dry-run before real order
+  allowed_brokers:                 # which brokers can receive live orders
+    - tastytrade
+
 qa:
   min_coverage_pct: 70.0
   report_frequency: daily    # daily | weekly
