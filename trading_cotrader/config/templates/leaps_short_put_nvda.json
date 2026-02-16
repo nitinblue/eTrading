@@ -1,0 +1,86 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/leaps_short_put_nvda.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "_source": "Ravish passive strategies playbook - Short Put LEAPS",
+  "underlying": "NVDA",
+  "strategy_type": "single",
+  "portfolio_name": "core_holdings",
+  "notes": "NVDA short put LEAPS: sell 190P Jan 2027, ~$30 credit, 16% downside protection to 160. 6-12 month duration, set-and-forget.",
+  "rationale": "Long-term income strategy. 80% of capital allocation. Sell puts on quality stocks above long-term support. Min 20% ROI. High win rate, minimal management. Like real estate investing — look for good deals.",
+  "confidence": 8,
+  "entry_conditions": {
+    "iv_environment": "Elevated IV preferred — more credit collected. IV rank >30 ideal.",
+    "iv_rank_min": 30,
+    "market_outlook": ["neutral", "slightly_bullish", "bullish"],
+    "dte_range": [180, 365],
+    "delta_target": {
+      "min": 30,
+      "max": 50,
+      "note": "30-50 delta. Higher delta = more credit but more risk. For margin: use 20-25 delta for more downside."
+    },
+    "stock_criteria": {
+      "above_long_term_support": true,
+      "rsi_max": 30,
+      "note": "Stock must be above long-term support zone. RSI under 30 (oversold). Look for stocks that have taken a beating but fundamentals are intact."
+    },
+    "fundamental_check": {
+      "pe_ratio": "Lower than industry average",
+      "note": "Look for stocks like CRWV — beaten down, above support, P/E lower than industry"
+    },
+    "min_roi": "20% annualized. If using margin (2x max leverage), target 40%+ ROI on margin.",
+    "position_sizing": "Cash-secured: need full strike amount ($19,000 for 190 strike). Margin: ~$3,700 (but need more downside cushion — reduce strike to 160).",
+    "leverage_rules": {
+      "without_leverage": "Very low risk. Cash-secured put. Full collateral.",
+      "with_leverage": "Max 2x leverage. Reduce strike to 25 delta (160) for more downside protection. Breakeven drops to ~25% below current.",
+      "margin_warning": "If using margin, ensure downside breakeven is at least 20% below current price"
+    },
+    "entry_timing": {
+      "frequency": "Opportunistic — when quality stock is near support + oversold",
+      "note": "Not a weekly trade. Wait for the right setup. Like buying real estate — patience."
+    },
+    "notes": "Short Put LEAPS: 6-12 month duration. Sell put on individual top stocks (not indices). Ensure stock is above long-term support, RSI under 30. Min 20% ROI. Put credit in treasury bill while waiting. Take profit at 20-40%. If stock drops 25%+ below strike after expiry, consider buying shares (wheel into covered call)."
+  },
+  "pnl_drivers": {
+    "max_profit": "Credit received ($3,000 for 190 strike, ~20% ROI cash-secured, ~81% ROI on margin)",
+    "max_loss": "Strike price x 100 - credit received (if stock goes to zero). Realistic: stock at breakeven ~$160.",
+    "primary_driver": "Theta decay — time value erodes over 6-12 months. Accelerates in final 2-3 months.",
+    "secondary_driver": "Stock staying above strike or rising. IV crush after entry (if entered during elevated IV).",
+    "tertiary_driver": "Put credit invested in treasury bills generates additional yield while waiting.",
+    "greeks_profile": {
+      "theta": "positive — collecting daily time decay over 6-12 months",
+      "vega": "negative — short vega, profits from IV decrease (but LEAPS vega is large, so IV spike hurts)",
+      "delta": "positive — short put has positive delta, profits from stock rising",
+      "gamma": "slightly negative — manageable with LEAPS duration (gamma is low for long-dated options)"
+    },
+    "exit_rules": {
+      "profit_target": "20-40% of max profit. Book early if target hit.",
+      "stop_loss": "If stock breaks below long-term support zone, reassess. If fundamentals intact, hold.",
+      "at_expiry": "If assigned, accept shares and transition to LEAPS covered call (wheel strategy).",
+      "early_profit": "If in significant profit much earlier than expiry, book it and move to next trade."
+    },
+    "risk_scenarios": {
+      "market_crash": "Reduce strike to 100 (small delta, but ensure at least 20 delta for credit). Breakeven 25%+ below current.",
+      "with_margin": "Use 25 delta, get half credit but half margin. Downside breakeven ~25% below current."
+    },
+    "ideal_scenario": "NVDA stays above 190 over 11 months. Collect $3,000 credit. Theta decays to zero. Book at 20-40% profit early, or let expire worthless. Redeploy capital."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".NVDA270115P190",
+      "quantity": -1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 0.40,
+        "gamma": -0.003,
+        "theta": 0.08,
+        "vega": -0.55,
+        "mid_price": 30.0,
+        "bid": 29.5,
+        "ask": 30.5
+      }
+    ]
+  }
+}

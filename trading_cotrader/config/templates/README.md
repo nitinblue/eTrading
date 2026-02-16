@@ -50,6 +50,21 @@ python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templat
 | `monthly_protective_put_spy.json` | Protective Put | 2 | SPY | core_holdings |
 | `monthly_collar_spy.json` | Collar | 3 | SPY | core_holdings |
 
+## LEAPS Templates (6-12 months, set-and-forget)
+
+| File | Strategy | Legs | Underlying | Portfolio | Source |
+|------|----------|------|------------|-----------|--------|
+| `leaps_short_put_nvda.json` | Short Put LEAPS | 1 | NVDA | core_holdings | Ravish: 30-50 delta, min 20% ROI |
+| `leaps_covered_call_nvda.json` | LEAPS Covered Call | 2 | NVDA | core_holdings | Ravish: 30% target, 40% on margin |
+| `leaps_collar_nvda.json` | Zero-Cost Collar | 3 | NVDA | core_holdings | Ravish: premium-neutral, set & forget |
+| `leaps_hybrid_collar_nvda.json` | Hybrid Collar (4-leg) | 4 | NVDA | core_holdings | Ravish: deep OTM put funds wider range |
+| `leaps_risk_reversal_nvda.json` | Super Risk Reversal | 3 | NVDA | core_holdings | Ravish: put funds bull call spread |
+
+**Philosophy:** 80% of capital allocation. Like real estate investing — look for good deals. High win rate, minimal management, 20-40% CAGR. Individual top stocks only (not indices).
+**When:** Opportunistic — when quality stock is near support + oversold (RSI <30). Not a weekly trade.
+**Leverage:** Without leverage = very low risk. With leverage, max 2x. Reduce delta for margin trades.
+**Wheel:** If short put assigned → transition to LEAPS covered call → wheel system.
+
 ## Custom
 
 | File | Strategy | Underlying | Portfolio |

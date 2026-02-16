@@ -1,0 +1,99 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/leaps_risk_reversal_nvda.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "_source": "Ravish passive strategies playbook - Super Risk Reversal (custom combo)",
+  "underlying": "NVDA",
+  "strategy_type": "custom",
+  "portfolio_name": "core_holdings",
+  "notes": "NVDA super risk reversal: sell 160P + buy 200C/220C bull call spread, Jan 2027. Put credit funds the call spread. Bullish with downside cushion.",
+  "rationale": "Sell long-term put to fund ATM/OTM bull call spread. Synthetic long exposure with defined risk. Combines income (short put) with upside participation (call spread). Like SOFI example: sell 25 put, buy 30C/35C.",
+  "confidence": 7,
+  "entry_conditions": {
+    "iv_environment": "Works in any IV — put credit funds the call spread. Higher IV = better put credit.",
+    "iv_rank_min": 20,
+    "market_outlook": ["bullish", "slightly_bullish"],
+    "dte_range": [180, 365],
+    "put_leg": {
+      "option_type": "put",
+      "delta_range": [15, 25],
+      "dte": "6-12 months",
+      "note": "Sell OTM put, 15-25 delta. Far enough for safety. Credit collected funds the call spread."
+    },
+    "call_spread": {
+      "long_call": "ATM or slightly OTM (200 strike for NVDA at 191)",
+      "short_call": "Further OTM (220 strike), caps upside but reduces cost",
+      "note": "Bull call spread: buy lower strike call, sell higher strike call. Width determines max profit."
+    },
+    "stock_criteria": {
+      "above_long_term_support": true,
+      "bullish_bias_required": true,
+      "note": "Must have bullish conviction — this is directional. Individual top stocks only, not indices."
+    },
+    "position_sizing": "Risk = put assignment amount - call spread value. Margin: put margin + call spread debit.",
+    "notes": "Super Risk Reversal: sell long-term put (15-25 delta) + buy ATM/OTM bull call spread. Put credit funds the call. Example: NVDA at 191 — sell 160P, buy 200C, sell 220C. Example: SOFI at 30 — sell 25P, buy 30C, sell 35C. Net debit should be minimal or zero-cost."
+  },
+  "pnl_drivers": {
+    "max_profit": "Call spread width - net debit. For 200/220 spread: $2,000 - net debit.",
+    "max_loss": "Put strike x 100 - put credit + call spread debit (if stock crashes below put strike). Realistic: breakeven ~15-25% below current.",
+    "primary_driver": "Stock appreciation — long call spread profits from upside move",
+    "secondary_driver": "Put credit — short put theta decay generates income that offsets call spread cost",
+    "tertiary_driver": "Time value — if stock stays flat, short put decays to zero while call spread loses time value (partially offset)",
+    "greeks_profile": {
+      "theta": "mixed — short put positive theta, long call spread negative theta. Net depends on strikes.",
+      "vega": "mixed — short put negative vega, long call positive vega. Net slightly long vega (bullish vol).",
+      "delta": "positive — synthetic long exposure. Short put + long call spread = bullish.",
+      "gamma": "slightly positive — call spread has positive gamma near ATM strikes"
+    },
+    "exit_rules": {
+      "profit_target": "50% of max call spread profit, or close put side when 80% decayed",
+      "stop_loss": "If stock breaks below put strike, reassess fundamentals. Close if thesis broken.",
+      "management": "Can close legs independently. If stock rallies, close call spread for profit. If flat, let put decay."
+    },
+    "ideal_scenario": "NVDA rises from 191 to 220+ over 6-12 months. Call spread reaches max profit ($2,000). Short put expires worthless. Total profit = call spread max + put credit."
+  },
+  "legs": [
+    {
+      "streamer_symbol": ".NVDA270115P160",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".NVDA270115C200",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".NVDA270115C220",
+      "quantity": -1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 0.20,
+        "gamma": -0.002,
+        "theta": 0.05,
+        "vega": -0.40,
+        "mid_price": 15.0,
+        "bid": 14.5,
+        "ask": 15.5
+      },
+      {
+        "delta": 0.45,
+        "gamma": 0.004,
+        "theta": -0.10,
+        "vega": 0.55,
+        "mid_price": 28.0,
+        "bid": 27.5,
+        "ask": 28.5
+      },
+      {
+        "delta": -0.30,
+        "gamma": -0.003,
+        "theta": 0.07,
+        "vega": -0.45,
+        "mid_price": 18.0,
+        "bid": 17.5,
+        "ask": 18.5
+      }
+    ]
+  }
+}

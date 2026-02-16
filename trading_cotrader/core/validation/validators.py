@@ -8,7 +8,7 @@ import logging
 from typing import List, Dict, Tuple
 from decimal import Decimal
 
-import core.models.domain as dm
+import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
 

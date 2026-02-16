@@ -149,9 +149,40 @@ Not touching today: UI
 - REJECTED APPROACH: Separate "exit signal" objects with auto-execution — rejected because user wants accept/reject control.
 - OBJECTIVE IT SERVES: Session4-1 (continuous evaluation), Session4-2 (roll linkage), Session4-3 (liquidity gating)
 
+### Decision 14: Continuous Workflow Engine, Not CLI Tools (Feb 16, 2026)
+- DECISION: Build a continuously running workflow engine (daemon/service) that orchestrates the entire trading day as a state machine. Replaces the manual "run CLI → copy ID → run next CLI" approach. Workflow states: MACRO_CHECK → WATCHLIST_REFRESH → SCREENING → RECOMMENDATION_REVIEW → TRADE_PLANNING → ORDER_STAGING → POSITION_MONITORING → EXIT_EVALUATION → EXIT_REVIEW → REPORTING. State persisted in DB. Pauses at decision points for user approval. Sends email/notifications. Resumes after restart.
+- CONSTRAINT THAT FORCED IT: The CLI tools work individually but nothing connects them into an operating loop. Manual sequencing is fragile, easy to skip, and doesn't hold the user accountable. After 20 years of not trading because "too busy/lazy", the system must PUSH the user to act, not wait to be invoked.
+- REJECTED APPROACH 1: UI-first approach — rejected because a UI is a display layer, not a decision engine. You can have a beautiful dashboard and still not trade.
+- REJECTED APPROACH 2: Cron jobs calling CLI scripts — rejected because cron has no state management, no decision points, no accountability tracking, no notification/approval loop.
+- KEY DIFFERENCE FROM HARNESS: Harness runs once, tests, exits with pass/fail. Workflow runs continuously, maintains state in DB, pauses for human decisions, escalates when ignored, tracks capital deployment and compliance, and drives real capital allocation decisions.
+- ACCOUNTABILITY FEATURES: Capital deployment tracking (idle cash alerts), trade plan compliance (template deviation flagging), time-to-decision tracking (how long to accept/reject recs), missed opportunity logging (rejected recs that would have worked), "days since last trade" per portfolio, weekly/daily automated reports.
+- OBJECTIVE IT SERVES: #6 (system surfaces, user approves), #1 (deploy 250K), #2 (income generation — can't generate income from idle cash), #5 (every decision logged), #8 (ML data from workflow decisions)
+
+### Decision 15: Templates as Trading Plans (Feb 16, 2026)
+- DECISION: Trade templates in `config/templates/` are not just booking specs — they are complete trading plans with entry conditions, P&L drivers, risk management rules, and backtest metrics. Named by cadence (0dte_, weekly_, monthly_). The workflow engine presents the appropriate template based on the day/time schedule. User populates strikes/expiry the night before, workflow validates at entry time.
+- CONSTRAINT THAT FORCED IT: User needs a "populate night before, execute next day" ritual that enforces planning discipline. Without structured templates, trades become impulse decisions.
+- OBJECTIVE IT SERVES: #5 (every decision codified), #6 (system surfaces, user approves), Session5-5 (trade plan compliance)
+
 ---
 
-## SESSION LOG (Sessions 1-10)
+## SESSION LOG (Sessions 1-12)
+
+### Feb 16, 2026 (session 12)
+- REWROTE: `services/risk/var_calculator.py` — Real parametric VaR (delta-normal), historical VaR, incremental VaR, Expected Shortfall (CVaR). Uses yfinance returns + covariance from CorrelationAnalyzer. Was 100% stub returning zeros.
+- REWROTE: `services/risk/correlation.py` — Real yfinance historical returns (`_fetch_returns()`), covariance matrix, annualized volatilities. Handles multi-level yfinance columns. 1-day cache. Fallback to hardcoded estimates.
+- FIXED: `services/risk/__init__.py` — All 6 import paths from `services.risk.*` → `trading_cotrader.services.risk.*`
+- FIXED: `services/risk/portfolio_risk.py` — Import path fix
+- BUILT: `tests/test_var_calculator.py` — 24 tests: delta exposure extraction (8), parametric VaR (8), incremental VaR (3), correlation matrix (5)
+- BUILT: 5 LEAPS trade templates (`config/templates/leaps_*.json`) from Ravish passive strategies (short put, risk reversal, covered call, collar, hybrid collar) — all NVDA Jan 2027
+- VERIFIED: 79/79 pytest (55 existing + 24 new VaR), 14/16 harness
+
+### Feb 16, 2026 (session 11)
+- BUILT: `TRADING_PLAYBOOK.md` — Comprehensive trading playbook with cadences, templates, entry conditions, P&L drivers, workflow engine architecture
+- BUILT: 27 trade templates in `config/templates/` — enriched all with entry conditions, P&L drivers, exit rules, risk notes
+- BUILT: Templates by cadence: 1 0DTE (SPY iron butterfly), 4 weekly (SPX call calendars, SPY double calendar, QQQ put diagonal), 16 monthly (all strategies), 5 LEAPS (NVDA passive strategies), 1 custom combo
+- EXTENDED: `config/templates/README.md` — Full documentation of template structure, dry-run validation, booking commands
+- EXTENDED: CLAUDE.md — restructured into CLAUDE.md (active) + CLAUDE_ARCHIVE.md (historical). Added Session 5 workflow engine objectives (10 items)
+- DOCUMENTED: Workflow engine architecture in TRADING_PLAYBOOK.md section 13 — state machine, scheduler, notifications, accountability
 
 ### Feb 15, 2026 (session 10)
 - BUILT: `services/portfolio_evaluation_service.py` — evaluates open trades via RulesEngine, generates EXIT/ROLL/ADJUST recommendations with liquidity gating

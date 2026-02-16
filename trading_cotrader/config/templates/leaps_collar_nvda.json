@@ -1,0 +1,107 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/leaps_collar_nvda.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "_source": "Ravish passive strategies playbook - Zero Risk Collar Strategy",
+  "underlying": "NVDA",
+  "strategy_type": "collar",
+  "portfolio_name": "core_holdings",
+  "notes": "NVDA zero-cost LEAPS collar: long 100 shares + buy 170P + sell call at premium-neutral strike, Jan 2027. 12 months set-and-forget. Downside protected, upside capped.",
+  "rationale": "Zero-cost collar: buy put for protection, sell call to pay for it. Uses put-call parity to find optimal strikes. Works best where call premium > put premium. Risk-adjusted, capped both sides. For individual top stocks, not indices.",
+  "confidence": 8,
+  "entry_conditions": {
+    "iv_environment": "Works best when call premium is rich relative to puts (call skew). Elevated IV helps both premiums.",
+    "iv_rank_min": 20,
+    "market_outlook": ["neutral", "slightly_bullish"],
+    "dte_range": [270, 365],
+    "put_leg": {
+      "option_type": "put",
+      "strike_selection": "Choose based on how much downside protection you want. 10% risk tolerance = buy put 10% below current.",
+      "examples": {
+        "conservative": "Buy 170P (11% below 191) — strong protection",
+        "moderate": "Buy 155P (19% below 191) — allows more room",
+        "aggressive": "Buy 140P (27% below 191) — wider range, cheaper put"
+      }
+    },
+    "call_leg": {
+      "option_type": "call",
+      "strike_selection": "Sell call that generates premium equivalent to put cost. Use put-call parity.",
+      "note": "Goal: net cost of collar is zero (or small credit). Call strike determines your upside cap."
+    },
+    "premium_neutral_rule": {
+      "target": "Call premium >= Put premium (zero cost or small credit)",
+      "note": "Scan for optimal call strike where call premium equals put premium. Write code to automate this scan.",
+      "market_condition": "These days puts are expensive, so opportunities require patience. Best when call skew is favorable."
+    },
+    "stock_criteria": {
+      "individual_stocks_only": true,
+      "not_indices": true,
+      "note": "All collar strategies should be on individual top stocks, NOT indices like S&P 500"
+    },
+    "mental_map": "Buy long stock. Buy put. Sell call. Make breakeven. Look for call-to-put parity to maximize.",
+    "notes": "Zero-Cost LEAPS Collar: buy 100 shares + buy OTM put + sell OTM call where call premium >= put cost. 12 months, set and forget. Downside protected, upside capped. Risk-adjusted strategy — profits are capped but losses are capped. Best on individual top stocks."
+  },
+  "pnl_drivers": {
+    "max_profit": "Call strike - stock cost (upside capped at call strike). Example: if call at 210, max profit = (210-191) x 100 = $1,900.",
+    "max_loss": "Stock cost - put strike (downside limited to put strike). Example: if put at 170, max loss = (191-170) x 100 = $2,100.",
+    "primary_driver": "Stock appreciation within the collar range (put strike to call strike)",
+    "secondary_driver": "Zero cost protection — no theta bleed if collar is premium-neutral",
+    "greeks_profile": {
+      "theta": "near zero — call theta offsets put theta in premium-neutral collar",
+      "vega": "near zero — call vega offsets put vega",
+      "delta": "positive but reduced — stock delta 100, put delta ~-25, call delta ~-30 = ~45 net",
+      "gamma": "mixed — put positive gamma, call negative gamma"
+    },
+    "exit_rules": {
+      "profit_target": "Stock at or above call strike. Let expire or close for max profit.",
+      "if_called_away": "Happy outcome — sold at target price. Redeploy.",
+      "if_stock_drops_to_put": "Put protects. Can sell put for profit or exercise for floor price.",
+      "management": "Minimal. Set and forget for 12 months. Check quarterly."
+    },
+    "ideal_scenario": "NVDA stays between 170 and 210 (collar range). At expiry, both options expire worthless if stock near 191. If stock at 210+, called away for $1,900 profit. If stock drops to 170, put protects."
+  },
+  "legs": [
+    {
+      "streamer_symbol": "NVDA",
+      "quantity": 100
+    },
+    {
+      "streamer_symbol": ".NVDA270115P170",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".NVDA270115C210",
+      "quantity": -1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 1.0,
+        "gamma": 0.0,
+        "theta": 0.0,
+        "vega": 0.0,
+        "mid_price": 191.0,
+        "bid": 190.9,
+        "ask": 191.1
+      },
+      {
+        "delta": -0.25,
+        "gamma": 0.003,
+        "theta": -0.05,
+        "vega": 0.40,
+        "mid_price": 18.0,
+        "bid": 17.5,
+        "ask": 18.5
+      },
+      {
+        "delta": -0.30,
+        "gamma": -0.003,
+        "theta": 0.06,
+        "vega": -0.45,
+        "mid_price": 20.0,
+        "bid": 19.5,
+        "ask": 20.5
+      }
+    ]
+  }
+}

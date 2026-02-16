@@ -1,0 +1,118 @@
+{
+  "_usage": "python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/leaps_hybrid_collar_nvda.json --no-broker",
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  (positive qty = buy, negative = sell)",
+  "_source": "Ravish passive strategies playbook - Hybrid Collar (4-leg)",
+  "underlying": "NVDA",
+  "strategy_type": "custom",
+  "portfolio_name": "core_holdings",
+  "notes": "NVDA hybrid LEAPS collar: long 100 shares + buy 170P + sell call + sell deep OTM 120P. 4th leg (sold put) funds moving the call strike further out, maximizing upside cap.",
+  "rationale": "Enhancement of zero-cost collar. Additional sold deep OTM put generates credit to push the sold call further right (higher strike), increasing upside range. Trade-off: you accept risk below the deep OTM put strike. For individual top stocks only.",
+  "confidence": 7,
+  "entry_conditions": {
+    "iv_environment": "Higher IV preferred — deep OTM put generates more credit. IV rank >25 ideal.",
+    "iv_rank_min": 25,
+    "market_outlook": ["neutral", "slightly_bullish", "bullish"],
+    "dte_range": [270, 365],
+    "structure": {
+      "leg1": "Long 100 shares (NVDA at ~191)",
+      "leg2": "Buy protective put (170P — 11% below)",
+      "leg3": "Sell covered call (strike TBD — as far OTM as possible)",
+      "leg4": "Sell deep OTM put (120P — 37% below). Credit from this leg moves call strike higher."
+    },
+    "deep_otm_put_rules": {
+      "min_distance": "30%+ below current price",
+      "note": "This is your catastrophic risk floor. Stock would need to drop 37% for this put to be ITM. Acceptable for quality stocks.",
+      "strike_selection": "Choose a price where you'd be willing to buy at anyway (below long-term support zone)"
+    },
+    "call_strike_optimization": {
+      "goal": "Use credit from deep OTM put to move call strike further right",
+      "method": "Net collar cost should be zero or small credit. Deep put credit expands the range.",
+      "example": "Without 4th leg: call at 210. With deep 120P: call at 225. More upside room."
+    },
+    "stock_criteria": {
+      "individual_stocks_only": true,
+      "not_indices": true,
+      "quality_stock": true,
+      "note": "Collars are risk-adjusted strategies. Profits capped, losses capped. For individual top stocks only."
+    },
+    "notes": "Hybrid LEAPS Collar: buy shares + buy put + sell call + sell deep OTM put. The 4th leg (deep put) generates credit to push call strike further out, expanding profit range. Risk: if stock crashes 37%+, deep put is breached. Acceptable for quality stocks with strong long-term fundamentals."
+  },
+  "pnl_drivers": {
+    "max_profit": "Call strike - stock cost. Higher than standard collar because deep put credit funds a higher call strike. Example: (225-191) x 100 = $3,400.",
+    "max_loss": "Two zones: (1) Stock between deep put and protective put: loss = stock cost - protective put strike = (191-170) x 100 = $2,100. (2) Below deep put (120): loss increases — (191-170) x 100 + (120-stock) x 100.",
+    "primary_driver": "Stock appreciation within wider collar range (170 to 225)",
+    "secondary_driver": "Deep OTM put theta — decays quickly since it's far OTM",
+    "tertiary_driver": "All premiums offset — near zero cost entry",
+    "greeks_profile": {
+      "theta": "slightly positive — sold call + sold deep put theta exceeds bought put theta",
+      "vega": "slightly negative — two sold options vs one bought",
+      "delta": "positive ~50 — stock 100, bought put -25, sold call -30, sold deep put +5",
+      "gamma": "mixed — bought put positive, both sold options negative"
+    },
+    "exit_rules": {
+      "profit_target": "Stock at or above call strike. Close or let expire.",
+      "if_deep_put_threatened": "If stock drops 25%+, close the deep put or roll down. Reassess thesis.",
+      "management": "Quarterly check. Minimal management needed. Set and forget.",
+      "at_expiry": "If stock in range: all options expire, keep shares. If above call: called away at profit. If below put: put protects."
+    },
+    "ideal_scenario": "NVDA rises to 225 over 12 months. Called away at 225 for $3,400 profit on ~$19,100 investment = 18% return. Zero cost collar. Deep put was never threatened."
+  },
+  "legs": [
+    {
+      "streamer_symbol": "NVDA",
+      "quantity": 100
+    },
+    {
+      "streamer_symbol": ".NVDA270115P170",
+      "quantity": 1
+    },
+    {
+      "streamer_symbol": ".NVDA270115C225",
+      "quantity": -1
+    },
+    {
+      "streamer_symbol": ".NVDA270115P120",
+      "quantity": -1
+    }
+  ],
+  "manual_greeks": {
+    "legs": [
+      {
+        "delta": 1.0,
+        "gamma": 0.0,
+        "theta": 0.0,
+        "vega": 0.0,
+        "mid_price": 191.0,
+        "bid": 190.9,
+        "ask": 191.1
+      },
+      {
+        "delta": -0.25,
+        "gamma": 0.003,
+        "theta": -0.05,
+        "vega": 0.40,
+        "mid_price": 18.0,
+        "bid": 17.5,
+        "ask": 18.5
+      },
+      {
+        "delta": -0.25,
+        "gamma": -0.002,
+        "theta": 0.05,
+        "vega": -0.42,
+        "mid_price": 15.5,
+        "bid": 15.0,
+        "ask": 16.0
+      },
+      {
+        "delta": 0.08,
+        "gamma": -0.001,
+        "theta": 0.02,
+        "vega": -0.20,
+        "mid_price": 5.0,
+        "bid": 4.5,
+        "ask": 5.5
+      }
+    ]
+  }
+}

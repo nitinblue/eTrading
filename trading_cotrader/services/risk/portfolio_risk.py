@@ -17,7 +17,7 @@ from typing import List, Dict, Optional, Tuple
 from enum import Enum
 import logging
 
-from services.risk.var_calculator import VaRCalculator, VaRResult
+from trading_cotrader.services.risk.var_calculator import VaRCalculator, VaRResult
 
 logger = logging.getLogger(__name__)
 

@@ -809,3 +809,213 @@ pytest trading_cotrader/tests/ -v
 # Database setup (first time only)
 python -m trading_cotrader.scripts.setup_database
 ```
+
+---
+
+## 13. Target: Continuous Workflow Engine
+
+> This section describes where we're heading. Today the system is CLI-driven (you run commands manually).
+> The workflow engine will automate the sequencing, add decision points, and hold you accountable.
+
+### Workflow State Machine
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                    CONTINUOUS TRADING WORKFLOW                        │
+│                                                                      │
+│  ┌─────────────┐     ┌──────────────┐     ┌──────────────┐         │
+│  │ MACRO_CHECK  │────▶│  WATCHLIST    │────▶│  SCREENING   │         │
+│  │              │     │  REFRESH     │     │              │         │
+│  │ VIX, macro   │     │ Update       │     │ VIX, IV rank │         │
+│  │ outlook,     │     │ symbols,     │     │ LEAPS, tech  │         │
+│  │ calendar     │     │ TastyTrade   │     │ filters      │         │
+│  └──────┬───────┘     └──────────────┘     └──────┬───────┘         │
+│         │                                          │                 │
+│    risk_off?                                  recommendations       │
+│    ──▶ HALT                                        │                 │
+│                                                    ▼                 │
+│                                          ┌──────────────────┐       │
+│                                          │ RECOMMENDATION   │       │
+│                                          │ REVIEW           │       │
+│                                          │                  │       │
+│                                          │ ⏸ USER DECISION  │       │
+│                                          │ accept / reject  │       │
+│                                          │ / modify / defer │       │
+│                                          └────────┬─────────┘       │
+│                                                   │                 │
+│         ┌─────────────────────────────────────────┘                 │
+│         ▼                                                           │
+│  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐       │
+│  │ TRADE        │────▶│ ORDER        │────▶│ POSITION     │       │
+│  │ PLANNING     │     │ STAGING      │     │ MONITORING   │       │
+│  │              │     │              │     │              │       │
+│  │ Load template│     │ WhatIf first │     │ Greeks, P&L  │       │
+│  │ Verify entry │     │ Paper/live   │     │ delta watch  │       │
+│  │ conditions   │     │ Liquidity ✓  │     │ DTE countdown│       │
+│  └──────────────┘     └──────────────┘     └──────┬───────┘       │
+│                                                    │                │
+│                                               exit rule             │
+│                                               triggered?            │
+│                                                    │                │
+│                                                    ▼                │
+│                                          ┌──────────────────┐      │
+│                                          │ EXIT_EVALUATION  │      │
+│                                          │                  │      │
+│                                          │ Profit target?   │      │
+│                                          │ Stop loss?       │      │
+│                                          │ DTE window?      │      │
+│                                          │ Delta breach?    │      │
+│                                          └────────┬─────────┘      │
+│                                                   │                 │
+│                                                   ▼                 │
+│                                          ┌──────────────────┐      │
+│                                          │ EXIT_REVIEW      │      │
+│                                          │                  │      │
+│                                          │ ⏸ USER DECISION  │      │
+│                                          │ close / roll /   │      │
+│                                          │ adjust / hold    │      │
+│                                          └────────┬─────────┘      │
+│                                                   │                 │
+│                                                   ▼                 │
+│                                          ┌──────────────────┐      │
+│                                          │ REPORTING        │      │
+│                                          │                  │      │
+│                                          │ Daily P&L        │      │
+│                                          │ Capital deploy   │      │
+│                                          │ Compliance       │      │
+│                                          │ Email summary    │      │
+│                                          └────────┬─────────┘      │
+│                                                   │                 │
+│                              ┌─────────────────────┘                │
+│                              │  LOOP (next cycle)                   │
+│                              ▼                                      │
+│                        MACRO_CHECK                                  │
+└──────────────────────────────────────────────────────────────────────┘
+
+CIRCUIT BREAKERS (can halt workflow at any point):
+  ├── Daily loss > 3% ──▶ HALT (no new trades until tomorrow)
+  ├── Weekly loss > 5% ──▶ HALT (review required to resume)
+  ├── Portfolio drawdown exceeded ──▶ HALT (reduce positions)
+  ├── 3 consecutive losses in strategy ──▶ PAUSE strategy
+  ├── VIX > 35 ──▶ HALT (evaluate exits only)
+  └── Max trades/day exceeded ──▶ HALT (no new entries)
+```
+
+### What the Workflow Engine Does That CLI Cannot
+
+| Capability | CLI Today | Workflow Engine |
+|-----------|-----------|-----------------|
+| Sequencing | You remember what to run next | State machine knows the next step |
+| Decision tracking | You accept/reject in separate command | Tracks time-to-decision, escalates if ignored |
+| Notifications | None (you check when you remember) | Email: "3 recs pending, SPY at 52% profit" |
+| Accountability | Honor system | "You have $15K idle. 4 days since last trade." |
+| Circuit breakers | You check risk limits manually | Auto-halts: "Down 3.2% today. HALTED." |
+| Compliance | You follow templates (or don't) | "Your trade deviated from template: wrong DTE." |
+| Scheduling | You remember Wed=calendars, Fri=diagonals | Auto-presents right template at right time |
+| Capital deployment | You check periodically | Continuous: "Core 62% deployed (target 85%)" |
+| Missed opportunities | You never know | "Rejected rec on SPY IC would have made $340" |
+| Resumability | Start over each time | Restarts exactly where it left off after crash |
+
+### Workflow Rules (all in YAML)
+
+All trading rules, circuit breakers, scheduling, and constraints are configured in YAML — no hardcoded limits.
+
+```yaml
+# config/workflow_rules.yaml (target structure)
+
+workflow:
+  cycle_frequency_minutes: 30        # how often to run the loop during market hours
+  market_hours:
+    open: "09:30"
+    close: "16:00"
+    timezone: "US/Eastern"
+  no_trade_windows:
+    - start: "09:30"
+      end: "09:45"
+      reason: "Opening volatility — wait for price discovery"
+    - start: "15:30"
+      end: "16:00"
+      reason: "Closing auction — no new entries"
+
+circuit_breakers:
+  daily_loss_halt_pct: 3.0           # halt all new trades if daily P&L drops below -3%
+  weekly_loss_halt_pct: 5.0          # halt + require written review to resume
+  consecutive_loss_pause: 3          # pause strategy after 3 consecutive losses
+  consecutive_loss_halt: 5           # halt portfolio after 5 consecutive losses
+  vix_halt_threshold: 35             # no new entries above this VIX level
+  max_trades_per_day: 3              # across all portfolios
+  max_trades_per_week:
+    core_holdings: 3
+    medium_risk: 5
+    high_risk: 5
+    model_portfolio: 10
+
+capital_deployment:
+  target_deployed_pct:
+    core_holdings: 85                # alert if below this
+    medium_risk: 80
+    high_risk: 70
+  idle_alert_days: 3                 # alert if no trade in N days
+  weekly_report: true
+
+accountability:
+  decision_reminder_minutes: 60      # remind after 1 hour of pending rec
+  decision_escalation_minutes: 240   # nag after 4 hours
+  decision_timeout: "market_close"   # log as "no action" if not decided by close
+  missed_opportunity_tracking: true  # log P&L of rejected recs
+  compliance_tracking: true          # flag deviations from template
+
+scheduling:
+  # Which templates to present on which days
+  weekly_schedule:
+    monday:
+      - action: "review"
+        description: "Weekly review — check all positions, run screeners"
+    tuesday:
+      - action: "prep"
+        template: "weekly_call_calendar_spx_*.json"
+        description: "Prepare Wednesday SPX calendar template"
+    wednesday:
+      - action: "trade"
+        template: "weekly_call_calendar_spx_9_12.json"
+        time: "14:00"
+        description: "SPX 9/12 call calendar (conservative)"
+      - action: "trade"
+        template: "weekly_call_calendar_spx_7_9.json"
+        time: "15:00"
+        description: "SPX 7/9 call calendar (aggressive)"
+    thursday:
+      - action: "prep"
+        template: "weekly_put_diagonal_qqq.json"
+        description: "Prepare Friday QQQ diagonal template"
+    friday:
+      - action: "trade"
+        template: "weekly_put_diagonal_qqq.json"
+        time: "13:30"
+        description: "QQQ weekly put diagonal"
+
+  # 0DTE runs daily if conditions met
+  daily:
+    - action: "evaluate"
+      condition: "market_neutral AND rsi_40_60 AND not_fomc AND not_cpi"
+      template: "0dte_iron_butterfly_spy.json"
+      time: "09:45"
+      description: "0DTE iron butterfly if conditions met"
+
+notifications:
+  email:
+    enabled: true
+    recipient: "your_email@example.com"
+    daily_summary_time: "16:15"
+    weekly_digest_day: "friday"
+    weekly_digest_time: "17:00"
+  triggers:
+    - new_recommendation
+    - exit_rule_triggered
+    - risk_limit_approaching
+    - circuit_breaker_activated
+    - idle_capital_warning
+    - decision_timeout
+    - daily_summary
+    - weekly_digest
+```

@@ -19,12 +19,12 @@ Usage:
         print("Risk within acceptable bounds")
 """
 
-from services.risk.var_calculator import VaRCalculator, VaRResult, VaRMethod
-from services.risk.portfolio_risk import PortfolioRiskAnalyzer, PortfolioRisk, RiskImpact
-from services.risk.correlation import CorrelationAnalyzer, CorrelatedPair
-from services.risk.concentration import ConcentrationChecker, ConcentrationResult
-from services.risk.margin import MarginEstimator, MarginRequirement
-from services.risk.limits import RiskLimits, LimitBreach, LimitCheckResult
+from trading_cotrader.services.risk.var_calculator import VaRCalculator, VaRResult, VaRMethod
+from trading_cotrader.services.risk.portfolio_risk import PortfolioRiskAnalyzer, PortfolioRisk, RiskImpact
+from trading_cotrader.services.risk.correlation import CorrelationAnalyzer, CorrelatedPair
+from trading_cotrader.services.risk.concentration import ConcentrationChecker, ConcentrationResult
+from trading_cotrader.services.risk.margin import MarginEstimator, MarginRequirement
+from trading_cotrader.services.risk.limits import RiskLimits, LimitBreach, LimitCheckResult
 
 __all__ = [
     'VaRCalculator',
