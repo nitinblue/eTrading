@@ -1,10 +1,15 @@
 """
-VIX Regime Screener — Recommends trades based on VIX level.
+VIX Regime Screener — Recommends trades based on VIX level + technical filters.
 
 Strategy logic:
     VIX < 15 (Low vol):     Sell premium — Iron Condor, 16-delta wings, 30-45 DTE
     VIX 15-25 (Normal):     Neutral — Iron Butterfly or short straddle, ATM, 30-45 DTE
     VIX > 25 (High vol):    Buy vol or defined risk — Calendar spread, 45-60 DTE
+
+Enhanced with:
+    - Technical entry filters (RSI, regime, ATR) from risk_config.yaml
+    - TechnicalAnalysisService for richer MarketSnapshot
+    - Entry filter gate before generating recommendations
 
 Uses DXLink for VIX quote. Strike selection uses delta targets
 (actual delta-based selection requires live option chain; falls back
@@ -24,24 +29,27 @@ logger = logging.getLogger(__name__)
 
 
 class VixRegimeScreener(ScreenerBase):
-    """Screen symbols based on VIX regime."""
+    """Screen symbols based on VIX regime + technical entry filters."""
 
     name = "VIX Regime Screener"
     source = "screener_vix"
 
-    def __init__(self, broker=None, mock_vix: Optional[Decimal] = None):
+    def __init__(self, broker=None, mock_vix: Optional[Decimal] = None,
+                 technical_service=None):
         """
         Args:
             broker: TastytradeAdapter (authenticated). None = mock mode.
             mock_vix: Override VIX value for testing.
+            technical_service: TechnicalAnalysisService (optional).
         """
-        super().__init__(broker)
+        super().__init__(broker, technical_service=technical_service)
         self.mock_vix = mock_vix
         self._vix_level: Optional[Decimal] = None
 
     def screen(self, symbols: List[str]) -> List[Recommendation]:
         """
         Screen each symbol and generate recommendations based on VIX regime.
+        Applies entry filters from risk_config.yaml before recommending.
 
         Args:
             symbols: List of underlying tickers to screen.
@@ -124,11 +132,31 @@ class VixRegimeScreener(ScreenerBase):
         if not underlying_price or underlying_price <= 0:
             return None
 
+        # Get technical snapshot for entry filter checks
+        tech_snap = self._get_technical_snapshot(symbol)
+
         market_ctx = MarketSnapshot(
             vix=vix,
             underlying_price=underlying_price,
             market_trend=regime,
         )
+
+        # Enrich with technical data
+        market_ctx = self._enrich_market_context(market_ctx, tech_snap)
+
+        # Determine strategy based on regime
+        if regime == 'low_vol':
+            strategy_type = 'iron_condor'
+        elif regime == 'normal':
+            strategy_type = 'iron_butterfly'
+        else:
+            strategy_type = 'calendar_spread'
+
+        # Check entry filters BEFORE generating recommendation
+        passed, reason = self._check_entry_filters(strategy_type, tech_snap)
+        if not passed:
+            logger.info(f"Skipping {symbol} {strategy_type}: {reason}")
+            return None
 
         if regime == 'low_vol':
             return self._recommend_iron_condor(symbol, underlying_price, expiration, market_ctx)
@@ -255,6 +283,12 @@ class VixRegimeScreener(ScreenerBase):
 
     def _get_underlying_price(self, symbol: str) -> Optional[Decimal]:
         """Get current price for an underlying."""
+        # Try technical service first (has cached prices)
+        if self.technical_service:
+            snap = self._get_technical_snapshot(symbol)
+            if snap and snap.current_price > 0:
+                return snap.current_price
+
         if not self.broker:
             # Mock prices for common symbols
             mock_prices = {

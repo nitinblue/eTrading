@@ -56,14 +56,8 @@ class TradeRepository(BaseRepository[dm.Trade, TradeORM]):
             if hasattr(trade, 'trade_status') and trade.trade_status:
                 trade_status = trade.trade_status.value if hasattr(trade.trade_status, 'value') else str(trade.trade_status)
             
-            # Get is_open - check property or attribute
-            is_open = True
-            if hasattr(trade, 'is_open'):
-                if callable(getattr(trade.__class__, 'is_open', None)):
-                    # It's a property
-                    is_open = trade.is_open
-                else:
-                    is_open = trade.is_open
+            # Compute is_open from trade_status (never from domain property/field)
+            is_open = trade_status in ('executed', 'partial')
             
             # Create trade ORM
             trade_orm = TradeORM(
@@ -284,9 +278,8 @@ class TradeRepository(BaseRepository[dm.Trade, TradeORM]):
             trade_orm.actual_exit = getattr(trade, 'actual_exit', trade_orm.actual_exit)
             trade_orm.slippage = getattr(trade, 'slippage', trade_orm.slippage)
             
-            # Update is_open
-            if hasattr(trade, 'is_open'):
-                trade_orm.is_open = trade.is_open
+            # Compute is_open from trade_status (always derived, never from domain)
+            trade_orm.is_open = trade_orm.trade_status in ('executed', 'partial')
             
             # Update metadata
             trade_orm.notes = getattr(trade, 'notes', trade_orm.notes)
@@ -462,10 +455,9 @@ class TradeRepository(BaseRepository[dm.Trade, TradeORM]):
             broker_trade_id=trade_orm.broker_trade_id
         )
         
-        # Add is_open only if it's a field (old domain), not property (new domain)
-        if 'is_open' in dm.Trade.__dataclass_fields__:
-            trade_kwargs['is_open'] = trade_orm.is_open
-        
+        # is_open is a @property on the domain Trade (computed from trade_status)
+        # — never pass it as a kwarg
+
         # Add enhanced fields if available in domain
         if hasattr(dm.Trade, 'trade_type'):
             # Enhanced domain

@@ -132,6 +132,7 @@ class TradeSource(Enum):
     SCREENER_VIX = "screener_vix"          # VIX regime screener
     SCREENER_IV_RANK = "screener_iv_rank"  # IV rank screener
     SCREENER_TECHNICAL = "screener_technical"  # Technical analysis screener
+    SCREENER_LEAPS = "screener_leaps"      # LEAPS entry screener
     ASTROLOGY = "astrology"                # Astrology-based recommendation
     AI_RECOMMENDATION = "ai_recommendation"  # AI/ML model recommendation
     RESEARCH = "research"                  # Research-based trade

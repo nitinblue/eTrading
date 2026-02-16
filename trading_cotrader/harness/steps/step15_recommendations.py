@@ -47,12 +47,13 @@ class RecommendationStep(TestStep):
 
             messages.append(f"Created watchlist '{wl.name}' with {len(wl.symbols)} symbols")
 
-            # Step 2: Run VIX screener with mock VIX=18 (normal regime)
+            # Step 2: Run VIX screener with mock VIX=12 (low vol → iron_condor)
+            # iron_condor is in active_strategies for medium_risk and high_risk
             svc = RecommendationService(session, broker=None)
             recs = svc.run_screener(
                 screener_name='vix',
                 watchlist_name='Harness Test Watchlist',
-                mock_vix=Decimal('18'),
+                mock_vix=Decimal('12'),
             )
 
             if not recs:
@@ -78,7 +79,7 @@ class RecommendationStep(TestStep):
                 title="📋 Generated Recommendations"
             ))
 
-            messages.append(f"VIX screener generated {len(recs)} recommendations (VIX=18, normal regime)")
+            messages.append(f"VIX screener generated {len(recs)} recommendations (VIX=12, low vol → iron_condor)")
 
             # Step 3: Verify all are PENDING
             pending = svc.get_pending()

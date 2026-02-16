@@ -163,10 +163,15 @@ class PortfolioConfig:
     exit_rule_profile: str = "balanced"
     tags: List[str] = field(default_factory=list)
     allowed_strategies: List[str] = field(default_factory=list)
+    active_strategies: List[str] = field(default_factory=list)  # subset of allowed; empty = all allowed
     risk_limits: PortfolioRiskLimits = field(default_factory=PortfolioRiskLimits)
     preferred_underlyings: List[str] = field(default_factory=list)
     requires_rationale: bool = False
     requires_exit_commentary: bool = False
+
+    def get_active_strategies(self) -> List[str]:
+        """Get active strategies, falling back to allowed_strategies if not set."""
+        return self.active_strategies if self.active_strategies else self.allowed_strategies
 
 
 @dataclass
@@ -201,6 +206,20 @@ class IVConfig:
 
 
 @dataclass
+class EntryFilters:
+    """Technical entry filter criteria for a strategy."""
+    rsi_range: Optional[List[float]] = None       # [min, max] RSI for entry
+    directional_regime: Optional[List[str]] = None  # allowed regimes: "U", "F", "D"
+    volatility_regime: Optional[List[str]] = None   # allowed: "LOW", "NORMAL", "HIGH"
+    min_atr_percent: Optional[float] = None
+    max_atr_percent: Optional[float] = None
+    min_iv_percentile: Optional[float] = None
+    max_iv_percentile: Optional[float] = None
+    min_pct_from_high: Optional[float] = None     # for LEAPS: min correction depth
+    max_pct_from_high: Optional[float] = None
+
+
+@dataclass
 class StrategyRule:
     """Strategy selection rule"""
     name: str
@@ -210,6 +229,7 @@ class StrategyRule:
     market_outlook: List[str] = field(default_factory=list)
     dte_range: List[int] = field(default_factory=lambda: [30, 45])
     requires: Optional[str] = None
+    entry_filters: Optional[EntryFilters] = None
 
 
 @dataclass
@@ -406,8 +426,14 @@ class RiskConfigLoader:
         
         # Strategy rules
         if 'strategy_rules' in raw:
-            for name, rule in raw['strategy_rules'].items():
-                config.strategy_rules[name] = StrategyRule(name=name, **rule)
+            for name, rule_data in raw['strategy_rules'].items():
+                entry_filters_data = rule_data.pop('entry_filters', None)
+                entry_filters = None
+                if entry_filters_data and isinstance(entry_filters_data, dict):
+                    entry_filters = EntryFilters(**entry_filters_data)
+                config.strategy_rules[name] = StrategyRule(
+                    name=name, entry_filters=entry_filters, **rule_data
+                )
         
         # Margin
         if 'margin' in raw:
@@ -442,6 +468,7 @@ class RiskConfigLoader:
                     exit_rule_profile=pdata.get('exit_rule_profile', 'balanced'),
                     tags=pdata.get('tags', []),
                     allowed_strategies=pdata.get('allowed_strategies', []),
+                    active_strategies=pdata.get('active_strategies', []),
                     risk_limits=risk_limits,
                     preferred_underlyings=pdata.get('preferred_underlyings', []),
                     requires_rationale=pdata.get('requires_rationale', False),

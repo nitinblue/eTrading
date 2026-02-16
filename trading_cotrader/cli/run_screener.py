@@ -3,8 +3,10 @@ CLI: Run Screener against a watchlist.
 
 Usage:
     python -m trading_cotrader.cli.run_screener --screener vix --watchlist "My Watchlist"
-    python -m trading_cotrader.cli.run_screener --screener vix --watchlist "Mock" --no-broker
     python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY,QQQ,IWM --no-broker
+    python -m trading_cotrader.cli.run_screener --screener leaps --symbols AAPL,MSFT --no-broker
+    python -m trading_cotrader.cli.run_screener --screener all --watchlist "My Watchlist"
+    python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY --macro-outlook uncertain --expected-vol extreme
 """
 
 import argparse
@@ -19,8 +21,9 @@ def main():
         description="Run a screener and generate trade recommendations"
     )
     parser.add_argument(
-        '--screener', required=True, choices=['vix', 'iv_rank'],
-        help='Screener to run'
+        '--screener', required=True,
+        choices=['vix', 'iv_rank', 'leaps', 'all'],
+        help='Screener to run (or "all" to run all screeners)'
     )
     parser.add_argument(
         '--watchlist', default=None,
@@ -37,6 +40,22 @@ def main():
     parser.add_argument(
         '--mock-vix', type=float, default=None,
         help='Override VIX value for testing'
+    )
+
+    # Macro override args
+    parser.add_argument(
+        '--macro-outlook', default=None,
+        choices=['bullish', 'neutral', 'bearish', 'uncertain'],
+        help='Market outlook override (short-circuits screening if uncertain)'
+    )
+    parser.add_argument(
+        '--expected-vol', default=None,
+        choices=['low', 'normal', 'high', 'extreme'],
+        help='Expected volatility override'
+    )
+    parser.add_argument(
+        '--macro-notes', default='',
+        help='Free-text notes for macro context'
     )
 
     args = parser.parse_args()
@@ -59,11 +78,39 @@ def main():
         except Exception as e:
             print(f"WARNING: Could not connect to broker: {e}")
 
+    # Build macro override if provided
+    macro_override = None
+    if args.macro_outlook or args.expected_vol:
+        from trading_cotrader.services.macro_context_service import MacroOverride
+        macro_override = MacroOverride(
+            market_probability=args.macro_outlook,
+            expected_volatility=args.expected_vol,
+            notes=args.macro_notes,
+        )
+        print(f"Macro override: outlook={args.macro_outlook}, vol={args.expected_vol}")
+        if args.macro_notes:
+            print(f"  Notes: {args.macro_notes}")
+
+    # Initialize TechnicalAnalysisService
+    technical_service = None
+    try:
+        from trading_cotrader.services.technical_analysis_service import TechnicalAnalysisService
+        use_mock = args.no_broker
+        technical_service = TechnicalAnalysisService(use_mock=use_mock)
+        print(f"Technical analysis: {'mock' if use_mock else 'live (yfinance)'}")
+    except Exception as e:
+        print(f"WARNING: TechnicalAnalysisService unavailable: {e}")
+
+    print()
+
     with session_scope() as session:
         from trading_cotrader.services.recommendation_service import RecommendationService
         from trading_cotrader.services.watchlist_service import WatchlistService
 
-        svc = RecommendationService(session, broker=broker)
+        svc = RecommendationService(
+            session, broker=broker,
+            technical_service=technical_service,
+        )
 
         # Handle --symbols by creating a temporary watchlist
         if args.symbols and not args.watchlist:
@@ -99,11 +146,14 @@ def main():
         recs = svc.run_screener(
             screener_name=args.screener,
             watchlist_name=watchlist_name,
+            macro_override=macro_override,
             **screener_kwargs,
         )
 
         if not recs:
             print("No recommendations generated.")
+            if macro_override and args.macro_outlook == 'uncertain':
+                print("  (Macro short-circuit may have prevented screening)")
             return 0
 
         # Display recommendations

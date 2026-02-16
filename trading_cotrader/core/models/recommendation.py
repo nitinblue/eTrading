@@ -52,18 +52,36 @@ class MarketSnapshot:
     """Market conditions at the time of recommendation."""
     vix: Optional[Decimal] = None
     iv_rank: Optional[Decimal] = None
+    iv_percentile: Optional[Decimal] = None
     underlying_price: Optional[Decimal] = None
     rsi: Optional[Decimal] = None
     market_trend: Optional[str] = None
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
+    # Technical indicators (populated by TechnicalAnalysisService)
+    ema_20: Optional[Decimal] = None
+    ema_50: Optional[Decimal] = None
+    sma_200: Optional[Decimal] = None
+    atr_percent: Optional[float] = None
+    directional_regime: Optional[str] = None   # "U" / "F" / "D"
+    volatility_regime: Optional[str] = None     # "LOW" / "NORMAL" / "HIGH"
+    pct_from_52w_high: Optional[float] = None
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'vix': float(self.vix) if self.vix else None,
             'iv_rank': float(self.iv_rank) if self.iv_rank else None,
+            'iv_percentile': float(self.iv_percentile) if self.iv_percentile else None,
             'underlying_price': float(self.underlying_price) if self.underlying_price else None,
             'rsi': float(self.rsi) if self.rsi else None,
             'market_trend': self.market_trend,
+            'ema_20': float(self.ema_20) if self.ema_20 else None,
+            'ema_50': float(self.ema_50) if self.ema_50 else None,
+            'sma_200': float(self.sma_200) if self.sma_200 else None,
+            'atr_percent': self.atr_percent,
+            'directional_regime': self.directional_regime,
+            'volatility_regime': self.volatility_regime,
+            'pct_from_52w_high': self.pct_from_52w_high,
             'timestamp': self.timestamp.isoformat(),
         }
 

@@ -31,6 +31,10 @@ from trading_cotrader.services.watchlist_service import WatchlistService
 from trading_cotrader.services.screeners.screener_base import ScreenerBase
 from trading_cotrader.services.screeners.vix_regime_screener import VixRegimeScreener
 from trading_cotrader.services.screeners.iv_rank_screener import IvRankScreener
+from trading_cotrader.services.screeners.leaps_entry_screener import LeapsEntryScreener
+from trading_cotrader.services.macro_context_service import (
+    MacroContextService, MacroOverride, MacroAssessment
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,20 +42,23 @@ logger = logging.getLogger(__name__)
 _SCREENER_REGISTRY = {
     'vix': VixRegimeScreener,
     'iv_rank': IvRankScreener,
+    'leaps': LeapsEntryScreener,
 }
 
 
 class RecommendationService:
     """Orchestrates screeners, manages recommendation lifecycle."""
 
-    def __init__(self, session: Session, broker=None):
+    def __init__(self, session: Session, broker=None, technical_service=None):
         """
         Args:
             session: SQLAlchemy session.
             broker: TastytradeAdapter (authenticated). None = mock mode.
+            technical_service: TechnicalAnalysisService instance (optional).
         """
         self.session = session
         self.broker = broker
+        self.technical_service = technical_service
         self.rec_repo = RecommendationRepository(session)
         self.watchlist_svc = WatchlistService(session, broker=broker)
 
@@ -59,26 +66,58 @@ class RecommendationService:
         self,
         screener_name: str,
         watchlist_name: str,
+        macro_override: Optional[MacroOverride] = None,
         **screener_kwargs,
     ) -> List[Recommendation]:
         """
         Run a screener against a watchlist and persist recommendations.
 
+        Pipeline:
+            1. Macro short-circuit check
+            2. Run screener
+            3. Auto-suggest portfolio
+            4. Filter by active strategies
+            5. Apply confidence modifier
+            6. Persist to DB
+
         Args:
-            screener_name: Key in screener registry ('vix', 'iv_rank').
+            screener_name: Key in screener registry ('vix', 'iv_rank', 'leaps', 'all').
             watchlist_name: Name of watchlist to screen.
+            macro_override: Optional macro context override.
             **screener_kwargs: Extra kwargs passed to screener constructor.
 
         Returns:
             List of Recommendation objects (PENDING status, saved to DB).
         """
+        # Step 1: Macro short-circuit
+        macro_svc = MacroContextService(broker=self.broker)
+        assessment = macro_svc.evaluate(override=macro_override)
+        logger.info(f"Macro assessment: {assessment.regime} — {assessment.rationale}")
+
+        if not assessment.should_screen:
+            logger.warning(
+                f"MACRO SHORT-CIRCUIT: {assessment.rationale} — "
+                f"skipping all screeners"
+            )
+            return []
+
+        # Handle 'all' screener — run all registered screeners
+        if screener_name == 'all':
+            return self._run_all_screeners(
+                watchlist_name, assessment, macro_override, **screener_kwargs
+            )
+
         # Get screener
         screener_cls = _SCREENER_REGISTRY.get(screener_name)
         if not screener_cls:
             logger.error(f"Unknown screener: {screener_name}. Available: {list(_SCREENER_REGISTRY.keys())}")
             return []
 
-        screener = screener_cls(broker=self.broker, **screener_kwargs)
+        screener = screener_cls(
+            broker=self.broker,
+            technical_service=self.technical_service,
+            **screener_kwargs,
+        )
 
         # Get watchlist
         watchlist = self.watchlist_svc.get_or_fetch(watchlist_name)
@@ -91,13 +130,24 @@ class RecommendationService:
             f"({len(watchlist.symbols)} symbols)"
         )
 
-        # Run screener
+        # Step 2: Run screener
         recommendations = screener.screen(watchlist.symbols)
 
-        # Auto-suggest portfolio for each recommendation
+        # Step 3: Auto-suggest portfolio for each recommendation
         self._auto_suggest_portfolios(recommendations)
 
-        # Persist to DB
+        # Step 4: Filter by active strategies for the suggested portfolio
+        recommendations = self._filter_by_active_strategies(recommendations)
+
+        # Step 5: Apply confidence modifier from macro assessment
+        if assessment.confidence_modifier < 1.0:
+            for rec in recommendations:
+                original = rec.confidence
+                rec.confidence = max(1, int(rec.confidence * assessment.confidence_modifier))
+                if rec.confidence != original:
+                    rec.rationale += f" [macro: {assessment.regime}, conf {original}→{rec.confidence}]"
+
+        # Step 6: Persist to DB
         saved = []
         for rec in recommendations:
             created = self.rec_repo.create_from_domain(rec)
@@ -106,6 +156,26 @@ class RecommendationService:
 
         logger.info(f"Saved {len(saved)} recommendations to DB")
         return saved
+
+    def _run_all_screeners(
+        self,
+        watchlist_name: str,
+        assessment: MacroAssessment,
+        macro_override: Optional[MacroOverride],
+        **screener_kwargs,
+    ) -> List[Recommendation]:
+        """Run all registered screeners and combine results."""
+        all_recs = []
+        for name in _SCREENER_REGISTRY:
+            logger.info(f"Running '{name}' screener as part of 'all'...")
+            recs = self.run_screener(
+                screener_name=name,
+                watchlist_name=watchlist_name,
+                macro_override=macro_override,
+                **screener_kwargs,
+            )
+            all_recs.extend(recs)
+        return all_recs
 
     def get_pending(self) -> List[Recommendation]:
         """Get all pending recommendations."""
@@ -224,6 +294,38 @@ class RecommendationService:
         if count > 0:
             logger.info(f"Expired {count} old recommendations")
         return count
+
+    def _filter_by_active_strategies(
+        self, recommendations: List[Recommendation]
+    ) -> List[Recommendation]:
+        """Filter out recs whose strategy is not active in the suggested portfolio."""
+        try:
+            from trading_cotrader.services.portfolio_manager import PortfolioManager
+            pm = PortfolioManager(self.session)
+
+            filtered = []
+            for rec in recommendations:
+                if not rec.suggested_portfolio:
+                    # No portfolio suggestion — keep it
+                    filtered.append(rec)
+                    continue
+
+                if pm.is_strategy_active(rec.suggested_portfolio, rec.strategy_type):
+                    filtered.append(rec)
+                else:
+                    logger.info(
+                        f"Filtered out {rec.underlying} {rec.strategy_type} — "
+                        f"not active in '{rec.suggested_portfolio}'"
+                    )
+
+            if len(filtered) < len(recommendations):
+                logger.info(
+                    f"Active strategy filter: {len(recommendations)} → {len(filtered)} recommendations"
+                )
+            return filtered
+        except Exception as e:
+            logger.warning(f"Active strategy filter failed, keeping all recs: {e}")
+            return recommendations
 
     def _auto_suggest_portfolios(self, recommendations: List[Recommendation]) -> None:
         """Auto-suggest the best portfolio for each recommendation."""

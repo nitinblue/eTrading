@@ -185,6 +185,20 @@ class PortfolioManager:
             'portfolio_config': pc,
         }
 
+    def get_active_strategies(self, portfolio_name: str) -> List[str]:
+        """
+        Get the currently active strategies for a portfolio.
+        Falls back to allowed_strategies if active_strategies not configured.
+        """
+        pc = self.portfolios_config.get_by_name(portfolio_name)
+        if pc is None:
+            return []
+        return pc.get_active_strategies()
+
+    def is_strategy_active(self, portfolio_name: str, strategy_type: str) -> bool:
+        """Check if a strategy type is actively being traded in a portfolio."""
+        return strategy_type in self.get_active_strategies(portfolio_name)
+
     def get_portfolio_for_strategy(self, strategy_type: str) -> Optional[str]:
         """
         Find the best portfolio for a given strategy type.
