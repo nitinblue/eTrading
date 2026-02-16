@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 16, 2026 (session 12)
+# Last Updated: February 16, 2026 (session 15)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -37,16 +37,16 @@ but most definitely System needs to be smart enough to continously improve the p
 
 | # | Objective | Signal (observable behavior) | Status |
 |---|-----------|-------------------------------|--------|
-| 1 | **Workflow state machine** — Continuous loop: MACRO_CHECK → WATCHLIST_REFRESH → SCREENING → RECOMMENDATION_REVIEW → TRADE_PLANNING → ORDER_STAGING → POSITION_MONITORING → EXIT_EVALUATION → EXIT_REVIEW → REPORTING. State persisted in DB. Can resume after restart. | `python -m trading_cotrader.workflow.engine --start` runs continuously. State visible in DB/CLI. | NOT STARTED |
-| 2 | **User decision points** — Workflow pauses at RECOMMENDATION_REVIEW and EXIT_REVIEW. Presents options (accept/reject/modify/defer). Tracks time-to-decision. Escalates if ignored (reminder after 1hr, nag after 4hr, missed-opportunity log after expiry). | Workflow stops, notifies user, waits for decision. If no decision by market close, logs as "no action" with accountability note. | NOT STARTED |
-| 3 | **Notifications & approvals** — Email alerts on: new recommendations, exit triggers, risk limit approaching, idle capital warning, daily summary. Future: Slack, SMS, mobile push. Approval can come via email reply, CLI, or (future) mobile app. | User receives email: "3 new recommendations pending. $8K idle in medium_risk. SPY iron condor at 52% profit — close?" | NOT STARTED |
-| 4 | **Capital deployment accountability** — Track deployed vs idle capital per portfolio. Alert when cash exceeds target reserve (Core: >15% idle = alert, Med: >10%, High: >5%). Weekly "capital efficiency" report. Track "days since last trade" per portfolio. Log conscious dry-powder decisions vs laziness/inaction. | Weekly report: "Core: 62% deployed (target 85%). 6 days since last trade. 2 screener recs were ignored." | NOT STARTED |
+| 1 | **Workflow state machine** — Continuous loop: BOOT → MACRO_CHECK → SCREENING → RECOMMENDATION_REVIEW → EXECUTION → MONITORING → EXIT_EVALUATION → EXIT_REVIEW → REPORTING. State persisted in DB. Can resume after restart. | `python -m trading_cotrader.runners.run_workflow --once --no-broker --mock` runs single cycle. State in DB/CLI. | DONE (s13) |
+| 2 | **User decision points** — Workflow pauses at RECOMMENDATION_REVIEW and EXIT_REVIEW. Presents options (approve/reject/defer). Tracks time-to-decision via DecisionLogORM. | Workflow stops, notifies user, waits. Interactive CLI: approve/reject/defer/status/list/halt/resume/override. | DONE (s13) |
+| 3 | **Notifications & approvals** — Console notifications always on. Email framework built (off by default). Recommendations, exits, halts, daily summaries. | NotifierAgent: console + email (SMTP/TLS). Enable in workflow_rules.yaml when ready. | DONE (s13) |
+| 4 | **Capital deployment accountability** — Track deployed vs idle capital per portfolio. Days since last trade. Recs ignored. Time-to-decision. | AccountabilityAgent queries DecisionLogORM + TradeORM. Writes accountability_metrics to context. | DONE (s13) |
 | 5 | **Trade plan compliance** — Every execution compared to template. Deviations flagged: wrong strikes, wrong DTE, wrong timing, wrong portfolio, skipped entry conditions. "Did you follow the playbook?" metric. Source comparison: system recs vs manual overrides, with performance tracking on both. | Monthly compliance report: "87% of trades followed template. Manual overrides underperformed system recs by 12%." | NOT STARTED |
-| 6 | **Workflow scheduling** — Calendar-aware: knows which cadence runs on which day (0DTE daily, weekly Wed/Fri, monthly when DTE aligns). Knows market holidays, FOMC dates, earnings dates. Adjusts cycle timing automatically. No trades on holidays. Skip 0DTE on FOMC days. | Workflow on Wednesday at 1:55 PM: "SPX weekly calendar window opens in 5 min. Template prepared. Ready to review?" | NOT STARTED |
-| 7 | **WhatIf → Order conversion** — Workflow can stage WhatIf trades, get approval, then convert to real broker orders. Paper trading mode first. Real orders require explicit "go live" flag + position size verification. Two-step approval for real orders: "I want to do this" → "I'm really sure". | `--paper` mode books WhatIf only. `--live` mode converts approved WhatIf to TastyTrade order after double confirmation. | NOT STARTED |
-| 8 | **Daily/weekly reporting** — Automated end-of-day summary: trades entered, trades closed, P&L, capital deployment, risk utilization, playbook compliance. Weekly digest with performance vs targets. All emailed automatically. | Every day at 4:15 PM ET: email with today's activity, portfolio snapshot, outstanding decisions, tomorrow's calendar. | NOT STARTED |
-| 9 | **Circuit breakers & trading halts** — Rule-based automatic trading halts. Daily loss limit (3% of portfolio = halt for day). Weekly loss limit (5% = halt for week, review required). Per-portfolio drawdown limit (Core 15%, Med 20%, High 30%). Consecutive loss limit (3 in a row = pause strategy, 5 = pause portfolio). VIX spike halt (VIX >35 = no new entries). All halts logged with reason. Override requires written rationale + confirmation. Cannot be silently bypassed. | Workflow blocks new trades: "HALTED: Daily loss 3.2% exceeded 3% limit. No new entries until tomorrow. Override requires written rationale." | NOT STARTED |
-| 10 | **Rule-based trading constraints** — Configurable rules enforced by workflow, not memory. Max trades per day (e.g., 3). Max trades per week per portfolio. No trading in first 15 min of market (unless 0DTE). No trading in last 30 min (unless closing). No undefined risk without explicit approval per trade. No adding to losing positions without rationale. Position size must follow Kelly criterion or fixed fractional. All rules in YAML, all violations logged. | "BLOCKED: Attempting 4th trade today (max 3). Rule: max_trades_per_day=3 in workflow_rules.yaml." | NOT STARTED |
+| 6 | **Workflow scheduling** — Calendar-aware via exchange_calendars (NYSE holidays). FOMC dates in YAML. Cadences: 0DTE daily, weekly Wed/Fri, monthly by DTE window. APScheduler for continuous mode. | CalendarAgent + WorkflowScheduler. Morning boot 9:25, monitoring every 30 min, EOD 3:30, report 4:15 ET. | DONE (s13) |
+| 7 | **WhatIf → Order conversion** — Paper mode default. ExecutorAgent books via RecommendationService.accept_recommendation(). | `--paper` mode (default). `--live` flag exists but double-confirmation not yet implemented. | PARTIAL (s13) |
+| 8 | **Daily/weekly reporting** — ReporterAgent generates structured reports: trades, P&L, portfolio snapshot, pending decisions, risk, calendar. | ReporterAgent → daily_report in context → NotifierAgent sends. Weekly digest framework built. | DONE (s13) |
+| 9 | **Circuit breakers & trading halts** — GuardianAgent checks: daily loss (3%), weekly loss (5%), VIX>35, per-portfolio drawdown, consecutive losses. Override requires written rationale. All thresholds from YAML. | GuardianAgent tested: breakers trip correctly, override denied without rationale, granted with it. | DONE (s13) |
+| 10 | **Rule-based trading constraints** — Max trades/day (3), max/week/portfolio (5), no first 15 min, no last 30 min, undefined risk approval, no adding to losers without rationale. All in workflow_rules.yaml. | GuardianAgent.check_trading_constraints() enforced before every execution. | DONE (s13) |
 
 ### Feb 15, 2026 (Session 4) — Portfolio Evaluation + Liquidity
 
@@ -92,6 +92,45 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 
 ## [CLAUDE OWNS] WHAT USER CAN DO TODAY
 
+**Multi-Broker Portfolios (NEW — Session 15):**
+- 10 portfolios: 5 real (Tastytrade, Fidelity IRA, Fidelity Personal, Zerodha, Stallion) + 5 WhatIf mirrors
+- 3-layer broker design: Broker Registry (`config/brokers.yaml`) → Portfolio Config (`risk_config.yaml`) → Execution Routing (`agents/execution/broker_router.py`)
+- Multi-currency: USD (Tastytrade, Fidelity) and INR (Zerodha, Stallion)
+- Execution routing: API brokers (Tastytrade, Zerodha), manual execution (Fidelity), read-only managed fund (Stallion)
+- Cross-broker safety: Fidelity trade NEVER routes to Tastytrade API; currency isolation enforced
+- Stallion: fully managed fund — 29 holdings loaded from PDF, read-only (no trade execution)
+- Fidelity CSV sync: `python -m trading_cotrader.cli.sync_fidelity --file Portfolio_Positions.csv`
+- Portfolio init: `python -m trading_cotrader.cli.init_portfolios` (creates 10, tags old `cotrader/*` as deprecated)
+- Stallion load: `python -m trading_cotrader.cli.load_stallion` (29 equity holdings + cash)
+- WhatIf portfolios inherit strategies from real parent automatically
+
+**Capital Utilization & Agent Self-Assessment (Session 14):**
+- CapitalUtilizationAgent runs every boot + monitoring cycle: per-portfolio idle capital, gap %, opportunity cost/day
+- Staggered deployment ramp: doesn't nag to deploy $200K on day 1 (8-week ramp, per-portfolio weekly caps in YAML)
+- Severity escalation: ok → info → warning → critical (based on gap vs threshold and days idle)
+- Correlates with pending recommendations: "You have $3K idle AND 1 pending rec — approve it?"
+- SessionObjectivesAgent: agents declare objectives at morning boot, graded at EOD (A/B/C/F)
+- EOD corrective plan: gaps identified with concrete actions for tomorrow
+- Reporter now includes CAPITAL EFFICIENCY + SESSION PERFORMANCE + CORRECTIVE PLAN sections
+- Notifier: idle capital alerts with severity formatting
+- All thresholds in `config/workflow_rules.yaml` (escalation, target returns, staggered deployment)
+
+**Workflow Engine (Session 13):**
+- Single cycle: `python -m trading_cotrader.runners.run_workflow --once --no-broker --mock`
+- Continuous mode: `python -m trading_cotrader.runners.run_workflow --paper --no-broker`
+- Interactive CLI: `status`, `list`, `approve <id>`, `reject <id>`, `defer <id>`, `halt`, `resume --rationale "..."`, `override`, `help`
+- Full state machine: IDLE → BOOT → MACRO_CHECK → SCREENING → RECOMMENDATION_REVIEW → EXECUTION → MONITORING → EXIT_EVALUATION → EXIT_REVIEW → REPORTING
+- Exit evaluation covers: take profit, stop loss, DTE exits, delta breach, roll opportunities, adjustments, liquidity downgrade
+- Guardian agent: circuit breakers (daily loss 3%, weekly 5%, VIX>35, drawdown, consecutive losses) + trading constraints (max trades/day, time-of-day, undefined risk approval)
+- All rules in `config/workflow_rules.yaml` — no hardcoded thresholds
+- Calendar-aware: NYSE holidays via exchange_calendars, FOMC dates in YAML
+- APScheduler: morning boot, monitoring every 30 min, EOD 3:30 PM, report 4:15 PM ET
+- State persisted in DB (`workflow_state` table), resumes after restart
+- Decision logging (`decision_log` table): tracks time-to-decision, ignored recs, deferrals
+- Accountability: capital deployment %, days since last trade, recs ignored
+- Notifications: console always, email framework (off by default)
+- Paper mode default — all trades booked as WhatIf
+
 **Trade Booking:**
 - Book WhatIf trades from JSON: `python -m trading_cotrader.cli.book_trade --file trade.json [--no-broker]`
 - Book past-dated trades, trades with manual Greeks, any of 12 strategy types
@@ -112,7 +151,7 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 - Liquidity thresholds configurable in `risk_config.yaml`
 
 **Portfolio & Risk:**
-- 4 risk-tiered portfolios from YAML, strategy permissions matrix
+- 10 multi-broker portfolios (5 real + 5 whatif) from YAML, strategy permissions matrix
 - Performance metrics per portfolio (win rate, Sharpe, drawdown, expectancy)
 - Source tracking on every trade (screener, manual, astrology, etc.)
 
@@ -123,25 +162,24 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 - Expected Shortfall (CVaR) at all confidence levels
 - Per-underlying VaR contribution breakdown (standalone, component, marginal VaR)
 - Correlation matrix from real yfinance data (1-day cache, fallback to estimates if offline)
-- All risk module imports fixed (`trading_cotrader.services.risk.*`)
 
 **Testing:**
 - Harness: `python -m trading_cotrader.harness.runner --skip-sync` — 14/16 pass (2 skip without broker), 17 steps
-- Unit tests: `pytest trading_cotrader/tests/ -v` — 79 tests, all pass (55 original + 24 VaR/correlation)
+- Unit tests: `pytest trading_cotrader/tests/ -v` — 116 tests, all pass
 
 **Broker & Server:**
 - Authenticate TastyTrade, sync portfolio, pull live Greeks
 - Grid server: `python -m trading_cotrader.runners.run_grid_server`
 
 **Blocked / Not Yet Working:**
+- Live broker order execution (paper mode only — `--live` needs double-confirmation UI)
+- Trade plan compliance tracking (template comparison, deviation flagging)
+- Email notifications (framework built, SMTP not configured)
 - Liquidity check on entry screeners not yet wired (exit-side only)
-- OI + daily volume from broker not integrated (mock placeholders) — needs `/market-metrics`
-- Auto-accept for exit recommendations not implemented
+- OI + daily volume from broker not integrated (mock placeholders)
 - IV rank uses realized vol proxy — needs broker IV
-- Macro doesn't check FOMC/earnings dates
 - UI is prototypes only (`ui/`)
 - Performance metrics return zeros (no closed trades)
-- 6 strategies not testable in harness (equity legs, two expirations, custom)
 
 ---
 
@@ -156,21 +194,31 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 
 | Area | Key files |
 |------|-----------|
-| **Portfolios** | `config/risk_config.yaml`, `config/risk_config_loader.py`, `services/portfolio_manager.py` |
+| **Workflow Engine** | `workflow/engine.py` (orchestrator), `workflow/states.py` (state machine), `workflow/scheduler.py` (APScheduler), `runners/run_workflow.py` (CLI) |
+| **Agents** | `agents/protocol.py` (Agent/AgentResult), `agents/messages.py` (UserIntent/SystemResponse) |
+| **Safety** | `agents/safety/guardian.py` (circuit breakers + trading constraints), `config/workflow_rules.yaml` (all thresholds) |
+| **Perception** | `agents/perception/market_data.py`, `agents/perception/portfolio_state.py`, `agents/perception/calendar.py` |
+| **Analysis** | `agents/analysis/macro.py`, `agents/analysis/screener.py`, `agents/analysis/evaluator.py`, `agents/analysis/risk.py`, `agents/analysis/capital.py` (idle capital monitoring) |
+| **Execution** | `agents/execution/executor.py`, `agents/execution/broker_router.py` (per-broker routing), `agents/execution/notifier.py`, `agents/execution/reporter.py` |
+| **Decision** | `agents/decision/interaction.py` (InteractionManager — routes user commands) |
+| **Learning** | `agents/learning/accountability.py` (decision tracking), `agents/learning/session_objectives.py` (agent self-assessment) |
+| **Workflow Config** | `config/workflow_rules.yaml`, `config/workflow_config_loader.py` |
+| **Broker Config** | `config/brokers.yaml` (4 brokers), `config/broker_config_loader.py` (BrokerRegistry) |
+| **Portfolios** | `config/risk_config.yaml` (10 portfolios), `config/risk_config_loader.py`, `services/portfolio_manager.py` |
 | **Trade Booking** | `services/trade_booking_service.py`, `cli/book_trade.py`, `core/models/domain.py` (TradeStatus, TradeSource) |
 | **Screeners** | `services/screeners/` (vix, iv_rank, leaps), `services/recommendation_service.py`, `services/technical_analysis_service.py` |
 | **Macro Gate** | `services/macro_context_service.py`, `config/daily_macro.yaml` |
 | **Portfolio Eval** | `services/portfolio_evaluation_service.py`, `services/position_mgmt/rules_engine.py`, `services/liquidity_service.py` |
 | **Recommendations** | `core/models/recommendation.py` (RecommendationType), `repositories/recommendation.py`, `cli/accept_recommendation.py`, `cli/evaluate_portfolio.py` |
-| **Risk/VaR** | `services/risk/var_calculator.py` (parametric + historical + incremental VaR, yfinance data), `services/risk/correlation.py` (real covariance + volatility from yfinance), `services/risk/` (concentration, margin, limits), `services/risk_manager.py`, `services/hedging/hedge_calculator.py` |
+| **Risk/VaR** | `services/risk/var_calculator.py`, `services/risk/correlation.py`, `services/risk/` (concentration, margin, limits) |
 | **Performance** | `services/performance_metrics_service.py` (win rate, CAGR, Sharpe, drawdown, source breakdown) |
 | **Events/ML** | `services/event_logger.py`, `core/models/events.py`, `ai_cotrader/` (feature extraction, RL — needs data) |
 | **Pricing** | `analytics/pricing/` (BS, P&L), `analytics/greeks/engine.py`, `services/pricing/` |
-| **DB/ORM** | `core/database/schema.py` (11 tables), `core/database/session.py`, `repositories/` |
-| **Broker** | `adapters/tastytrade_adapter.py`, `services/position_sync.py`, `services/portfolio_sync.py` |
+| **DB/ORM** | `core/database/schema.py` (19 tables incl. workflow_state, decision_log), `core/database/session.py`, `repositories/` |
+| **Broker** | `adapters/tastytrade_adapter.py`, `services/position_sync.py`, `services/portfolio_sync.py`, `cli/init_portfolios.py`, `cli/sync_fidelity.py`, `cli/load_stallion.py` |
 | **Server** | `server/api_v2.py` (FastAPI), `server/websocket_server.py`, `runners/run_grid_server.py` |
-| **Tests** | `tests/` (79 pytest — includes 24 VaR/correlation tests), `harness/` (17 integration steps) |
-| **Templates** | `config/templates/` (27 templates: 1 0DTE, 4 weekly, 16 monthly, 5 LEAPS, 1 custom). Entry conditions + P&L drivers on all. |
+| **Tests** | `tests/` (116 pytest), `harness/` (17 integration steps) |
+| **Templates** | `config/templates/` (27 templates: 1 0DTE, 4 weekly, 16 monthly, 5 LEAPS, 1 custom) |
 
 ---
 
@@ -218,7 +266,12 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 python -m trading_cotrader.scripts.setup_database
 python -m trading_cotrader.harness.runner --skip-sync    # 17 steps, no broker
 python -m trading_cotrader.harness.runner --mock
-pytest trading_cotrader/tests/ -v                        # 79 unit tests
+pytest trading_cotrader/tests/ -v                        # 116 unit tests
+
+# Workflow engine (NEW)
+python -m trading_cotrader.runners.run_workflow --once --no-broker --mock    # single cycle test
+python -m trading_cotrader.runners.run_workflow --paper --no-broker          # continuous, no broker
+python -m trading_cotrader.runners.run_workflow --paper                       # continuous, with broker
 
 # Trade booking
 python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/trade_template.json --no-broker
@@ -235,6 +288,13 @@ python -m trading_cotrader.cli.accept_recommendation --accept <ID> --notes "reas
 # Portfolio evaluation
 python -m trading_cotrader.cli.evaluate_portfolio --portfolio high_risk --no-broker --dry-run
 python -m trading_cotrader.cli.evaluate_portfolio --all --no-broker
+
+# Multi-broker (NEW)
+python -m trading_cotrader.cli.init_portfolios                                # create 10 portfolios
+python -m trading_cotrader.cli.init_portfolios --dry-run                       # preview only
+python -m trading_cotrader.cli.sync_fidelity --file Portfolio_Positions.csv     # load Fidelity CSV
+python -m trading_cotrader.cli.load_stallion                                   # load 29 Stallion holdings
+python -m trading_cotrader.cli.load_stallion --dry-run                         # preview only
 
 # Server
 python -m trading_cotrader.runners.run_grid_server

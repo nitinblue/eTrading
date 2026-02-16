@@ -1,12 +1,12 @@
 """
-Portfolio Manager - Initialize and manage multi-tier portfolios from YAML config.
+Portfolio Manager - Initialize and manage multi-broker portfolios from YAML config.
 
 Responsibilities:
     - Create portfolios from risk_config.yaml definitions
-    - Validate capital allocations sum to <= 100%
-    - Route trades to the correct portfolio based on strategy type
+    - Route trades to the correct portfolio based on broker + account
     - Enforce strategy permissions per portfolio
-    - Provide portfolio lookup by name
+    - Provide portfolio lookup by config name
+    - Distinguish real vs whatif, manual vs API brokers
 
 Usage:
     from trading_cotrader.services.portfolio_manager import PortfolioManager
@@ -14,7 +14,7 @@ Usage:
 
     with session_scope() as session:
         pm = PortfolioManager(session)
-        portfolios = pm.initialize_portfolios(total_capital=250000)
+        portfolios = pm.initialize_portfolios()
 """
 
 from decimal import Decimal
@@ -25,27 +25,33 @@ import trading_cotrader.core.models.domain as dm
 from trading_cotrader.config.risk_config_loader import (
     RiskConfigLoader, PortfolioConfig, PortfoliosConfig
 )
+from trading_cotrader.config.broker_config_loader import (
+    BrokerRegistry, load_broker_registry
+)
 from trading_cotrader.repositories.portfolio import PortfolioRepository
 
 logger = logging.getLogger(__name__)
 
-# Portfolios created by this manager use broker="cotrader"
-_BROKER_TAG = "cotrader"
-
 
 class PortfolioManager:
     """
-    Manages multi-tier portfolio creation and trade routing.
+    Manages multi-broker portfolio creation and trade routing.
 
-    Portfolios are identified by broker='cotrader' and account_id=<portfolio_name>.
-    This reuses the existing unique constraint (broker, account_id) without schema changes.
+    Portfolios are identified by (broker_firm, account_number) from YAML config.
+    This maps to the existing unique constraint (broker, account_id) in the DB.
     """
 
-    def __init__(self, session, config: Optional[PortfoliosConfig] = None):
+    def __init__(
+        self,
+        session,
+        config: Optional[PortfoliosConfig] = None,
+        broker_registry: Optional[BrokerRegistry] = None,
+    ):
         """
         Args:
             session: SQLAlchemy session (must be inside session_scope)
             config: Optional PortfoliosConfig. If None, loads from YAML.
+            broker_registry: Optional BrokerRegistry. If None, loads from YAML.
         """
         self.session = session
         self.repo = PortfolioRepository(session)
@@ -57,67 +63,84 @@ class PortfolioManager:
             risk_config = loader.load()
             self.portfolios_config = risk_config.portfolios
 
-    def initialize_portfolios(
-        self,
-        total_capital: Decimal = Decimal('250000'),
-    ) -> List[dm.Portfolio]:
+        if broker_registry is not None:
+            self.broker_registry = broker_registry
+        else:
+            try:
+                self.broker_registry = load_broker_registry()
+            except FileNotFoundError:
+                self.broker_registry = BrokerRegistry()
+
+    def initialize_portfolios(self) -> List[dm.Portfolio]:
         """
         Create or update portfolios from YAML config.
 
         If a portfolio with the same (broker, account_id) already exists,
         it is returned as-is (no overwrite). New portfolios are created.
 
-        Args:
-            total_capital: Total capital across all accounts.
-
         Returns:
             List of Portfolio domain objects (one per config entry).
         """
-        if not self.portfolios_config.validate_allocations():
-            total = self.portfolios_config.total_allocation_pct()
-            raise ValueError(
-                f"Portfolio allocations sum to {total:.1f}% — must be <= 100%"
-            )
-
         created: List[dm.Portfolio] = []
 
         for pc in self.portfolios_config.get_all():
-            # Use explicit initial_capital from YAML if set,
-            # otherwise derive from allocation percentage
-            if pc.initial_capital > 0:
-                capital = Decimal(str(pc.initial_capital))
-            else:
-                capital = total_capital * Decimal(str(pc.capital_allocation_pct)) / Decimal('100')
+            capital = Decimal(str(pc.initial_capital))
 
-            # Check if portfolio already exists
+            # Check if portfolio already exists by broker+account
             existing = self.repo.get_by_account(
-                broker=_BROKER_TAG, account_id=pc.name
+                broker=pc.broker_firm, account_id=pc.account_number
             )
             if existing:
-                logger.info(f"Portfolio '{pc.display_name}' already exists (id={existing.id})")
+                logger.info(
+                    f"Portfolio '{pc.display_name}' already exists "
+                    f"(id={existing.id}, broker={pc.broker_firm})"
+                )
                 created.append(existing)
                 continue
 
             # Create new portfolio
-            portfolio = dm.Portfolio.create_what_if(
-                name=pc.display_name,
-                capital=capital,
-                description=pc.description,
-                risk_limits={
-                    'max_delta': pc.risk_limits.max_portfolio_delta,
-                    'max_position_pct': pc.risk_limits.max_single_position_pct,
-                    'max_trade_risk_pct': pc.risk_limits.max_single_trade_risk_pct,
-                },
-                broker=_BROKER_TAG,
-                account_id=pc.name,
-                tags=pc.tags,
-            )
+            risk_limits = {
+                'max_delta': pc.risk_limits.max_portfolio_delta,
+                'max_position_pct': pc.risk_limits.max_single_position_pct,
+                'max_trade_risk_pct': pc.risk_limits.max_single_trade_risk_pct,
+            }
+
+            if pc.is_whatif:
+                portfolio = dm.Portfolio.create_what_if(
+                    name=pc.display_name,
+                    capital=capital,
+                    description=pc.description,
+                    risk_limits=risk_limits,
+                    broker=pc.broker_firm,
+                    account_id=pc.account_number,
+                    tags=pc.tags,
+                )
+            else:
+                portfolio = dm.Portfolio.create_real(
+                    name=pc.display_name,
+                    broker=pc.broker_firm,
+                    account_id=pc.account_number,
+                    description=pc.description,
+                    initial_capital=capital,
+                    cash_balance=capital,
+                    buying_power=capital,
+                    total_equity=capital,
+                    tags=pc.tags,
+                )
+                # Apply risk limits to real portfolios too
+                if 'max_delta' in risk_limits:
+                    portfolio.max_portfolio_delta = Decimal(str(risk_limits['max_delta']))
+                if 'max_position_pct' in risk_limits:
+                    portfolio.max_position_size_pct = Decimal(str(risk_limits['max_position_pct']))
+                if 'max_trade_risk_pct' in risk_limits:
+                    portfolio.max_single_trade_risk_pct = Decimal(str(risk_limits['max_trade_risk_pct']))
 
             saved = self.repo.create_from_domain(portfolio)
             if saved:
                 logger.info(
                     f"Created portfolio '{pc.display_name}' "
-                    f"capital=${capital:,.0f} account_id={pc.name}"
+                    f"broker={pc.broker_firm} account={pc.account_number} "
+                    f"capital={capital:,.0f} {pc.currency} type={pc.portfolio_type}"
                 )
                 created.append(saved)
             else:
@@ -127,24 +150,62 @@ class PortfolioManager:
 
     def get_portfolio_by_name(self, name: str) -> Optional[dm.Portfolio]:
         """
-        Look up a portfolio by its config name (e.g. 'core_holdings').
+        Look up a portfolio by its config name (e.g. 'tastytrade', 'fidelity_ira').
 
-        Args:
-            name: Internal portfolio name from YAML config.
-
-        Returns:
-            Portfolio domain object or None.
+        Uses config to determine the broker+account_number, then queries DB.
         """
-        return self.repo.get_by_account(broker=_BROKER_TAG, account_id=name)
+        pc = self.portfolios_config.get_by_name(name)
+        if not pc:
+            return None
+        return self.repo.get_by_account(
+            broker=pc.broker_firm, account_id=pc.account_number
+        )
 
     def get_all_managed_portfolios(self) -> List[dm.Portfolio]:
-        """Get all portfolios managed by this system (broker='cotrader')."""
-        all_portfolios = self.repo.get_all_portfolios()
-        return [p for p in all_portfolios if p.broker == _BROKER_TAG]
+        """Get all portfolios managed by this system (defined in config)."""
+        results = []
+        for pc in self.portfolios_config.get_all():
+            portfolio = self.repo.get_by_account(
+                broker=pc.broker_firm, account_id=pc.account_number
+            )
+            if portfolio:
+                results.append(portfolio)
+        return results
+
+    def get_config_name_for_portfolio(self, portfolio: dm.Portfolio) -> Optional[str]:
+        """Reverse lookup: get config name from a Portfolio domain object."""
+        return self.portfolios_config.get_config_name_for(
+            portfolio.broker, portfolio.account_id
+        )
 
     def get_portfolio_config(self, name: str) -> Optional[PortfolioConfig]:
         """Get the YAML config for a portfolio by name."""
         return self.portfolios_config.get_by_name(name)
+
+    def is_manual_execution(self, name: str) -> bool:
+        """Check if a portfolio's broker requires manual execution (no API)."""
+        pc = self.portfolios_config.get_by_name(name)
+        if not pc:
+            return False
+        bc = self.broker_registry.get_by_name(pc.broker_firm)
+        if not bc:
+            return False
+        return bc.manual_execution
+
+    def is_read_only(self, name: str) -> bool:
+        """Check if a portfolio's broker is read-only (fully managed fund, no trading)."""
+        pc = self.portfolios_config.get_by_name(name)
+        if not pc:
+            return False
+        bc = self.broker_registry.get_by_name(pc.broker_firm)
+        if not bc:
+            return False
+        return bc.read_only
+
+    def get_currency(self, name: str) -> str:
+        """Get the currency for a portfolio."""
+        pc = self.portfolios_config.get_by_name(name)
+        return pc.currency if pc else "USD"
 
     def validate_trade_for_portfolio(
         self,
@@ -204,15 +265,14 @@ class PortfolioManager:
         Find the best portfolio for a given strategy type.
 
         Returns the name of the first portfolio that allows the strategy,
-        preferring higher-risk tiers for undefined-risk strategies.
-
-        Args:
-            strategy_type: Strategy type string.
-
-        Returns:
-            Portfolio config name, or None if no portfolio allows it.
+        preferring real portfolios over whatif.
         """
-        for pc in self.portfolios_config.get_all():
+        # Prefer real portfolios
+        for pc in self.portfolios_config.get_real_portfolios():
+            if strategy_type in pc.allowed_strategies:
+                return pc.name
+        # Fall back to whatif
+        for pc in self.portfolios_config.get_whatif_portfolios():
             if strategy_type in pc.allowed_strategies:
                 return pc.name
         return None

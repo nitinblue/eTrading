@@ -322,10 +322,11 @@ def book_with_manual_greeks(
         event_repo = EventRepository(session)
         portfolio_repo = PortfolioRepository(session)
 
+        target = None
         if portfolio_name:
-            target = portfolio_repo.get_by_account(broker='cotrader', account_id=portfolio_name)
-        else:
-            target = None
+            from trading_cotrader.services.portfolio_manager import PortfolioManager
+            pm = PortfolioManager(session)
+            target = pm.get_portfolio_by_name(portfolio_name)
 
         if not target:
             target = portfolio_repo.get_by_account(broker='whatif', account_id='whatif')

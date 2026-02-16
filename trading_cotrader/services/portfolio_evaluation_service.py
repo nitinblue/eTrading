@@ -73,10 +73,10 @@ class PortfolioEvaluationService:
         Returns:
             List of exit/roll/adjust Recommendations.
         """
-        # Get portfolio from DB
-        portfolio = self.portfolio_repo.get_by_account(
-            broker='cotrader', account_id=portfolio_name
-        )
+        # Get portfolio from DB via config-driven lookup
+        from trading_cotrader.services.portfolio_manager import PortfolioManager
+        pm = PortfolioManager(self.session)
+        portfolio = pm.get_portfolio_by_name(portfolio_name)
         if not portfolio:
             logger.warning(f"Portfolio '{portfolio_name}' not found")
             return []

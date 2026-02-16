@@ -29,6 +29,9 @@ def _build_test_config() -> PortfoliosConfig:
             allowed_strategies=['buy_stock', 'covered_call', 'protective_put', 'collar'],
             active_strategies=['buy_stock', 'covered_call'],
             risk_limits=PortfolioRiskLimits(max_portfolio_delta=200, max_positions=20),
+            broker_firm='test_broker',
+            account_number='core_001',
+            portfolio_type='real',
         ),
         'medium_risk': PortfolioConfig(
             name='medium_risk',
@@ -39,6 +42,9 @@ def _build_test_config() -> PortfoliosConfig:
             allowed_strategies=['vertical_spread', 'iron_condor', 'calendar_spread'],
             active_strategies=[],  # empty → defaults to allowed
             risk_limits=PortfolioRiskLimits(max_portfolio_delta=300),
+            broker_firm='test_broker',
+            account_number='medium_001',
+            portfolio_type='real',
         ),
         'high_risk': PortfolioConfig(
             name='high_risk',
@@ -49,6 +55,9 @@ def _build_test_config() -> PortfoliosConfig:
             allowed_strategies=['iron_condor', 'iron_butterfly', 'straddle', 'strangle'],
             active_strategies=['iron_condor', 'iron_butterfly'],
             risk_limits=PortfolioRiskLimits(max_portfolio_delta=500),
+            broker_firm='test_broker',
+            account_number='high_001',
+            portfolio_type='real',
         ),
     })
 
@@ -95,10 +104,11 @@ class TestPortfolioInitialization:
     """Portfolio creation from config."""
 
     def test_portfolio_initialization(self, session):
-        """4 portfolios (3 test + check count) created from config."""
+        """3 portfolios created from config."""
         config = _build_test_config()
-        pm = PortfolioManager(session, config=config)
-        portfolios = pm.initialize_portfolios(total_capital=Decimal('250000'))
+        from trading_cotrader.config.broker_config_loader import BrokerRegistry
+        pm = PortfolioManager(session, config=config, broker_registry=BrokerRegistry())
+        portfolios = pm.initialize_portfolios()
         assert len(portfolios) == 3
 
     def test_capital_allocation_sum(self):
@@ -114,6 +124,7 @@ class TestPortfolioInitialization:
 
 def _create_pm_with_config(config: PortfoliosConfig) -> PortfolioManager:
     """Create a PortfolioManager that doesn't touch the DB for validation-only tests."""
+    from trading_cotrader.config.broker_config_loader import BrokerRegistry
 
     class FakePM(PortfolioManager):
         """Override __init__ to skip session/repo setup for pure config tests."""
@@ -121,5 +132,6 @@ def _create_pm_with_config(config: PortfoliosConfig) -> PortfolioManager:
             self.session = None
             self.repo = None
             self.portfolios_config = portfolios_config
+            self.broker_registry = BrokerRegistry()
 
     return FakePM(config)

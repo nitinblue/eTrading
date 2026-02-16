@@ -154,7 +154,7 @@ class PortfolioRiskLimits:
 @dataclass
 class PortfolioConfig:
     """Configuration for a single portfolio tier"""
-    name: str                        # internal key (e.g. "core_holdings")
+    name: str                        # internal key (e.g. "tastytrade")
     display_name: str = ""
     description: str = ""
     capital_allocation_pct: float = 0
@@ -168,6 +168,21 @@ class PortfolioConfig:
     preferred_underlyings: List[str] = field(default_factory=list)
     requires_rationale: bool = False
     requires_exit_commentary: bool = False
+
+    # Multi-broker fields
+    broker_firm: str = ""            # key into brokers.yaml (e.g. "tastytrade")
+    account_number: str = ""         # real account number (DB account_id)
+    portfolio_type: str = "real"     # "real" or "what_if"
+    mirrors_real: str = ""           # for whatif: config name of real parent
+    currency: str = "USD"            # inherited from broker
+
+    @property
+    def is_whatif(self) -> bool:
+        return self.portfolio_type == "what_if"
+
+    @property
+    def is_real(self) -> bool:
+        return self.portfolio_type == "real"
 
     def get_active_strategies(self) -> List[str]:
         """Get active strategies, falling back to allowed_strategies if not set."""
@@ -186,6 +201,25 @@ class PortfoliosConfig:
     def get_all(self) -> List[PortfolioConfig]:
         """Get all portfolio configs."""
         return list(self.portfolios.values())
+
+    def get_real_portfolios(self) -> List[PortfolioConfig]:
+        """Get only real (non-whatif) portfolios."""
+        return [p for p in self.portfolios.values() if p.is_real]
+
+    def get_whatif_portfolios(self) -> List[PortfolioConfig]:
+        """Get only whatif portfolios."""
+        return [p for p in self.portfolios.values() if p.is_whatif]
+
+    def get_by_broker(self, broker_name: str) -> List[PortfolioConfig]:
+        """Get all portfolios for a given broker."""
+        return [p for p in self.portfolios.values() if p.broker_firm == broker_name]
+
+    def get_config_name_for(self, broker: str, account_id: str) -> Optional[str]:
+        """Reverse lookup: find config name from broker+account_id."""
+        for name, pc in self.portfolios.items():
+            if pc.broker_firm == broker and pc.account_number == account_id:
+                return name
+        return None
 
     def total_allocation_pct(self) -> float:
         """Sum of all portfolio allocations."""
@@ -454,13 +488,20 @@ class RiskConfigLoader:
         
         # Strategy rules
         if 'strategy_rules' in raw:
+            # Known StrategyRule fields (skip extras like profit_target_pct, time_stop)
+            _strategy_rule_fields = {
+                'min_iv_rank', 'max_iv_rank', 'preferred_iv_rank',
+                'market_outlook', 'dte_range', 'requires',
+            }
             for name, rule_data in raw['strategy_rules'].items():
                 entry_filters_data = rule_data.pop('entry_filters', None)
                 entry_filters = None
                 if entry_filters_data and isinstance(entry_filters_data, dict):
                     entry_filters = EntryFilters(**entry_filters_data)
+                # Filter to known fields only
+                filtered = {k: v for k, v in rule_data.items() if k in _strategy_rule_fields}
                 config.strategy_rules[name] = StrategyRule(
-                    name=name, entry_filters=entry_filters, **rule_data
+                    name=name, entry_filters=entry_filters, **filtered
                 )
         
         # Margin
@@ -501,10 +542,28 @@ class RiskConfigLoader:
                     preferred_underlyings=pdata.get('preferred_underlyings', []),
                     requires_rationale=pdata.get('requires_rationale', False),
                     requires_exit_commentary=pdata.get('requires_exit_commentary', False),
+                    broker_firm=pdata.get('broker_firm', ''),
+                    account_number=pdata.get('account_number', ''),
+                    portfolio_type=pdata.get('portfolio_type', 'real'),
+                    mirrors_real=pdata.get('mirrors_real', ''),
+                    currency=pdata.get('currency', 'USD'),
                 )
+
+            # WhatIf strategy inheritance: copy from real parent if not set
+            for name, pc in portfolios_dict.items():
+                if pc.mirrors_real and not pc.allowed_strategies:
+                    parent = portfolios_dict.get(pc.mirrors_real)
+                    if parent:
+                        pc.allowed_strategies = list(parent.allowed_strategies)
+                        pc.active_strategies = list(parent.active_strategies)
+                        if not pc.preferred_underlyings:
+                            pc.preferred_underlyings = list(parent.preferred_underlyings)
+
             config.portfolios = PortfoliosConfig(portfolios=portfolios_dict)
+            real_count = len(config.portfolios.get_real_portfolios())
+            whatif_count = len(config.portfolios.get_whatif_portfolios())
             logger.info(f"Loaded {len(portfolios_dict)} portfolio configs "
-                        f"(total allocation: {config.portfolios.total_allocation_pct():.0f}%)")
+                        f"({real_count} real, {whatif_count} whatif)")
 
         # Performance
         if 'performance' in raw:

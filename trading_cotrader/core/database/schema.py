@@ -875,3 +875,55 @@ class WatchlistORM(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_refreshed = Column(DateTime)
+
+
+# ============================================================================
+# Workflow Engine Tables
+# ============================================================================
+
+class WorkflowStateORM(Base):
+    """
+    Persisted workflow engine state.
+
+    Stores current state machine position, cycle count, halt info,
+    and serialized shared context so the engine can resume after restart.
+    """
+    __tablename__ = 'workflow_state'
+
+    id = Column(String(36), primary_key=True)
+    current_state = Column(String(50), nullable=False, default='idle')
+    previous_state = Column(String(50))
+    last_transition_at = Column(DateTime)
+    cycle_count = Column(Integer, default=0)
+    halted = Column(Boolean, default=False)
+    halt_reason = Column(Text)
+    halt_override_rationale = Column(Text)
+    context_json = Column(JSON)   # serialized shared context
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DecisionLogORM(Base):
+    """
+    Log of every decision point presented to the user.
+
+    Tracks time-to-decision, escalation count, and outcome
+    for accountability reporting.
+    """
+    __tablename__ = 'decision_log'
+
+    __table_args__ = (
+        Index('idx_decision_log_type', 'decision_type'),
+        Index('idx_decision_log_presented', 'presented_at'),
+        Index('idx_decision_log_response', 'response'),
+    )
+
+    id = Column(String(36), primary_key=True)
+    recommendation_id = Column(String(36))
+    decision_type = Column(String(20))   # entry, exit, roll, override
+    presented_at = Column(DateTime, nullable=False)
+    responded_at = Column(DateTime)
+    response = Column(String(20))        # approved, rejected, deferred, expired
+    rationale = Column(Text)
+    escalation_count = Column(Integer, default=0)
+    time_to_decision_seconds = Column(Integer)

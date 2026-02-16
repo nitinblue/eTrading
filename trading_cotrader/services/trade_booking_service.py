@@ -526,17 +526,17 @@ class TradeBookingService:
             portfolio_repo = PortfolioRepository(session)
 
             # Route to named portfolio if specified, otherwise default what-if
+            target_portfolio = None
             if portfolio_name:
-                target_portfolio = portfolio_repo.get_by_account(
-                    broker='cotrader', account_id=portfolio_name
-                )
+                from trading_cotrader.services.portfolio_manager import PortfolioManager
+                pm = PortfolioManager(session)
+                target_portfolio = pm.get_portfolio_by_name(portfolio_name)
                 if not target_portfolio:
                     logger.warning(
                         f"Portfolio '{portfolio_name}' not found, falling back to default what-if"
                     )
-                    target_portfolio = None
 
-            if not portfolio_name or not target_portfolio:
+            if not target_portfolio:
                 target_portfolio = portfolio_repo.get_by_account(
                     broker='whatif', account_id='whatif'
                 )

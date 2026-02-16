@@ -144,7 +144,7 @@ def sample_portfolio():
             'max_position_pct': 20,
             'max_trade_risk_pct': 10,
         },
-        broker='cotrader',
+        broker='test_broker',
         account_id='test_portfolio',
     )
 

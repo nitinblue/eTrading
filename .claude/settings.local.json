@@ -22,7 +22,11 @@
       "Bash(PYTHONUTF8=1 pytest:*)",
       "Bash(python3:*)",
       "Bash(python:*)",
-      "Bash(pytest:*)"
+      "Bash(pytest:*)",
+      "Bash(grep:*)",
+      "Bash(pip show:*)",
+      "Bash(pip install:*)",
+      "Bash(PYTHONIOENCODING=utf-8 pytest:*)"
     ]
   }
 }
