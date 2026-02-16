@@ -10,7 +10,8 @@ import logging
 from trading_cotrader.repositories.base import BaseRepository
 from trading_cotrader.core.database.schema import RecommendationORM
 from trading_cotrader.core.models.recommendation import (
-    Recommendation, RecommendationStatus, RecommendedLeg, MarketSnapshot
+    Recommendation, RecommendationStatus, RecommendationType,
+    RecommendedLeg, MarketSnapshot
 )
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class RecommendationRepository(BaseRepository[Recommendation, RecommendationORM]
         try:
             orm = RecommendationORM(
                 id=rec.id,
+                recommendation_type=rec.recommendation_type.value,
                 source=rec.source,
                 screener_name=rec.screener_name,
                 underlying=rec.underlying,
@@ -39,6 +41,11 @@ class RecommendationRepository(BaseRepository[Recommendation, RecommendationORM]
                 suggested_portfolio=rec.suggested_portfolio,
                 status=rec.status.value,
                 created_at=rec.created_at,
+                trade_id_to_close=rec.trade_id_to_close,
+                exit_action=rec.exit_action,
+                exit_urgency=rec.exit_urgency,
+                triggered_rules=rec.triggered_rules if rec.triggered_rules else None,
+                new_legs=[l.to_dict() for l in rec.new_legs] if rec.new_legs else None,
             )
             created = self.create(orm)
             return self.to_domain(created) if created else None
@@ -162,8 +169,29 @@ class RecommendationRepository(BaseRepository[Recommendation, RecommendationORM]
         except ValueError:
             status = RecommendationStatus.PENDING
 
+        try:
+            rec_type = RecommendationType(getattr(orm, 'recommendation_type', 'entry') or 'entry')
+        except ValueError:
+            rec_type = RecommendationType.ENTRY
+
+        # Reconstruct new_legs for ROLL recommendations
+        new_legs = []
+        orm_new_legs = getattr(orm, 'new_legs', None)
+        if orm_new_legs:
+            for leg_dict in orm_new_legs:
+                from decimal import Decimal
+                new_legs.append(RecommendedLeg(
+                    streamer_symbol=leg_dict.get('streamer_symbol', ''),
+                    quantity=leg_dict.get('quantity', 0),
+                    delta_target=Decimal(str(leg_dict['delta_target'])) if leg_dict.get('delta_target') else None,
+                    strike=Decimal(str(leg_dict['strike'])) if leg_dict.get('strike') else None,
+                    option_type=leg_dict.get('option_type'),
+                    expiration=leg_dict.get('expiration'),
+                ))
+
         return Recommendation(
             id=orm.id,
+            recommendation_type=rec_type,
             source=orm.source or '',
             screener_name=orm.screener_name or '',
             underlying=orm.underlying,
@@ -181,4 +209,9 @@ class RecommendationRepository(BaseRepository[Recommendation, RecommendationORM]
             trade_id=orm.trade_id,
             portfolio_name=orm.portfolio_name,
             rejection_reason=orm.rejection_reason or '',
+            trade_id_to_close=getattr(orm, 'trade_id_to_close', None),
+            exit_action=getattr(orm, 'exit_action', None),
+            exit_urgency=getattr(orm, 'exit_urgency', None),
+            triggered_rules=getattr(orm, 'triggered_rules', None) or [],
+            new_legs=new_legs,
         )

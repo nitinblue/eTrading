@@ -18,6 +18,14 @@ from typing import List, Optional, Dict, Any
 import uuid
 
 
+class RecommendationType(Enum):
+    """What kind of recommendation this is."""
+    ENTRY = "entry"            # Open a new trade
+    EXIT = "exit"              # Close an existing trade (take profit / book loss)
+    ROLL = "roll"              # Close + re-open at new expiration/strikes
+    ADJUST = "adjust"          # Modify an existing trade (add/remove legs)
+
+
 class RecommendationStatus(Enum):
     """Lifecycle of a recommendation."""
     PENDING = "pending"        # Awaiting user review
@@ -96,6 +104,9 @@ class Recommendation:
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
+    # Recommendation type
+    recommendation_type: RecommendationType = RecommendationType.ENTRY
+
     # Source identification
     source: str = ""                    # TradeSource enum value (e.g. "screener_vix")
     screener_name: str = ""             # Human-readable screener name
@@ -104,6 +115,13 @@ class Recommendation:
     underlying: str = ""
     strategy_type: str = ""             # StrategyType enum value
     legs: List[RecommendedLeg] = field(default_factory=list)
+
+    # Exit-specific fields (only for EXIT/ROLL/ADJUST types)
+    trade_id_to_close: Optional[str] = None     # Trade that triggered this rec
+    exit_action: Optional[str] = None           # ActionType value from RulesEngine
+    exit_urgency: Optional[str] = None          # "immediate", "today", "this_week"
+    triggered_rules: List[str] = field(default_factory=list)  # Rule names that fired
+    new_legs: List[RecommendedLeg] = field(default_factory=list)  # For ROLL: the new trade legs
 
     # Market context at time of recommendation
     market_context: MarketSnapshot = field(default_factory=MarketSnapshot)
@@ -151,6 +169,7 @@ class Recommendation:
     def to_dict(self) -> Dict[str, Any]:
         return {
             'id': self.id,
+            'recommendation_type': self.recommendation_type.value,
             'source': self.source,
             'screener_name': self.screener_name,
             'underlying': self.underlying,
@@ -165,6 +184,11 @@ class Recommendation:
             'created_at': self.created_at.isoformat(),
             'reviewed_at': self.reviewed_at.isoformat() if self.reviewed_at else None,
             'trade_id': self.trade_id,
+            'trade_id_to_close': self.trade_id_to_close,
+            'exit_action': self.exit_action,
+            'exit_urgency': self.exit_urgency,
+            'triggered_rules': self.triggered_rules,
+            'new_legs': [l.to_dict() for l in self.new_legs],
         }
 
 

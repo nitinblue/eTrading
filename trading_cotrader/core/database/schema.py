@@ -806,6 +806,9 @@ class RecommendationORM(Base):
 
     id = Column(String(36), primary_key=True)
 
+    # Recommendation type: entry, exit, roll, adjust
+    recommendation_type = Column(String(20), nullable=False, default='entry')
+
     # Source
     source = Column(String(50), nullable=False)  # TradeSource enum value
     screener_name = Column(String(100))
@@ -840,6 +843,13 @@ class RecommendationORM(Base):
 
     # Rejection
     rejection_reason = Column(Text)
+
+    # Exit-specific fields (for EXIT/ROLL/ADJUST recommendations)
+    trade_id_to_close = Column(String(36))   # Trade this rec is about
+    exit_action = Column(String(20))          # ActionType value
+    exit_urgency = Column(String(20))         # immediate, today, this_week
+    triggered_rules = Column(JSON)            # List of rule names
+    new_legs = Column(JSON)                   # For ROLL: legs of the replacement trade
 
 
 class WatchlistORM(Base):

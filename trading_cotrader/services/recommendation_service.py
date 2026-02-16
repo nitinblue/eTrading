@@ -23,7 +23,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from trading_cotrader.core.models.recommendation import (
-    Recommendation, RecommendationStatus
+    Recommendation, RecommendationStatus, RecommendationType
 )
 from trading_cotrader.core.models.domain import TradeSource
 from trading_cotrader.repositories.recommendation import RecommendationRepository
@@ -195,7 +195,12 @@ class RecommendationService:
         portfolio_name: Optional[str] = None,
     ) -> Dict:
         """
-        Accept a recommendation and book a WhatIf trade.
+        Accept a recommendation and execute it.
+
+        For ENTRY: books a new WhatIf trade.
+        For EXIT: closes the referenced trade.
+        For ROLL: closes the referenced trade + books a new one with linkage.
+        For ADJUST: (future) modifies the existing trade.
 
         Args:
             rec_id: Recommendation ID.
@@ -203,7 +208,7 @@ class RecommendationService:
             portfolio_name: Override portfolio (uses suggested if None).
 
         Returns:
-            Dict with 'success', 'trade_id', 'error'.
+            Dict with 'success', 'trade_id', 'error', and type-specific fields.
         """
         rec = self.get_by_id(rec_id)
         if not rec:
@@ -212,16 +217,27 @@ class RecommendationService:
         if rec.status != RecommendationStatus.PENDING:
             return {'success': False, 'error': f'Recommendation is {rec.status.value}, not pending'}
 
-        # Determine portfolio
+        # Route to the appropriate handler based on recommendation type
+        if rec.recommendation_type == RecommendationType.EXIT:
+            return self._accept_exit(rec, notes, portfolio_name)
+        elif rec.recommendation_type == RecommendationType.ROLL:
+            return self._accept_roll(rec, notes, portfolio_name)
+        elif rec.recommendation_type == RecommendationType.ADJUST:
+            return self._accept_exit(rec, notes, portfolio_name)  # adjust = close for now
+        else:
+            return self._accept_entry(rec, notes, portfolio_name)
+
+    def _accept_entry(
+        self, rec: Recommendation, notes: str, portfolio_name: Optional[str]
+    ) -> Dict:
+        """Accept an ENTRY recommendation — book a new WhatIf trade."""
         target_portfolio = portfolio_name or rec.suggested_portfolio
 
-        # Book the trade via TradeBookingService
         try:
             from trading_cotrader.services.trade_booking_service import (
                 TradeBookingService, LegInput
             )
 
-            # Convert recommendation legs to LegInputs
             leg_inputs = [
                 LegInput(
                     streamer_symbol=leg.streamer_symbol,
@@ -230,7 +246,6 @@ class RecommendationService:
                 for leg in rec.legs
             ]
 
-            # Resolve TradeSource
             try:
                 trade_source = TradeSource(rec.source)
             except ValueError:
@@ -250,7 +265,6 @@ class RecommendationService:
             )
 
             if result.success:
-                # Update recommendation status
                 rec.accept(
                     notes=notes,
                     trade_id=result.trade_id,
@@ -259,19 +273,170 @@ class RecommendationService:
                 self.rec_repo.update_from_domain(rec)
 
                 logger.info(
-                    f"Accepted recommendation {rec_id[:8]}... → "
-                    f"Trade {result.trade_id[:8]}..."
+                    f"Accepted ENTRY rec {rec.id[:8]}... → Trade {result.trade_id[:8]}..."
                 )
                 return {
                     'success': True,
                     'trade_id': result.trade_id,
+                    'portfolio': target_portfolio,
+                    'action': 'entry',
+                }
+            else:
+                return {'success': False, 'error': result.error}
+
+        except Exception as e:
+            logger.error(f"Failed to accept entry recommendation {rec.id}: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def _accept_exit(
+        self, rec: Recommendation, notes: str, portfolio_name: Optional[str]
+    ) -> Dict:
+        """
+        Accept an EXIT recommendation — close the referenced trade.
+
+        Close = mark the original trade as closed with exit reason.
+        """
+        if not rec.trade_id_to_close:
+            return {'success': False, 'error': 'No trade_id_to_close on exit recommendation'}
+
+        try:
+            from trading_cotrader.repositories.trade import TradeRepository
+            trade_repo = TradeRepository(self.session)
+
+            closed = trade_repo.close_trade(
+                trade_id=rec.trade_id_to_close,
+                exit_reason=notes or rec.rationale,
+            )
+
+            if closed:
+                rec.accept(
+                    notes=notes,
+                    trade_id=rec.trade_id_to_close,
+                    portfolio_name=portfolio_name or rec.suggested_portfolio or '',
+                )
+                self.rec_repo.update_from_domain(rec)
+
+                logger.info(
+                    f"Accepted EXIT rec {rec.id[:8]}... → "
+                    f"Closed trade {rec.trade_id_to_close[:8]}..."
+                )
+                return {
+                    'success': True,
+                    'trade_id': rec.trade_id_to_close,
+                    'action': 'exit',
+                    'closed_trade_id': rec.trade_id_to_close,
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'Failed to close trade {rec.trade_id_to_close}',
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to accept exit recommendation {rec.id}: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def _accept_roll(
+        self, rec: Recommendation, notes: str, portfolio_name: Optional[str]
+    ) -> Dict:
+        """
+        Accept a ROLL recommendation — close original + book new with linkage.
+
+        1. Close the original trade (mark_rolled)
+        2. Book a new trade with rolled_from_id pointing to the original
+        """
+        if not rec.trade_id_to_close:
+            return {'success': False, 'error': 'No trade_id_to_close on roll recommendation'}
+
+        target_portfolio = portfolio_name or rec.suggested_portfolio
+
+        try:
+            from trading_cotrader.repositories.trade import TradeRepository
+            from trading_cotrader.services.trade_booking_service import (
+                TradeBookingService, LegInput
+            )
+
+            trade_repo = TradeRepository(self.session)
+
+            # Step 1: Close original trade as "rolled"
+            original_orm = trade_repo.get_by_id(rec.trade_id_to_close)
+            if not original_orm:
+                return {
+                    'success': False,
+                    'error': f'Original trade {rec.trade_id_to_close} not found',
+                }
+
+            # Step 2: Book new trade with the new legs (if provided)
+            new_legs = rec.new_legs if rec.new_legs else rec.legs
+            if not new_legs:
+                return {
+                    'success': False,
+                    'error': 'No legs provided for the new rolled trade',
+                }
+
+            leg_inputs = [
+                LegInput(
+                    streamer_symbol=leg.streamer_symbol,
+                    quantity=leg.quantity,
+                )
+                for leg in new_legs
+            ]
+
+            try:
+                trade_source = TradeSource(rec.source)
+            except ValueError:
+                trade_source = TradeSource.MANUAL
+
+            service = TradeBookingService(broker=self.broker)
+            result = service.book_whatif_trade(
+                underlying=rec.underlying,
+                strategy_type=rec.strategy_type,
+                legs=leg_inputs,
+                notes=f"Rolled from {rec.trade_id_to_close[:8]}... — {notes or rec.rationale}",
+                rationale=notes or rec.rationale,
+                confidence=rec.confidence,
+                portfolio_name=target_portfolio,
+                trade_source=trade_source,
+                recommendation_id=rec.id,
+            )
+
+            if result.success:
+                # Mark original as rolled with linkage
+                original_orm.trade_status = 'rolled'
+                original_orm.is_open = False
+                from datetime import datetime
+                original_orm.closed_at = datetime.utcnow()
+                original_orm.exit_reason = f"Rolled to {result.trade_id[:8]}..."
+                original_orm.rolled_to_id = result.trade_id
+                original_orm.last_updated = datetime.utcnow()
+                self.session.flush()
+
+                # Update recommendation
+                rec.accept(
+                    notes=notes,
+                    trade_id=result.trade_id,
+                    portfolio_name=target_portfolio or '',
+                )
+                self.rec_repo.update_from_domain(rec)
+
+                logger.info(
+                    f"Accepted ROLL rec {rec.id[:8]}... → "
+                    f"Closed {rec.trade_id_to_close[:8]}... → "
+                    f"New trade {result.trade_id[:8]}..."
+                )
+                return {
+                    'success': True,
+                    'trade_id': result.trade_id,
+                    'action': 'roll',
+                    'closed_trade_id': rec.trade_id_to_close,
+                    'new_trade_id': result.trade_id,
                     'portfolio': target_portfolio,
                 }
             else:
                 return {'success': False, 'error': result.error}
 
         except Exception as e:
-            logger.error(f"Failed to accept recommendation {rec_id}: {e}")
+            logger.error(f"Failed to accept roll recommendation {rec.id}: {e}")
             return {'success': False, 'error': str(e)}
 
     def reject_recommendation(self, rec_id: str, reason: str = "") -> bool:

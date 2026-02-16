@@ -21,7 +21,7 @@ Usage:
             print(f"{action.symbol}: {action.action.value} - {action.primary_reason}")
 """
 
-from services.position_mgmt.rules_engine import (
+from trading_cotrader.services.position_mgmt.rules_engine import (
     RulesEngine,
     ExitRule,
     ProfitTargetRule,

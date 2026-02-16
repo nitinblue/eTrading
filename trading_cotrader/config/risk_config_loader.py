@@ -197,6 +197,23 @@ class PortfoliosConfig:
 
 
 @dataclass
+class LiquidityThreshold:
+    """Liquidity thresholds for a single context (entry or adjustment)"""
+    min_open_interest: int = 100
+    max_bid_ask_spread_pct: float = 5.0
+    min_daily_volume: int = 500
+
+
+@dataclass
+class LiquidityThresholds:
+    """Entry and adjustment liquidity thresholds"""
+    entry: LiquidityThreshold = field(default_factory=LiquidityThreshold)
+    adjustment: LiquidityThreshold = field(default_factory=lambda: LiquidityThreshold(
+        min_open_interest=500, max_bid_ask_spread_pct=3.0, min_daily_volume=1000
+    ))
+
+
+@dataclass
 class IVConfig:
     """IV settings"""
     high_iv_threshold: float = 50
@@ -262,7 +279,10 @@ class RiskConfig:
     
     # IV settings
     iv: IVConfig = field(default_factory=IVConfig)
-    
+
+    # Liquidity thresholds
+    liquidity: LiquidityThresholds = field(default_factory=LiquidityThresholds)
+
     # Strategy rules
     strategy_rules: Dict[str, StrategyRule] = field(default_factory=dict)
     
@@ -423,6 +443,14 @@ class RiskConfigLoader:
         # IV settings
         if 'iv_settings' in raw:
             config.iv = IVConfig(**raw['iv_settings'])
+
+        # Liquidity thresholds
+        if 'liquidity_thresholds' in raw:
+            lt = raw['liquidity_thresholds']
+            config.liquidity = LiquidityThresholds(
+                entry=LiquidityThreshold(**lt.get('entry', {})),
+                adjustment=LiquidityThreshold(**lt.get('adjustment', {})),
+            )
         
         # Strategy rules
         if 'strategy_rules' in raw:
