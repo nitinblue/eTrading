@@ -83,7 +83,9 @@ Not touching today: UI
   Write this in claude.ai BEFORE opening Claude Code.
 -->
 
-FILE: 
+FILE: trading_cotrader\harness\steps\step03_portfolio.py - please do not mock any tades here (remove _get_mock_positions), always look for what if trades you have in whatif portfolio.
+FILE: trading_cotrader\harness\steps\step12_trade_booking.py - lets improve the interface, can i run a cli command passing yaml for trade that needs to be booked, Please give me yaml template..can we support booking of what-if trade for past dated trades. 
+FILE: trading_cotrader\harness\runner.py [3/11] Step 3: Portfolio Sync .. Lets ensure Portfolio tables have virtual construct of our various portfolios. And when printing portfolio please dont print portfolio as is, print all virtual portflio side by side... Please enable  #EventsStep(context), #MLStatusStep(context) and print something meaningfull, for now may be print table stats and top 5 recent entries.
 OBJECTIVE: 
 COMMAND TO RUN: 
 ---
