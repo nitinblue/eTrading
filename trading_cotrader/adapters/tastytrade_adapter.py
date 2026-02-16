@@ -22,6 +22,7 @@ from tastytrade.dxfeed import Greeks as DXGreeks
 import os
 import re
 
+from trading_cotrader.adapters.base import BrokerAdapterBase
 import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
@@ -30,30 +31,16 @@ logger = logging.getLogger(__name__)
 _thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 
-class BrokerAdapter:
-    """Base class for broker adapters"""
-
-    def __init__(self, account_id: str, credentials: str):
-        self.account_id = account_id
-        self.credentials = credentials
-
-    def authenticate(self) -> bool:
-        raise NotImplementedError
-
-    def get_account_balance(self) -> Dict[str, Decimal]:
-        raise NotImplementedError
-
-    async def get_positions(self) -> List[dm.Position]:
-        raise NotImplementedError
-
-
-class TastytradeAdapter(BrokerAdapter):
+class TastytradeAdapter(BrokerAdapterBase):
     """Tastytrade broker integration with DXLink Greeks streaming"""
 
     def __init__(self, account_number: str = None, is_paper: bool = False):
         tastytrade_credential_file = "tastytrade_broker.yaml"
-        super().__init__(account_number or "", tastytrade_credential_file)
+        self.account_id = account_number or ""
+        self.credentials = tastytrade_credential_file
 
+        self.name = "tastytrade"
+        self.currency = "USD"
         self.is_paper = is_paper
         self.session = None
         self.data_session = None  # Always-live session for DXLink market data
@@ -551,6 +538,82 @@ class TastytradeAdapter(BrokerAdapter):
                 asset_type=dm.AssetType.EQUITY,
                 multiplier=1
             )
+
+
+    # -----------------------------------------------------------------
+    # BrokerAdapterBase method implementations
+    # -----------------------------------------------------------------
+
+    def get_option_chain(self, underlying: str) -> Any:
+        """Get option chain via tastytrade SDK."""
+        from tastytrade import get_option_chain
+        if not self.session:
+            raise ValueError("Not authenticated")
+        return get_option_chain(self.session, underlying)
+
+    def get_quote(self, symbol: str) -> Dict[str, Any]:
+        """Get a single quote via DXLink streaming."""
+        quotes = self.get_quotes([symbol])
+        return quotes.get(symbol, {})
+
+    def get_quotes(self, symbols: List[str]) -> Dict[str, Dict]:
+        """
+        Fetch bid/ask quotes for symbols via DXLink streaming.
+        Returns dict of {symbol: {bid, ask}}.
+        """
+        return self._run_async(self._fetch_quotes_via_dxlink(symbols))
+
+    async def _fetch_quotes_via_dxlink(self, symbols: List[str]) -> Dict[str, Dict]:
+        """Fetch quotes via DXLink streaming."""
+        from tastytrade.streamer import DXLinkStreamer
+        from tastytrade.dxfeed import Quote as DXQuote
+
+        quotes: Dict[str, Dict] = {}
+        if not symbols:
+            return quotes
+
+        try:
+            async with DXLinkStreamer(self.data_session) as streamer:
+                await streamer.subscribe(DXQuote, symbols)
+
+                timeout = 3.0
+                end_time = asyncio.get_event_loop().time() + timeout
+
+                while asyncio.get_event_loop().time() < end_time:
+                    try:
+                        event = await asyncio.wait_for(
+                            streamer.get_event(DXQuote), timeout=0.5
+                        )
+                        if event:
+                            quotes[event.event_symbol] = {
+                                'bid': float(event.bid_price or 0),
+                                'ask': float(event.ask_price or 0),
+                            }
+                            if len(quotes) >= len(symbols):
+                                break
+                    except asyncio.TimeoutError:
+                        continue
+
+        except Exception as e:
+            logger.warning(f"Quote fetch error: {e}")
+
+        return quotes
+
+    def get_greeks(self, symbols: List[str]) -> Dict[str, dm.Greeks]:
+        """Fetch Greeks for multiple symbols via DXLink streaming."""
+        return self._run_async(self._fetch_greeks_via_dxlink(symbols))
+
+    def get_public_watchlists(self, name: Optional[str] = None) -> Any:
+        """Get TastyTrade public watchlists.
+        If name is None, returns list of watchlist names.
+        If name is given, returns the watchlist data."""
+        from tastytrade import PublicWatchlists
+
+        if name is None:
+            counts_response = PublicWatchlists.get_public_watchlists(self.session)
+            return [wl.name for wl in counts_response] if counts_response else []
+        else:
+            return PublicWatchlists.get_public_watchlists(self.session, name)
 
 
 if __name__ == "__main__":

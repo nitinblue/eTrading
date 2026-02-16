@@ -4,6 +4,7 @@ Workflow Engine Runner — CLI entry point for the continuous trading workflow.
 Usage:
     python -m trading_cotrader.runners.run_workflow --once --no-broker --mock
     python -m trading_cotrader.runners.run_workflow --paper --no-broker
+    python -m trading_cotrader.runners.run_workflow --paper --no-broker --web --port 8080
 
 Commands (interactive mode):
     status    — Show current workflow state
@@ -20,6 +21,7 @@ Commands (interactive mode):
 import sys
 import argparse
 import logging
+import threading
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,6 +69,30 @@ def parse_cli_intent(raw: str):
     )
 
 
+def _start_web_server(engine, port: int):
+    """Start the web approval dashboard in a daemon thread."""
+    from trading_cotrader.web.approval_api import create_approval_app
+    import uvicorn
+
+    app = create_approval_app(engine)
+
+    thread = threading.Thread(
+        target=uvicorn.run,
+        kwargs={
+            "app": app,
+            "host": "0.0.0.0",
+            "port": port,
+            "log_level": "warning",
+        },
+        daemon=True,
+    )
+    thread.start()
+
+    print(f"Web approval dashboard: http://localhost:{port}")
+    print(f"  Remote access: expose port {port} via ngrok, Tailscale, or Cloudflare Tunnel")
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Run Trading Workflow Engine')
     parser.add_argument('--paper', action='store_true', default=True,
@@ -79,6 +105,10 @@ def main():
                         help='Run one cycle then exit (for testing)')
     parser.add_argument('--config', type=str, default=None,
                         help='Path to workflow_rules.yaml')
+    parser.add_argument('--web', action='store_true',
+                        help='Start web approval dashboard')
+    parser.add_argument('--port', type=int, default=8080,
+                        help='Web dashboard port (default: 8080)')
     args = parser.parse_args()
 
     # Setup
@@ -115,10 +145,22 @@ def main():
     print("=" * 60)
     print()
 
+    # Start web dashboard if requested
+    if args.web:
+        _start_web_server(engine, args.port)
+
     if args.once:
         print("Running single cycle...")
         engine.run_once()
-        print("\nSingle cycle complete.")
+        if args.web:
+            print(f"\nSingle cycle complete. Dashboard still running at http://localhost:{args.port}")
+            print("Press Ctrl+C to exit.")
+            try:
+                threading.Event().wait()
+            except KeyboardInterrupt:
+                pass
+        else:
+            print("\nSingle cycle complete.")
         return
 
     # Start scheduler for continuous mode
@@ -136,6 +178,8 @@ def main():
     # Interactive CLI loop
     print()
     print("Workflow engine running. Type 'help' for commands, 'quit' to stop.")
+    if args.web:
+        print(f"Web dashboard active at http://localhost:{args.port}")
     print()
 
     try:

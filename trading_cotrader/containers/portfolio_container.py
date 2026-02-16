@@ -22,6 +22,7 @@ class PortfolioState:
     portfolio_id: str
     name: str
     portfolio_type: str = "real"
+    currency: str = "USD"
 
     # Capital
     total_equity: Decimal = Decimal('0')
@@ -63,6 +64,7 @@ class PortfolioState:
             'portfolio_id': self.portfolio_id,
             'name': self.name,
             'portfolio_type': self.portfolio_type,
+            'currency': self.currency,
             'total_equity': float(self.total_equity),
             'cash_balance': float(self.cash_balance),
             'buying_power': float(self.buying_power),

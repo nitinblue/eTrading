@@ -213,20 +213,25 @@ class MacroContextService:
             return Decimal('18')
 
         try:
-            import asyncio
-            from tastytrade.streamer import DXLinkStreamer
-            from tastytrade.dxfeed import Quote as DXQuote
-
-            async def _get_vix_quote():
-                async with DXLinkStreamer(self.broker.data_session) as streamer:
-                    await streamer.subscribe(DXQuote, ['VIX'])
-                    event = await asyncio.wait_for(
-                        streamer.get_event(DXQuote), timeout=5.0
-                    )
-                    mid = ((event.bid_price or 0) + (event.ask_price or 0)) / 2
+            quote = self.broker.get_quote('VIX')
+            if quote:
+                bid = quote.get('bid', 0) or 0
+                ask = quote.get('ask', 0) or 0
+                mid = (bid + ask) / 2
+                if mid > 0:
                     return Decimal(str(mid))
-
-            return self.broker._run_async(_get_vix_quote())
+        except NotImplementedError:
+            pass
         except Exception as e:
-            logger.error(f"Failed to fetch VIX for macro assessment: {e}")
-            return None
+            logger.error(f"Failed to fetch VIX via broker: {e}")
+
+        # Fallback: try yfinance
+        try:
+            import yfinance as yf
+            vix_data = yf.Ticker('^VIX').history(period='1d')
+            if not vix_data.empty:
+                return Decimal(str(vix_data['Close'].iloc[-1]))
+        except Exception as e:
+            logger.warning(f"yfinance VIX fallback failed: {e}")
+
+        return None

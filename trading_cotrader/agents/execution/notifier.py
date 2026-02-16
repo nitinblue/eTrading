@@ -136,26 +136,34 @@ class NotifierAgent:
             self._send("Weekly Trading Digest", report)
 
     def _send(self, subject: str, body: str) -> None:
-        """Send email if enabled."""
+        """Send email to all configured recipients if enabled."""
         if not self.email_config.enabled:
             return
 
-        if not self.email_config.smtp_host or not self.email_config.to_address:
-            logger.debug("Email enabled but SMTP not configured")
+        recipients = self.email_config.get_recipients()
+        if not self.email_config.smtp_host or not recipients:
+            logger.debug("Email enabled but SMTP/recipients not configured")
             return
 
         try:
             msg = MIMEMultipart()
             msg['From'] = self.email_config.from_address
-            msg['To'] = self.email_config.to_address
+            msg['To'] = ', '.join(recipients)
             msg['Subject'] = f"[CoTrader] {subject}"
             msg.attach(MIMEText(body, 'plain'))
 
             with smtplib.SMTP(self.email_config.smtp_host, self.email_config.smtp_port) as server:
                 server.starttls()
-                server.send_message(msg)
+                # Authenticate if credentials provided
+                if self.email_config.smtp_username and self.email_config.smtp_password:
+                    server.login(self.email_config.smtp_username, self.email_config.smtp_password)
+                server.sendmail(
+                    self.email_config.from_address,
+                    recipients,
+                    msg.as_string(),
+                )
 
-            logger.info(f"Email sent: {subject}")
+            logger.info(f"Email sent to {len(recipients)} recipient(s): {subject}")
         except Exception as e:
             logger.error(f"Failed to send email '{subject}': {e}")
 

@@ -1,0 +1,42 @@
+  New: web/approval_api.py
+
+  - FastAPI app factory that takes a WorkflowEngine reference
+  - Endpoints: /api/pending, /api/status, /api/approve/{id}, /api/reject/{id}, /api/defer/{id}, /api/history, /api/halt, /api/resume, /api/portfolios
+  - Same handle_user_intent() code path as CLI — no new abstractions
+
+  New: ui/approval-dashboard.html
+
+  - Self-contained dark theme (JetBrains Mono, #0a0a0a background — matches existing UI)
+  - Status bar: workflow state, cycle, VIX, open trades, pending recs
+  - Pending table with type badges, confidence bars, approve/reject/defer buttons
+  - Approve modal: portfolio dropdown + notes. Reject modal: reason field
+  - Halt banner with resume button. Toast notifications. 15-second auto-refresh.
+
+  Modified: runners/run_workflow.py
+
+  - --web flag starts FastAPI in a daemon thread alongside the CLI
+  - --port defaults to 8080
+  - Both interfaces work simultaneously (CLI + web)
+  - For --once --web, the process stays alive after the cycle so you can browse results
+
+  Modified: runners/run_grid_server.py
+
+  - Deprecation stub pointing to --web flag
+
+  Chicago + Hyderabad access
+
+  Since you're on different networks, you'll need to expose the port. Options:
+
+  # ngrok (quickest)
+  ngrok http 8080
+
+  # Or Tailscale (persistent, encrypted)
+  # Or Cloudflare Tunnel
+
+
+  Usage
+
+  python -m trading_cotrader.runners.run_workflow --paper --no-broker --web --port 8080
+
+
+  Then open http://localhost:8080 — both you and your wife can approve/reject from any browser.

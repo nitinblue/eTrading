@@ -32,10 +32,21 @@ class EmailConfig:
     enabled: bool = False
     smtp_host: str = ""
     smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
     from_address: str = ""
+    to_addresses: List[str] = field(default_factory=list)
+    # Backward compat: single address also supported
     to_address: str = ""
     daily_summary_time: str = "16:15"
     weekly_digest_day: str = "friday"
+
+    def get_recipients(self) -> List[str]:
+        """Get all recipient addresses."""
+        recipients = list(self.to_addresses)
+        if self.to_address and self.to_address not in recipients:
+            recipients.append(self.to_address)
+        return recipients
 
 
 @dataclass

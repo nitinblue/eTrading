@@ -1,0 +1,95 @@
+workflow:
+  cycle_frequency_minutes: 30
+  market_hours:
+    open: "09:30"
+    close: "16:00"
+    timezone: "US/Eastern"
+  boot_time_minutes_before_open: 5
+  eod_eval_time: "15:30"
+  report_time: "16:15"
+
+circuit_breakers:
+  daily_loss_pct: 3.0
+  weekly_loss_pct: 5.0
+  vix_halt_threshold: 35.0
+  consecutive_loss_pause: 3     # per strategy
+  consecutive_loss_halt: 5      # per portfolio
+  max_portfolio_drawdown:
+    tastytrade: 25.0
+    fidelity_ira: 15.0
+    fidelity_personal: 20.0
+    zerodha: 25.0
+    stallion: 20.0
+
+trading_constraints:
+  max_trades_per_day: 3
+  max_trades_per_week_per_portfolio: 5
+  no_entry_first_minutes: 15
+  no_entry_last_minutes: 30
+  require_approval_undefined_risk: true
+  no_adding_to_losers_without_rationale: true
+
+trading_schedule:
+  daily: ["0dte"]
+  wednesday: ["0dte", "weekly"]
+  friday: ["0dte", "weekly"]
+  monthly_dte_window: [35, 55]   # screen monthly when DTE 35-55
+  skip_0dte_on_fomc: true
+  fomc_dates: ["2026-03-18", "2026-05-06", "2026-06-17"]
+
+decision_timeouts:
+  reminder_minutes: 60
+  nag_minutes: 240
+  log_missed_at_eod: true
+
+notifications:
+  email:
+    enabled: false
+    # Gmail: smtp.gmail.com / Outlook: smtp.office365.com
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    # For Gmail: use App Password (not regular password)
+    # Generate at: https://myaccount.google.com/apppasswords
+    smtp_username: ""
+    smtp_password: ""
+    from_address: ""
+    # Multiple recipients supported
+    to_addresses:
+      - ""    # nitin@...
+      - ""    # wife@...
+    daily_summary_time: "16:15"
+    weekly_digest_day: "friday"
+
+capital_deployment:
+  idle_alert_pct:
+    tastytrade: 10.0
+    fidelity_ira: 15.0
+    fidelity_personal: 10.0
+    zerodha: 10.0
+    stallion: 10.0
+  escalation:
+    warning_days_idle: 5
+    critical_days_idle: 10
+    nag_frequency_hours: 4
+  target_annual_return_pct:
+    tastytrade: 40.0
+    fidelity_ira: 12.5
+    fidelity_personal: 25.0
+    zerodha: 0.0
+    stallion: 0.0
+  # Staggered deployment — don't nag to deploy everything day 1.
+  # ramp_weeks: number of weeks to reach full target deployment.
+  # max_deploy_per_week_pct: cap on how much of idle capital to deploy per week.
+  staggered_deployment:
+    ramp_weeks: 8
+    max_deploy_per_week_pct:
+      tastytrade: 25.0
+      fidelity_ira: 15.0
+      fidelity_personal: 20.0
+      zerodha: 25.0
+      stallion: 15.0
+
+qa:
+  min_coverage_pct: 70.0
+  report_frequency: daily    # daily | weekly
+  fail_on_regression: false  # halt if tests fail

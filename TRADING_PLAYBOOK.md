@@ -1,252 +1,610 @@
-# Trading Playbook
-> Systematic options portfolio management. Macro → Exposure → Action.
-> Every decision codified. Every trade logged. No trade from memory.
+# Trading Playbook — Agent Operations Manual
+> How the CoTrader agents operate your portfolios. What happens at each step. When you get notified. What you need to decide.
+>
+> Last updated: February 16, 2026 (session 16)
 
 ---
 
-## 1. Portfolio Architecture
+## 1. System Overview
 
-| Portfolio | Capital | Target | Cadence | What It Does |
-|-----------|---------|--------|---------|-------------|
-| **Core Holdings** | $200K (80%) | 12.5% | Monthly+ | Long-term stock accumulation. CSP → assignment → covered call → wheel. Buy-and-hold backbone. |
-| **Medium Risk** | $20K (8%) | 20% | Weekly/Monthly | LEAPS, PMCC, calendars, double calendars, iron condors. Leveraged income. |
-| **High Risk** | $10K (4%) | 75% | 0DTE/Weekly | 0DTE iron butterflies, weekly credit spreads, short-term theta plays. Never exceed 5% of total capital. |
-| **Model Portfolio** | $25K (8%) | N/A | Any | Training data for AI/ML. Intentional wins AND losses. Every trade requires rationale + exit commentary. |
+CoTrader is a **continuous workflow engine** that manages 10 portfolios across 4 brokers. It runs a state machine loop during market hours, pausing only when it needs your decision. You don't run CLI commands. You respond to the agent.
 
-**Rule:** Total allocation = 100%. Cash reserve enforced per portfolio (Core 15%, Med 10%, High 5%).
+```
+Start:  python -m trading_cotrader.runners.run_workflow --paper --no-broker
+Single: python -m trading_cotrader.runners.run_workflow --once --no-broker --mock
+```
+
+### The Loop
+
+```
+IDLE → BOOT → MACRO_CHECK → SCREENING → RECOMMENDATION_REVIEW (⏸ YOU) → EXECUTION
+                                                                              ↓
+                   REPORTING ← EOD_EVALUATION ← MONITORING ← ←←←←←←←←←←←←←←←
+                       ↓              ↓
+                     IDLE      EXIT_EVALUATION → EXIT_REVIEW (⏸ YOU) → EXECUTION → MONITORING
+```
+
+**Two pause points.** Everything else is autonomous.
+
+| State | What Happens | Duration | Your Action |
+|-------|-------------|----------|-------------|
+| BOOT | Calendar, market data, portfolio state, circuit breakers, capital check, session objectives | ~10 sec | None |
+| MACRO_CHECK | VIX regime assessment, risk_on/off gate | ~2 sec | None (auto-skip if risk_off) |
+| SCREENING | Run screeners for today's cadences, risk analysis | ~5 sec | None |
+| **RECOMMENDATION_REVIEW** | **Workflow pauses. Presents recommendations.** | **Until you act** | **approve / reject / defer** |
+| EXECUTION | Books approved trades (paper mode), Guardian safety check | ~3 sec | None |
+| MONITORING | Home state. Refreshes every 30 min. Checks exits. | 30 min cycles | Status check anytime |
+| EXIT_EVALUATION | Evaluates all open positions against exit rules | ~5 sec | None |
+| **EXIT_REVIEW** | **Workflow pauses. Presents exit signals.** | **Until you act** | **approve / reject / defer** |
+| EOD_EVALUATION | Final position check at 3:30 PM ET | ~5 sec | None |
+| REPORTING | Daily summary, accountability, capital efficiency, QA, agent grades | ~15 sec | Read report |
+| HALTED | Circuit breaker tripped or manual halt | Until you resume | **resume --rationale "..."** |
 
 ---
 
-## 2. Daily Routine
+## 2. Boot Sequence (9:25 AM ET)
 
-### Pre-Market (6:30 - 9:30 AM ET) — 15 minutes
+15 agents initialize. Here's what each does and what you see:
 
-**Step 1: Macro Check**
-What is the market telling me today?
+### Step 1: Calendar Check
+```
+┌─────────────────────────────────────────────────┐
+│ CALENDAR                                         │
+│ Trading day:  YES                                │
+│ Cadences:     [0dte, weekly]                     │
+│ FOMC today:   NO                                 │
+│ Minutes to close: 390                            │
+└─────────────────────────────────────────────────┘
+```
+- Non-trading day (NYSE holiday) → skips to IDLE immediately
+- FOMC day → blocks 0DTE trades (`skip_0dte_on_fomc: true` in YAML)
 
-```bash
-# Check VIX, assess macro regime
-python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY --no-broker
+### Step 2: Market Data
+```
+┌─────────────────────────────────────────────────┐
+│ MARKET DATA                                      │
+│ Fetched 3/3 snapshots (SPY, QQQ, IWM)           │
+│ VIX: 22.4                                        │
+└─────────────────────────────────────────────────┘
+```
+- Technical snapshots: EMA 20/50, SMA 200, RSI 14, ATR, IV rank, directional/vol regime
+- VIX fetched via broker adapter or yfinance fallback
+
+### Step 3: Portfolio State
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ PORTFOLIO STATE                                                      │
+│ Portfolio            Equity     Daily P&L   Open Trades   Status     │
+│ tastytrade           $50,000    -0.2%       4             active     │
+│ fidelity_ira         $200,000   +0.1%       2             active     │
+│ fidelity_personal    $50,000    +0.3%       1             active     │
+│ zerodha              ₹500,000   +0.0%       0             active     │
+│ stallion             ₹2,000,000 +0.5%       29            read-only  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+- Each portfolio loads into its own `PortfolioBundle` (positions, trades, risk factors)
+- WhatIf portfolios share parent's bundle (e.g., `tastytrade_whatif` sees same positions as `tastytrade`)
+- USD and INR portfolios never cross-contaminate
+
+### Step 4: Guardian — Circuit Breaker Check
+
+| Breaker | Threshold | Status |
+|---------|-----------|--------|
+| Daily loss | 3.0% | OK (-0.2%) |
+| Weekly loss | 5.0% | OK (-1.1%) |
+| VIX halt | 35.0 | OK (22.4) |
+| Tastytrade drawdown | 25.0% | OK (3.2%) |
+| Fidelity IRA drawdown | 15.0% | OK (1.1%) |
+| Consecutive losses | 3 pause / 5 halt | OK (1) |
+
+**If ANY breaker trips → HALTED state. You are notified immediately:**
+```
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+TRADING HALTED
+Reason: Daily loss -3.2% exceeds 3.0% limit
+Override requires written rationale.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ```
 
-- [ ] VIX level: ___  (below 16 = low, 16-25 = normal, 25-35 = elevated, 35+ = crisis)
-- [ ] Overnight moves: SPY ___ QQQ ___ (check futures)
-- [ ] Economic calendar: Any FOMC, CPI, PPI, jobs report today?
-- [ ] Earnings: Any holdings reporting today?
+### Step 5: Capital Utilization
 
-**If macro is risk_off (VIX 35+, major event uncertainty): STOP. No new trades. Evaluate exits only.**
-
-```bash
-# Override macro if needed
-python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY --macro-outlook risk_off --no-broker
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│ CAPITAL UTILIZATION                                                        │
+│ Portfolio            Target   Actual   Gap     Idle $      Cost/Day  Sev   │
+│ tastytrade           90%      62%      -28%    $14,000     $15.34    WARN  │
+│ fidelity_ira         85%      80%      -5%     $10,000     $3.42     ok    │
+│ fidelity_personal    90%      45%      -45%    $27,500     $18.84    CRIT  │
+│ zerodha              90%      0%       -90%    ₹450,000    ₹0.00     ok    │
+│ stallion             100%     98%      -2%     ₹40,000     ₹0.00     ok    │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Step 2: Position Review**
-What do I own and does anything need attention?
-
-```bash
-# Evaluate all open positions against exit rules
-python -m trading_cotrader.cli.evaluate_portfolio --all --no-broker --dry-run
+**You are notified when severity > ok:**
+```
+[WARNING] tastytrade: $14,000 idle (62% deployed, target 90%). 5 days since last trade.
+[CRITICAL] fidelity_personal: $27,500 idle (45% deployed, target 90%). 12 days since last trade. Costing $18.84/day.
+  → You have $27,500 idle AND 1 pending recommendation — approve it?
 ```
 
-Check each open position:
-- [ ] Any position at 50%+ profit? → Close or take profit
-- [ ] Any position at 1x-2x loss of credit received? → Cut or adjust
-- [ ] Any position within 21 DTE? → Evaluate for roll
-- [ ] Any position within 7 DTE? → Close or roll NOW
-- [ ] Any short strike delta > 0.30? → Manage
+- Staggered deployment ramp: system doesn't nag to deploy $200K on day 1 (8-week ramp, per-portfolio weekly caps)
+- Severity escalation: `ok` → `info` (gap > threshold) → `warning` (5+ days idle) → `critical` (10+ days idle)
+- Nag frequency: max once every 4 hours per portfolio
 
-**Step 3: Today's Trading Plan**
-What cadence am I trading today?
+### Step 6: Session Objectives
 
-| Day | What to Prepare | Template |
-|-----|----------------|----------|
-| **Monday** | Weekly review. No new entries unless screener fires. | — |
-| **Tuesday** | Prep Wednesday calendar templates. Check SPX levels. | `weekly_call_calendar_spx_*.json` |
-| **Wednesday** | SPX weekly calendars at 2-3 PM. 0DTE if conditions met. | `weekly_call_calendar_spx_7_9.json` or `_9_12.json` |
-| **Thursday** | Prep Friday diagonal template. Check QQQ levels. | `weekly_put_diagonal_qqq.json` |
-| **Friday** | QQQ weekly diagonal at 1:30 PM. 0DTE if conditions met. | `weekly_put_diagonal_qqq.json` |
-
-Pick the right template, update strikes/expiry to current market:
-
-```bash
-# List all available templates
-ls trading_cotrader/config/templates/
-
-# Dry-run to verify before committing
-python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/<template>.json --no-broker --dry-run
+Each agent declares today's goals (graded at EOD):
 ```
-
-### Market Hours — Execution Windows
-
-| Time (ET) | Action |
-|-----------|--------|
-| 9:30-9:45 | **Do nothing.** Let opening volatility settle. |
-| 9:45-11:00 | 0DTE entry window (if trading 0DTE) |
-| 11:00-1:00 | Monitor positions. No impulse trades. |
-| 1:30 PM | Friday: QQQ diagonal entry |
-| 2:00 PM | Wednesday: SPX 9/12 calendar entry (conservative) |
-| 2:30 PM | 0DTE time stop — close all 0DTE positions regardless of P&L |
-| 3:00 PM | Wednesday: SPX 7/9 calendar entry (aggressive) |
-| 3:30-4:00 | Final position check. Log any decisions. |
-
-### Post-Market (after 4 PM) — 10 minutes
-
-```bash
-# Log today's decisions
-python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor --rationale "Took 50% profit at 2 PM"
-
-# Prep tomorrow's templates
-# Edit the template file with tomorrow's strikes/expiry
+┌────────────────────────────────────────────────────────────┐
+│ SESSION OBJECTIVES                                          │
+│ Agent          Objective                        Target      │
+│ guardian       Enforce circuit breakers          0 breaches  │
+│ capital        Monitor idle capital              all < 15%   │
+│ screener       Screen today's cadences           ≥1 rec      │
+│ evaluator      Evaluate all open positions       100%        │
+│ accountability Track decision quality            TTD < 60min │
+└────────────────────────────────────────────────────────────┘
 ```
-
-- [ ] Log every trade decision (entry, exit, adjustment, hold) with rationale
-- [ ] Update template for tomorrow if applicable
-- [ ] Note anything unusual in market behavior
 
 ---
 
-## 3. Weekly Schedule
+## 3. Macro Check
 
-### Monday: Review & Assess
-- Review all open positions across all 4 portfolios
-- Check performance metrics from last week
-- Identify positions approaching exits (DTE, profit target, stop loss)
-- Run screener for new monthly opportunities
+The first gate: is it safe to trade today?
 
-```bash
-python -m trading_cotrader.cli.run_screener --screener all --symbols SPY,QQQ,IWM,AAPL,MSFT,NVDA --no-broker
-python -m trading_cotrader.cli.accept_recommendation --list
+```
+┌─────────────────────────────────────────────────┐
+│ MACRO ASSESSMENT                                 │
+│ VIX:          22.4                               │
+│ Regime:       normal (16-25)                     │
+│ Assessment:   neutral                            │
+│ Should screen: YES                               │
+│ Confidence modifier: 1.0 (no adjustment)         │
+└─────────────────────────────────────────────────┘
 ```
 
-### Wednesday: Weekly Calendar Entry
-**SPX Call Calendar** — the highest-CAGR weekly strategy (64% CAGR backtested)
+| VIX Range | Regime | What Happens |
+|-----------|--------|-------------|
+| < 16 | low_vol | `risk_on` — full screening, good for selling premium |
+| 16-25 | normal | `neutral` — normal screening, no confidence adjustment |
+| 25-35 | elevated | `cautious` — screens run but confidence reduced ~20% |
+| > 35 | crisis | `risk_off` — **skips screening entirely**, goes to MONITORING |
 
-Pre-trade checklist:
-- [ ] Not a quarterly futures expiry week (Mar/Jun/Sep/Dec 3rd Friday)
-- [ ] No FOMC announcement today
-- [ ] SPX not in a strong directional trend (check RSI 40-60 range)
-- [ ] Template prepared with current ATM strike and correct DTE
-
-```bash
-# Conservative variant (recommended to start)
-python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/weekly_call_calendar_spx_9_12.json --no-broker
-
-# Aggressive variant (after proving the conservative works)
-python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/weekly_call_calendar_spx_7_9.json --no-broker
+**If risk_off, you see:**
+```
+Macro: risk_off — VIX 38.2 exceeds crisis threshold. Skipping all screeners. Monitoring positions only.
 ```
 
-### Friday: Weekly Diagonal Entry
-**QQQ Put Diagonal** — 88% win rate backtested
-
-Pre-trade checklist:
-- [ ] VIX is 16 or above
-- [ ] QQQ not in freefall (check support levels)
-- [ ] Template prepared with current 50-delta put and 10-delta-lower long put
-
+Override via CLI args or `config/daily_macro.yaml`:
 ```bash
-python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/weekly_put_diagonal_qqq.json --no-broker
+python -m trading_cotrader.runners.run_workflow --once --macro-outlook cautious --expected-vol elevated
 ```
-
-### Friday Evening: Week-End Ritual (20 minutes)
-
-```bash
-# Check what recommendations are pending
-python -m trading_cotrader.cli.accept_recommendation --list
-
-# Expire old recommendations
-python -m trading_cotrader.cli.accept_recommendation --expire
-```
-
-Journal entry (in event log or personal notes):
-- [ ] Trades opened this week: ___
-- [ ] Trades closed this week: ___ (P&L: ___)
-- [ ] Rules followed? Any impulse trades?
-- [ ] What did the market teach me this week?
-- [ ] Next week's focus: ___
 
 ---
 
-## 4. Monthly Review (1st weekend of each month)
+## 4. Screening
 
-### Performance Check
+Runs screeners matched to today's cadences. Entry filters gate every recommendation.
 
-```bash
-# Run full harness to verify system health
-python -m trading_cotrader.harness.runner --skip-sync
+### Cadence → Screener Mapping
 
-# Unit tests
-pytest trading_cotrader/tests/ -v
+| Day | Cadence | Screeners Run |
+|-----|---------|--------------|
+| Any | 0dte | VIX Regime |
+| Wednesday | 0dte, weekly | VIX Regime, IV Rank |
+| Friday | 0dte, weekly | VIX Regime, IV Rank |
+| Monthly DTE window (35-55) | monthly | VIX Regime, IV Rank |
+| LEAPS (monthly) | leaps | LEAPS Entry (picky AND logic) |
+
+### Screening Pipeline
+
+```
+1. MACRO GATE          → risk_off? STOP. Otherwise proceed.
+2. WATCHLIST           → SPY, QQQ, IWM (default) or custom
+3. FOR EACH SYMBOL × SCREENER:
+   ├── Technical Snapshot  (RSI, EMA, ATR, IV rank, regime)
+   ├── Screener Logic      (VIX regime → strategy suggestion)
+   ├── Entry Filters       (RSI range, regime, ATR%, IV pctile from risk_config.yaml)
+   └── Strategy Filter     (is strategy active in target portfolio?)
+4. CONFIDENCE MODIFIER → cautious macro reduces score ~20%
+5. OUTPUT              → List of recommendations
 ```
 
-Review metrics per portfolio:
-- Win rate (target: 70%+ for defined risk, 80%+ for weekly income)
-- Average win vs average loss (need positive expectancy)
-- Max drawdown (Core <15%, Med <20%, High <30%)
-- CAGR vs target (Core 12.5%, Med 20%, High 75%)
-- Sharpe ratio (target >1.0)
+### Entry Filter Example
 
-Review metrics by strategy:
-- Which strategies are profitable?
-- Which strategies are losing?
-- Are you following the screener or overriding it?
+```
+Entry filter check for iron_condor on SPY:
+  RSI check:        48.2 in range [30, 70]     → PASS
+  Directional regime: F (required: [F])         → PASS
+  ATR percent:      1.2% >= 0.8%               → PASS
+  Result: ALL FILTERS PASSED
+```
 
-Review metrics by trade source:
-- Screener recommendations: win rate ___
-- Manual trades: win rate ___
-- Are screener trades outperforming manual?
+### Risk Snapshot (runs alongside screening)
 
-### Monthly Adjustments
-- [ ] Update `active_strategies` in `risk_config.yaml` if a strategy is consistently losing
-- [ ] Adjust position sizing if drawdown exceeded targets
-- [ ] Update `daily_macro.yaml` with current market assessment
-- [ ] Roll any positions approaching monthly expiry
+```
+┌──────────────────────────────────┐
+│ RISK SNAPSHOT                     │
+│ VaR 95% (1-day):  $2,340         │
+│ VaR 99% (1-day):  $3,890         │
+│ Expected Shortfall: $4,120        │
+│ Open positions:    7              │
+│ Top concentration: SPY at 35%     │
+└──────────────────────────────────┘
+```
 
 ---
 
-## 5. Entry Rules (The Gate)
+## 5. Recommendation Review — YOU DECIDE
 
-**Every trade must pass ALL of these before entry. No exceptions.**
+**Workflow pauses here. You are notified.**
 
-### Universal Rules
-1. **Macro gate passed** — System is not in risk_off mode
-2. **Screener recommended OR explicit rationale documented** — No "I feel like it" trades
-3. **Within portfolio risk limits** — Position count, concentration, delta limits
-4. **Liquidity check passed** — Bid-ask spread <5%, open interest >100, daily volume >500
-5. **Template populated** — Every field filled, strikes verified against current market
+```
+============================================================
+NEW RECOMMENDATIONS PENDING REVIEW
+============================================================
+  [a1b2c3d4] SPY iron_condor — confidence=7
+    VIX 22.4 normal regime. RSI 48, flat. Selling premium 30-45 DTE.
+    Suggested portfolio: tastytrade
+
+  [e5f6g7h8] QQQ vertical_spread — confidence=6
+    IV rank 45th percentile. Directional bias bullish.
+    Suggested portfolio: fidelity_personal
+============================================================
+2 recommendation(s). Use 'approve <id>' or 'reject <id>'.
+```
+
+### Your Commands
+
+| Command | What It Does |
+|---------|-------------|
+| `approve a1b2c3d4` | Accept recommendation → queued for EXECUTION |
+| `reject a1b2c3d4` | Reject → logged to decision_log with reason |
+| `defer a1b2c3d4` | Defer → will be re-presented next monitoring cycle |
+| `list` | Show all pending recommendations + exit signals |
+| `status` | Show workflow state, cycle count, VIX, trade counts |
+| `halt` | Manually halt trading (enters HALTED state) |
+| `help` | Show all commands |
+
+### Decision Tracking
+
+Every decision is logged to `decision_log` table with timestamp. The system tracks:
+- **Time-to-decision (TTD)** — how long you took to respond
+- **Recs ignored** — if you don't act by market close, logged as "no action"
+- **Reminder** at 60 minutes if still pending
+- **Nag** at 4 hours if still pending
+
+---
+
+## 6. Execution
+
+For each approved action, the Guardian runs a **per-action safety check** before execution:
+
+### Trading Constraints (checked per action)
+
+| Constraint | Threshold | What Happens If Violated |
+|-----------|-----------|-------------------------|
+| Max trades/day | 3 | Blocked: "3 trades already today" |
+| Max trades/week/portfolio | 5 | Blocked: "5 trades this week in tastytrade" |
+| No entry first 15 min | 9:30-9:45 ET | Blocked: "Opening volatility window" |
+| No entry last 30 min | 3:30-4:00 ET | Blocked: "Closing window" (closes allowed) |
+| Undefined risk approval | Required | Blocked: "Undefined risk requires explicit approval" |
+| No adding to losers | Without rationale | Blocked: "Position is losing, provide rationale" |
+| Cross-broker routing | Enforced | Blocked: "Cannot route Fidelity trade to Tastytrade API" |
+| Currency mismatch | Enforced | Blocked: "Cannot book USD trade in INR portfolio" |
+
+### Broker Routing
+
+| Broker | Routing | What You See |
+|--------|---------|-------------|
+| Tastytrade | API (future) | `[PAPER] Executed rec a1b2c3d4 → trade t9y8z7w6` |
+| Fidelity | Manual | `MANUAL EXECUTION REQUIRED at Fidelity. Account: Z12345678. Book the following trade manually.` |
+| Zerodha | API (future) | Same as Tastytrade |
+| Stallion | Read-only | `BLOCKED: Stallion is a managed fund. No trade execution.` |
+
+**All trades are paper/WhatIf mode by default.** Live execution requires `--live` flag + double-confirmation (not yet built).
+
+---
+
+## 7. Monitoring (Home State)
+
+The engine stays in MONITORING between cycles. Every 30 minutes:
+
+```
+┌────────────────────────────────────────────┐
+│ MONITORING CYCLE #4                         │
+│ Time: 11:30 AM ET                           │
+│ VIX: 21.8 (↓0.6)                            │
+│ Open trades: 7                              │
+│ Pending recs: 0                             │
+│ Capital alerts: 1 warning                   │
+│ Circuit breakers: all clear                 │
+│ Next action: evaluate exits                 │
+└────────────────────────────────────────────┘
+```
+
+**What runs each cycle:**
+1. MarketDataAgent — refresh VIX + snapshots
+2. PortfolioStateAgent — refresh positions + P&L
+3. CapitalUtilizationAgent — check idle capital (respects 4-hour nag frequency)
+4. GuardianAgent — circuit breaker check (halt if tripped)
+5. Trigger EXIT_EVALUATION
+
+---
+
+## 8. Exit Evaluation
+
+Evaluates every open position against exit rules. Rules come from the portfolio's `exit_rule_profile` in `risk_config.yaml`.
+
+### Exit Rules Evaluated Per Position
+
+| Rule | Conservative (Core) | Balanced (Medium) | Aggressive (High) |
+|------|-------------------|-------------------|-------------------|
+| Profit target | 50% of max | 65% of max | 80% of max |
+| Stop loss (defined) | 100% of max loss | 100% | 100% |
+| Stop loss (undefined) | 2x credit | 2x credit | 2x credit |
+| DTE roll trigger | 21 DTE | 14 DTE | 7 DTE |
+| DTE close trigger | 7 DTE | 5 DTE | 3 DTE |
+| Short delta breach | 0.30 | 0.35 | 0.40 |
+
+### Exit Signal Example
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│ EXIT SIGNALS                                                        │
+│                                                                      │
+│ Trade: SPY iron_condor (opened 2026-01-15, DTE=12)                  │
+│ Current P&L: +$340 (68% of max profit)                              │
+│                                                                      │
+│ Rules evaluated:                                                     │
+│   ✓ Profit target (65%): 68% → TRIGGERED                           │
+│   · Stop loss: not triggered (in profit)                             │
+│   ✓ DTE window (14 DTE): 12 DTE → TRIGGERED                       │
+│   · Delta breach (0.35): put=0.18, call=0.22 → OK                  │
+│                                                                      │
+│ Liquidity:                                                           │
+│   Bid-ask spread: 0.3% (threshold 3%) → LIQUID                     │
+│   Can adjust/roll: YES                                               │
+│                                                                      │
+│ RECOMMENDATION: CLOSE (take profit)                                  │
+│ Urgency: HIGH (multiple rules triggered)                            │
+│ Type: EXIT                                                           │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### Signal Types
+
+| Type | When | What It Means |
+|------|------|--------------|
+| EXIT | Profit target hit, stop loss, DTE critical | Close the position |
+| ROLL | DTE approaching but still has edge, liquid | Close current + open new at later expiry |
+| ADJUST | One side tested, overall still profitable, liquid | Roll untested side closer |
+
+**Illiquidity downgrade:** if ROLL/ADJUST is recommended but the option is illiquid (OI < 500, spread > 3%), it gets downgraded to EXIT (close it, don't try to finesse illiquid options).
+
+---
+
+## 9. Exit Review — YOU DECIDE
+
+**Workflow pauses again. You are notified.**
+
+```
+============================================================
+EXIT SIGNALS DETECTED
+============================================================
+  [x1y2z3w4] SPY iron_condor EXIT — urgency=HIGH
+    Take profit: 68% > 65% target. DTE=12 < 14.
+    Portfolio: tastytrade
+
+  [a9b8c7d6] QQQ vertical_spread ROLL — urgency=NORMAL
+    DTE=18, still within range. Roll to next monthly.
+    Portfolio: fidelity_personal
+============================================================
+2 signal(s). Use 'approve <id>' or 'reject <id>'.
+```
+
+Same commands as Recommendation Review. Approved exits go to EXECUTION:
+- **EXIT** → books opposite trade to close
+- **ROLL** → closes current + books new at later expiry (`rolled_from_id` / `rolled_to_id` linkage)
+- **ADJUST** → modifies legs (rolls untested side)
+
+---
+
+## 10. End-of-Day Reporting (4:15 PM ET)
+
+Six agents produce the daily report:
+
+### 10a. Accountability Metrics
+```
+┌──────────────────────────────────────┐
+│ ACCOUNTABILITY                        │
+│ Trades today:            2            │
+│ Recs ignored:            1            │
+│ Recs deferred:           0            │
+│ Avg time-to-decision:    23 min       │
+│ Decisions today:         4            │
+└──────────────────────────────────────┘
+```
+
+### 10b. Capital Efficiency
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│ CAPITAL EFFICIENCY                                                         │
+│ Portfolio            Target   Actual   Gap     Idle $      Cost/Day  Days  │
+│ tastytrade           90%      68%      -22%    $16,000     $17.53    3     │
+│ fidelity_ira         85%      80%      -5%     $10,000     $3.42     1     │
+│ fidelity_personal    90%      50%      -40%    $25,000     $17.12    8 !!  │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### 10c. Session Performance (Agent Grades)
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ SESSION PERFORMANCE                                                     │
+│ Agent          Objective                     Target  Actual  Grade      │
+│ guardian       Enforce circuit breakers       0       0       A         │
+│ capital        Monitor idle capital           <15%    22%     C         │
+│ screener       Screen today's cadences        ≥1      2       A         │
+│ evaluator      Evaluate all positions          100%   100%    A         │
+│ accountability Decision quality               <60min  23min   A         │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 10d. Corrective Plan
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ CORRECTIVE PLAN                                                         │
+│ 1. Capital idle: fidelity_personal (8 days). Escalate to critical.     │
+│ 2. Rejected rec SPY iron_condor — review rationale tomorrow.           │
+│ 3. No LEAPS screening today — add LEAPS cadence when DTE window open. │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 10e. QA Report
+```
+┌──────────────────────────────────────┐
+│ QA ASSESSMENT                         │
+│ Tests:     137/137 passed             │
+│ Coverage:  42.3%                      │
+│ Low coverage: 18 files below 70%      │
+│ Suggestions: 10 new test cases        │
+└──────────────────────────────────────┘
+```
+
+### 10f. Full Daily Summary
+
+All of the above is assembled by ReporterAgent and sent via NotifierAgent (console always, email if configured).
+
+---
+
+## 11. HALTED State
+
+Entered when a circuit breaker trips or you manually halt.
+
+**How you get here:**
+- Daily loss exceeds 3% → auto-halt
+- Weekly loss exceeds 5% → auto-halt
+- VIX > 35 → auto-halt
+- Per-portfolio drawdown exceeded → auto-halt
+- 5 consecutive losses in a portfolio → auto-halt
+- You typed `halt` → manual halt
+
+**How you get out:**
+```
+> resume --rationale "VIX dropped back to 28. Reviewed positions. No new entries, monitoring only."
+```
+
+The rationale is required and persisted. No empty rationale accepted.
+
+---
+
+## 12. Portfolio Architecture
+
+### 10 Portfolios Across 4 Brokers
+
+| Portfolio | Broker | Currency | Type | Capital | Execution |
+|-----------|--------|----------|------|---------|-----------|
+| tastytrade | Tastytrade | USD | Real | $50K | API (future) |
+| tastytrade_whatif | Tastytrade | USD | WhatIf | mirrors real | Paper |
+| fidelity_ira | Fidelity | USD | Real | $200K | Manual (CSV sync) |
+| fidelity_ira_whatif | Fidelity | USD | WhatIf | mirrors real | Paper |
+| fidelity_personal | Fidelity | USD | Real | $50K | Manual (CSV sync) |
+| fidelity_personal_whatif | Fidelity | USD | WhatIf | mirrors real | Paper |
+| zerodha | Zerodha | INR | Real | ₹500K | API (future) |
+| zerodha_whatif | Zerodha | INR | WhatIf | mirrors real | Paper |
+| stallion | Stallion | INR | Real | ₹2M | Read-only (managed fund) |
+| stallion_whatif | Stallion | INR | WhatIf | mirrors real | Paper |
+
+### Broker Adapter Architecture
+
+All broker-specific code is isolated in `adapters/`:
+
+```
+adapters/
+├── base.py                    # BrokerAdapterBase (ABC)
+│   ├── ManualBrokerAdapter    # Fidelity — manual execution, CSV import
+│   └── ReadOnlyAdapter        # Stallion — managed fund, no trading
+├── factory.py                 # BrokerAdapterFactory.create(broker_config)
+└── tastytrade_adapter.py      # TastyTrade SDK — ALL tastytrade imports here only
+```
+
+Zero `tastytrade` imports outside `adapters/`. Services use the generic `BrokerAdapterBase` interface.
+
+### Per-Portfolio Container Bundles
+
+Each real portfolio gets its own isolated container:
+
+```
+ContainerManager
+├── tastytrade bundle        (PortfolioContainer + PositionContainer + TradeContainer + RiskFactorContainer)
+│   └── shared by tastytrade_whatif
+├── fidelity_ira bundle
+│   └── shared by fidelity_ira_whatif
+├── fidelity_personal bundle
+│   └── shared by fidelity_personal_whatif
+├── zerodha bundle
+│   └── shared by zerodha_whatif
+└── stallion bundle
+    └── shared by stallion_whatif
+```
+
+USD positions never mix with INR positions. Each bundle loads from DB filtered by `portfolio_id`.
+
+---
+
+## 13. Entry Rules
+
+Every trade must pass ALL gates. No exceptions.
+
+### Gate Chain
+
+```
+MACRO GATE → SCREENER → ENTRY FILTERS → STRATEGY FILTER → CONFIDENCE → LIQUIDITY → RECOMMENDATION
+```
 
 ### Strategy-Specific Entry Conditions
-These are in each template's `entry_conditions` field. Quick reference:
 
 | Strategy | IV Rank Min | Market Outlook | Key Filter |
 |----------|-------------|----------------|------------|
-| Iron Condor | 30 (pref 50) | Neutral/range | RSI 30-70, flat regime, ATR >0.8% |
+| Iron Condor | 30 (pref 50) | Neutral/range | RSI 30-70, flat regime, ATR > 0.8% |
 | Iron Butterfly | 30 | Neutral | RSI 35-65, flat regime |
-| Iron Butterfly 0DTE | 20 | Neutral | RSI 40-60, flat regime, 9:45-11 AM entry |
+| Iron Butterfly 0DTE | 20 | Neutral | RSI 40-60, flat regime, 9:45-11 AM |
 | Vertical Spread | 20 | Directional | RSI 20-80 |
 | Calendar Spread | 15 | Neutral | IV LOW (benefits from rising IV) |
 | Double Calendar | 20 | Neutral/range | Wednesday entry, avoid quarterly expiry |
-| Diagonal/PMCC | 15 | Directional | IV LOW, buy 50-70Δ 3-4mo, sell 30-50Δ 1mo before |
-| Strangle | 40 (pref 60) | Neutral | RSI 30-70, flat, IV pctile 40+, undefined risk approval |
-| Straddle | 40 | Neutral | RSI 35-65, flat, undefined risk approval |
-| Covered Call | 20 | Neutral/slightly bullish | Must own shares |
-| LEAPS | 40+ | Bullish | >10% correction, near support, elevated IV |
+| Diagonal/PMCC | 15 | Directional | IV LOW, buy 50-70D 3-4mo, sell 30-50D 1mo |
+| Strangle | 40 (pref 60) | Neutral | RSI 30-70, flat, IV pctile 40+, undefined risk |
+| Straddle | 40 | Neutral | RSI 35-65, flat, undefined risk |
+| Covered Call | 20 | Neutral/bullish | Must own shares |
+| LEAPS | 40+ | Bullish | > 10% correction, near support, elevated IV |
 
-### Position Sizing Rules
-| Portfolio | Max Single Position | Max Single Trade Risk | Max Positions |
+### Trading Schedule
+
+| Day | Cadences | Notes |
+|-----|----------|-------|
+| Monday | 0DTE | Review week. No new weekly/monthly unless screener fires. |
+| Tuesday | 0DTE | Prep Wednesday templates. |
+| Wednesday | 0DTE, weekly | SPX calendars at 2-3 PM ET. |
+| Thursday | 0DTE | Prep Friday templates. |
+| Friday | 0DTE, weekly | QQQ diagonal at 1:30 PM ET. |
+| Monthly window | monthly | When DTE 35-55 for next monthly expiry. |
+
+### Position Sizing
+
+| Portfolio | Max Single Position | Max Trade Risk | Max Positions |
 |-----------|--------------------|-----------------------|---------------|
-| Core Holdings | 10% of portfolio | 5% of portfolio | 16 |
-| Medium Risk | 25% of portfolio | 10% of portfolio | 5 |
-| High Risk | 30% of portfolio | 15% of portfolio | 5 |
-| Model Portfolio | 20% of portfolio | 15% of portfolio | 20 |
+| Core (Fidelity IRA) | 10% | 5% | 16 |
+| Medium (Fidelity Personal) | 25% | 10% | 5 |
+| High (Tastytrade) | 30% | 15% | 5 |
 
 ---
 
-## 6. Exit Rules (The Discipline)
+## 14. Exit Rules
 
-**Exits are not negotiable. The system tells you when to act. You execute.**
+Exits are not negotiable. The evaluator tells you when to act. You execute.
 
 ### Profit Targets
+
 | Profile | Target | Applies To |
 |---------|--------|-----------|
 | Conservative (Core) | 50% of max profit | All strategies |
@@ -254,768 +612,171 @@ These are in each template's `entry_conditions` field. Quick reference:
 | Aggressive (High) | 80% of max profit | All strategies |
 | 0DTE | 50% of credit | Iron butterflies |
 | Weekly calendars | 30-50% of debit | SPX calendars |
-| Weekly diagonal | $1.50 per contract | QQQ diagonal |
 
 ### Stop Losses
-| Risk Type | Stop Loss | Strategies |
-|-----------|-----------|-----------|
-| Defined risk | 100% of max loss (let it play out or close early) | Verticals, iron condors, butterflies |
-| Undefined risk | 2x credit received | Strangles, straddles, naked options |
-| 0DTE | 1x credit received | 0DTE iron butterflies |
-| Weekly calendar | -20 delta test (conservative) | SPX 9/12 calendar |
+
+| Risk Type | Stop Loss |
+|-----------|-----------|
+| Defined risk | 100% of max loss (let it play out or cut early) |
+| Undefined risk | 2x credit received |
+| 0DTE | 1x credit received |
 
 ### Time-Based Exits
+
 | Trigger | Action |
 |---------|--------|
-| 21 DTE | Evaluate for roll. Is there still edge? |
-| 7 DTE | Close or roll. No exceptions for monthly trades. |
-| 0 DTE (2:30 PM) | Close all 0DTE positions. No holding to settlement. |
-| Front-month expiry (weekly) | Roll front leg day BEFORE expiry (Thursday for Friday expiry) |
-
-### Delta-Based Exits
-- Short strike delta exceeds 0.30 → Manage (roll untested side closer, or close)
-- Portfolio delta exceeds limit → Hedge or reduce
+| 21 DTE | Evaluate for roll |
+| 7 DTE | Close or roll. No exceptions. |
+| 0 DTE (2:30 PM) | Close all 0DTE positions |
+| Front-month expiry (weekly) | Roll day BEFORE expiry |
 
 ---
 
-## 7. Risk Rules (The Hard Limits)
+## 15. Circuit Breakers & Hard Limits
 
-**These are circuit breakers. If hit, STOP trading and reassess.**
-
-### Portfolio-Level Limits
-| Limit | Core | Medium | High |
-|-------|------|--------|------|
-| Max portfolio delta | 1000 | 300 | 100 |
-| Max total risk % | 25% | 40% | 100% |
-| Min cash reserve | 15% | 10% | 5% |
-| Max concentration per underlying | 10% | 30% | 40% |
-
-### Global Limits
-- **Max daily loss:** 3% of total capital ($7,500) → Stop trading for the day
-- **Max drawdown:** 15% of total capital ($37,500) → Reduce all positions by 50%, reassess strategy
-- **VaR limit:** 3% at 95% confidence, 1-day horizon
-- **Undefined risk cap:** 20% of total portfolio (80% must be defined risk)
+All thresholds in `config/workflow_rules.yaml`. No hardcoded values.
 
 ### Circuit Breakers
-- VIX > 35: No new positions. Evaluate existing for exit.
-- Account down 3% in a day: No new positions until next day.
-- 3 consecutive losing trades in same strategy: Pause that strategy for 1 week. Review.
-- Any single trade loses more than 2x expected max loss: Full portfolio review.
+
+| Breaker | Threshold | Effect |
+|---------|-----------|--------|
+| Daily loss | 3.0% | HALT — no new trades today |
+| Weekly loss | 5.0% | HALT — requires written review to resume |
+| VIX | 35 | HALT — evaluate exits only |
+| Portfolio drawdown | 15-25% (per portfolio) | HALT that portfolio |
+| Consecutive losses (strategy) | 3 | PAUSE that strategy 1 week |
+| Consecutive losses (portfolio) | 5 | HALT that portfolio |
+
+### Trading Constraints
+
+| Constraint | Value |
+|-----------|-------|
+| Max trades per day | 3 |
+| Max trades per week per portfolio | 5 |
+| No entry first minutes | 15 (9:30-9:45) |
+| No entry last minutes | 30 (3:30-4:00) |
+| Undefined risk | Requires explicit approval |
+| Adding to losers | Requires written rationale |
 
 ---
 
-## 8. Journaling (The Learning Engine)
+## 16. Notification Summary
 
-Every trade is a data point. The journal turns data points into wisdom.
+When and how the system reaches you:
 
-### What to Log (Every Trade)
+| Event | When | Channel | Your Action |
+|-------|------|---------|-------------|
+| Circuit breaker tripped | Immediately | Console + email | `resume --rationale "..."` |
+| New recommendations | After screening | Console + email | `approve` / `reject` / `defer` |
+| Exit signals | After evaluation | Console + email | `approve` / `reject` / `defer` |
+| Idle capital alert (warning) | Boot + every 4h | Console + email | Review pending recs |
+| Idle capital alert (critical) | Boot + every 4h | Console + email | Deploy capital or provide rationale |
+| Manual execution needed | After approval | Console + email | Execute trade at Fidelity/Zerodha |
+| Decision reminder | 60 min pending | Console | Act on recommendation |
+| Decision nag | 4 hours pending | Console | Act NOW or logged as "ignored" |
+| Daily summary report | 4:15 PM ET | Console + email | Read, review corrective plan |
+| Trading halt (manual) | When you type `halt` | Console | `resume` when ready |
 
-```bash
-# On entry
-python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor \
-  --rationale "IV rank 52, RSI 48, flat regime. Selling premium. 30-45 DTE. Template: monthly_iron_condor_spy"
-
-# On exit
-python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor \
-  --rationale "Closed at 55% profit. 18 DTE remaining. Followed exit rule."
-
-# On adjustment
-python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor \
-  --rationale "Rolled untested call side down $5. Put side was tested at 0.28 delta."
-```
-
-### Weekly Journal Prompts
-Write these in a notebook, not just the system:
-
-1. **What trades did I take this week?** (List them)
-2. **Did I follow my rules?** (Be honest. Which rules did I break?)
-3. **What did I learn?** (One insight per week is enough)
-4. **What surprised me?** (Market behavior I didn't expect)
-5. **What will I do differently?** (One specific change)
-6. **Emotional state during trades?** (Calm/anxious/greedy/fearful — this matters)
-
-### Monthly Journal Prompts
-1. **Am I profitable this month?** (By portfolio, by strategy)
-2. **Am I following the system?** (% of trades that came from screener vs impulse)
-3. **Is the system improving?** (Are screener recommendations getting better?)
-4. **Capital deployment:** Am I using my capital or is it sitting idle?
-5. **Biggest lesson this month:**
+Email is off by default. Enable in `workflow_rules.yaml` → `notifications.email.enabled: true`.
 
 ---
 
-## 9. Templates Quick Reference
+## 17. Guiding Principles
 
-### Night-Before Prep
+1. **The market doesn't care about your opinion.** Trade what IS, not what you think SHOULD be. The screener has no opinions. Follow it.
 
-Pick the template for tomorrow's cadence. Open the file, update:
-- `legs[].streamer_symbol` — current strikes and expiry date
-- `notes` — describe the specific trade
-- `rationale` — why NOW, why THIS strike
-- `confidence` — 1-10, be honest
+2. **Risk management is the only edge that compounds.** A 50% drawdown requires 100% gain to recover. Protect capital first.
 
-```
-trading_cotrader/config/templates/
-├── 0dte_iron_butterfly_spy.json          ← Any day, 9:45-11 AM entry
-├── weekly_call_calendar_spx_7_9.json     ← Wednesday 3 PM (aggressive)
-├── weekly_call_calendar_spx_9_12.json    ← Wednesday 2 PM (conservative)
-├── weekly_put_diagonal_qqq.json          ← Friday 1:30 PM
-├── weekly_double_calendar_spy.json       ← Wednesday 2-3 PM
-├── monthly_iron_condor_spy.json          ← When IV rank 30+, neutral
-├── monthly_iron_butterfly_spy.json       ← When IV rank 30+, pinning
-├── monthly_diagonal_pmcc_spy.json        ← When IV is LOW, directional
-├── monthly_calendar_spread_spy.json      ← When IV is LOW, neutral
-├── monthly_vertical_spread_spy.json      ← Directional, defined risk
-├── monthly_covered_call_spy.json         ← On existing stock holdings
-├── monthly_collar_spy.json              ← Protect holdings, zero cost
-├── monthly_protective_put_spy.json       ← Insurance, buy when IV is low
-├── monthly_straddle_spy.json             ← High IV, pinning, UNDEFINED RISK
-├── monthly_strangle_spy.json             ← Highest IV, wide range, UNDEFINED RISK
-├── monthly_butterfly_spy.json            ← Low cost pin bet
-├── monthly_condor_spy.json              ← Wide range, low cost
-├── monthly_single_spy.json              ← CSP or directional
-├── monthly_ratio_spread_spy.json        ← Advanced, partial undefined risk
-├── monthly_jade_lizard_spy.json         ← Bullish, no upside risk if credit > width
-├── monthly_big_lizard_spy.json          ← Straddle + upside hedge, UNDEFINED
-├── custom_combo_spy.json                ← Experimental
-```
+3. **Small, consistent income beats big, occasional wins.** Weekly calendars make $48-94/lot. Boring. But 80%+ win rate over 150+ trades.
+
+4. **Every trade needs a reason to exist AND a reason to die.** Entry rationale AND exit plan, defined BEFORE entry.
+
+5. **Impulse is the enemy.** If the screener didn't recommend it, you need a written rationale that's better than the screener.
+
+6. **Losses are tuition.** But only if you log them. An unlogged loss teaches nothing. A logged loss is training data.
+
+7. **The system is smarter than you in the moment.** You built the rules when you were calm. Trust them when you're not.
+
+8. **Capital sitting idle is capital losing money.** The system will nag you. Let it. That's the point.
 
 ---
 
-## 10. Guiding Principles
+## 18. Quick Reference — Commands
 
-These are not rules to memorize. They are beliefs to internalize.
+### Workflow Commands (during workflow run)
 
-1. **The market doesn't care about your opinion.** Trade what IS, not what you think SHOULD be. The screener doesn't have opinions. Follow it.
+| Command | Description |
+|---------|------------|
+| `approve <id>` | Approve a recommendation or exit signal |
+| `reject <id>` | Reject with logged reason |
+| `defer <id>` | Defer to next monitoring cycle |
+| `list` | Show all pending recommendations + exit signals |
+| `status` | Show workflow state, VIX, trade counts, pending decisions |
+| `halt` | Manually halt trading |
+| `resume --rationale "..."` | Resume from HALTED state (rationale required) |
+| `override --target <breaker> --rationale "..."` | Override a specific circuit breaker |
+| `help` | Show all commands |
 
-2. **Risk management is the only edge that compounds.** A 50% drawdown requires 100% gain to recover. Protect capital first, always.
-
-3. **Small, consistent income beats big, occasional wins.** The weekly calendars make $48-94/lot. Boring. But 80%+ win rate over 150+ trades. That's the game.
-
-4. **Every trade needs a reason to exist AND a reason to die.** Entry rationale AND exit plan, defined BEFORE entry. If you can't articulate both, don't trade.
-
-5. **The journal is more valuable than the P&L.** P&L tells you what happened. The journal tells you WHY. Only "why" makes you better.
-
-6. **Impulse is the enemy.** If a trade isn't in a template, it doesn't exist. If the screener didn't recommend it, you need a written rationale that's better than the screener.
-
-7. **Losses are tuition.** But only if you log them. An unlogged loss teaches nothing. A logged loss with commentary is training data for both you AND the AI.
-
-8. **The system is smarter than you in the moment.** You built the rules when you were calm. Trust them when you're not. That's the whole point.
-
----
-
-## 11. Tool Runbook — Step by Step
-
-This is the complete walkthrough of the system. Each step shows what the tool does, what data it produces, and how to interpret the output.
-
-### Step 1: System Health Check
-
-Before anything else, verify the system is working.
+### CLI Commands (standalone, outside workflow)
 
 ```bash
-# Run full integration harness (16 steps)
-python -m trading_cotrader.harness.runner --skip-sync
-
-# Run unit tests (55 tests)
-pytest trading_cotrader/tests/ -v
-```
-
-**What you see:** 16 numbered steps with PASS/FAIL/SKIP status.
-**What it validates:**
-| Step | What It Tests | Diagnostic Data |
-|------|--------------|-----------------|
-| 1 - Imports | All modules load correctly | Import errors if any |
-| 2 - Broker | TastyTrade authentication (skips with --skip-sync) | Session token, account info |
-| 3 - Portfolio | Virtual portfolios exist in DB | All 4 portfolios side-by-side: name, equity, trade count, P&L |
-| 4 - Market Data | Market data containers initialized | Position count, market data status |
-| 5 - Risk Aggregation | Greeks aggregated by underlying | Net delta, gamma, theta, vega per underlying |
-| 5b - Risk Factors | Risk factor resolution | Risk factor model output |
-| 6 - Hedging | Hedge calculator recommendations | Suggested hedges with delta offset |
-| 7 - Risk Limits | Portfolio risk limits checked | Limit breaches, warnings, pass/fail per limit |
-| 8 - Trades | Trade history loaded | Open/closed trade counts, last 5 trades |
-| 9 - Events | Event log statistics | Events by type, by underlying, ML readiness |
-| 10 - ML Status | AI/ML data readiness | Trade count vs threshold (500), model import status |
-| 11 - Containers | Container manager integration | Container counts, state consistency |
-| 12 - Trade Booking | Single WhatIf trade booking | Full booking output: legs, Greeks, DB IDs |
-| 13 - Strategy Templates | All 12 strategy bookings | Each strategy type booked and verified |
-| 14 - Portfolio Performance | Metrics per portfolio | Win rate, P&L, Sharpe, CAGR per portfolio |
-| 15 - Recommendations | Full screener pipeline | Watchlist → screener → recommendation → accept |
-| 16 - Enhanced Screeners | Macro gate, technicals, filters | Technical snapshots, entry filter results, macro assessment |
-
-### Step 2: Macro Context Assessment
-
-The system's first decision: is it safe to trade today?
-
-```bash
-# Auto-assess from current VIX
-python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY --no-broker
-
-# Override with your own view
-python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY \
-  --macro-outlook cautious --expected-vol elevated --macro-notes "FOMC tomorrow" --no-broker
-
-# Force risk-off (blocks all screening)
-python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY --macro-outlook risk_off --no-broker
-```
-
-**Diagnostic data produced:**
-- **Macro Assessment:** `risk_on` / `neutral` / `cautious` / `risk_off`
-- **VIX Level:** Current VIX value and what regime it maps to
-- **Auto-Assessment Logic:**
-  - VIX < 16 → `risk_on` (low vol, good for selling premium)
-  - VIX 16-25 → `neutral` (normal conditions)
-  - VIX 25-35 → `cautious` (elevated vol, reduce position size, lower confidence)
-  - VIX > 35 → `risk_off` (crisis, no new trades, evaluate exits)
-- **Confidence Modifier:** If cautious, recommendation confidence is reduced by ~20%
-- **Override Source:** Whether assessment came from VIX auto-assess, CLI args, or `config/daily_macro.yaml`
-
-**How to interpret:** If the output says "Macro gate: RISK_OFF — skipping all screening", the system is protecting you. Don't override unless you have a very specific reason with a written rationale.
-
-### Step 3: Technical Analysis Snapshot
-
-For every symbol the screener evaluates, it generates a TechnicalSnapshot.
-
-```bash
-# Run any screener to see technical data on the recommendations
-python -m trading_cotrader.cli.run_screener --screener all --symbols SPY,QQQ,NVDA --no-broker
-```
-
-**Diagnostic data per symbol:**
-| Indicator | What It Tells You | Decision Impact |
-|-----------|------------------|-----------------|
-| **EMA 20** | Short-term trend direction | Price above EMA 20 = bullish short-term |
-| **EMA 50** | Medium-term trend | EMA 20 > EMA 50 = bullish crossover |
-| **SMA 200** | Long-term trend | Price below SMA 200 = bear market territory |
-| **RSI 14** | Overbought/oversold (0-100) | <30 = oversold (bullish setup), >70 = overbought (bearish setup) |
-| **ATR (14-day)** | Average daily range as % of price | Used for stop placement and strike selection |
-| **IV Rank** | Current IV vs 1-year range (0-100) | >30 = elevated (good for selling), <20 = low (good for buying) |
-| **IV Percentile** | % of days IV was lower in past year | >50 = IV is higher than usual |
-| **Directional Regime** | T (trending) or F (flat/range-bound) | Neutral strategies need F, directional need T |
-| **Volatility Regime** | LOW / NORMAL / HIGH | Calendar spreads need HIGH, iron condors work in NORMAL |
-| **% from 52-week High** | How far price has fallen from peak | LEAPS only recommended after >10% correction |
-
-**How to interpret:** Each recommendation includes this data. If the screener recommends an iron condor but the directional regime is "T" (trending), it means conditions changed since the filter was checked. Be cautious.
-
-### Step 4: Entry Filter Verification
-
-Every strategy has specific entry filters defined in `risk_config.yaml`. The screener checks these BEFORE recommending.
-
-**Diagnostic data (visible in screener output and harness step 16):**
-
-```
-Entry filter check for iron_condor on SPY:
-  RSI check: 48.2 in range [30, 70] → PASS
-  Directional regime: F (required: [F]) → PASS
-  ATR percent: 1.2% >= 0.8% → PASS
-  Result: ALL FILTERS PASSED
-```
-
-When a filter fails:
-```
-Entry filter check for iron_condor on TSLA:
-  RSI check: 78.5 NOT in range [30, 70] → FAIL (overbought)
-  Result: FILTERS FAILED — no recommendation generated
-```
-
-**What each filter means:**
-| Filter | What It Checks | Why It Matters |
-|--------|---------------|----------------|
-| `rsi_range` | RSI must be within specified range | Prevents selling premium when momentum is extreme |
-| `directional_regime` | Must match required regime (F=flat, T=trending) | Iron condors need flat markets, verticals need trends |
-| `min_atr_percent` | ATR as % of price must exceed minimum | Ensures enough movement for premium but not too much |
-| `volatility_regime` | Must match (LOW/NORMAL/HIGH) | Calendars need HIGH vol, some strategies need LOW |
-| `min_iv_percentile` | IV percentile floor | Strangles only when IV is genuinely elevated |
-
-### Step 5: Recommendation Pipeline (The Full Thought Process)
-
-This is the complete chain of reasoning from "should I trade?" to "here's what to do":
-
-```
-1. MACRO GATE
-   └── VIX = 22, Auto-assess = neutral → PROCEED
-   └── User override: none → PROCEED
-
-2. SYMBOLS (from watchlist or CLI)
-   └── SPY, QQQ, NVDA, AAPL
-
-3. FOR EACH SYMBOL → EACH ACTIVE SCREENER:
-   └── VIX Regime Screener:
-       ├── VIX = 22 → "normal" regime → suggests iron_condor
-       ├── Technical Snapshot: RSI=52, EMA20>EMA50, regime=F
-       ├── Entry Filters for iron_condor: RSI [30,70]=PASS, regime [F]=PASS, ATR=PASS
-       └── Raw recommendation: iron_condor on SPY, confidence=7
-
-   └── IV Rank Screener:
-       ├── IV Rank = 45 → "elevated" → suggests sell premium
-       ├── Entry Filters: PASS
-       └── Raw recommendation: iron_condor on SPY, confidence=6
-
-   └── LEAPS Screener:
-       ├── SPY correction check: -3% from 52w high → FAIL (need >10%)
-       └── No recommendation (too picky — by design)
-
-4. ACTIVE STRATEGY FILTER
-   └── iron_condor is in medium_risk.active_strategies? YES → KEEP
-   └── iron_condor is in core_holdings.active_strategies? NO → REMOVE for core
-   └── Suggests portfolio: medium_risk
-
-5. CONFIDENCE MODIFIER
-   └── Macro = neutral → no adjustment → confidence stays 7
-
-6. LIQUIDITY CHECK (if enabled)
-   └── SPY bid-ask spread: 0.1% → PASS (threshold: 5%)
-   └── SPY open interest: 50,000 → PASS (threshold: 100)
-   └── SPY daily volume: 2M → PASS (threshold: 500)
-
-7. FINAL RECOMMENDATION
-   └── Strategy: iron_condor
-   └── Underlying: SPY
-   └── Portfolio: medium_risk
-   └── Confidence: 7/10
-   └── Status: PENDING (awaiting user accept/reject)
-```
-
-**How to see this:** Run any screener and observe the output. Each recommendation includes the reasoning chain.
-
-### Step 6: Trade Booking Verification
-
-When you book a trade (or dry-run it), the system produces diagnostic output.
-
-```bash
-python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/monthly_iron_condor_spy.json --no-broker --dry-run
-```
-
-**Diagnostic data:**
-```
-TRADE BOOKING
-  File: monthly_iron_condor_spy.json
-  Underlying: SPY
-  Strategy: iron_condor
-  Legs: 4
-  Portfolio: medium_risk
-
-  DRY RUN — validated but not booked
-    Leg 0: .SPY260417P570 x 1    (buy put protection)
-    Leg 1: .SPY260417P580 x -1   (sell put — short strike)
-    Leg 2: .SPY260417C620 x -1   (sell call — short strike)
-    Leg 3: .SPY260417C630 x 1    (buy call protection)
-
-  Manual Greeks applied:
-    Net delta: -0.20     (slightly bearish — check if acceptable)
-    Net theta: +0.05     (positive — earning $5/day per contract)
-    Net vega:  -0.06     (short vol — profits from IV decrease)
-
-  Portfolio validation: PASS
-    iron_condor is allowed in medium_risk: YES
-    iron_condor is active in medium_risk: YES
-    Position count: 2/5 (within limit)
-    Concentration: SPY at 18% (within 30% limit)
-```
-
-**What to verify before removing `--dry-run`:**
-- [ ] Legs are correct (right strikes, right expiry, right direction)
-- [ ] Greeks make sense (theta positive for credit strategies, delta matches your bias)
-- [ ] Portfolio validation passed
-- [ ] You have a documented rationale
-
-### Step 7: Position Evaluation Diagnostic
-
-When the system evaluates existing positions, it shows which exit rules triggered.
-
-```bash
-python -m trading_cotrader.cli.evaluate_portfolio --portfolio medium_risk --no-broker --dry-run
-```
-
-**Diagnostic data per position:**
-```
-Position: SPY iron_condor (opened 2026-01-15)
-  Current P&L: +$340 (68% of max profit)
-  DTE remaining: 12
-  Short put delta: 0.18
-  Short call delta: 0.22
-
-  Exit Rules Evaluated:
-    ✓ Profit Target (65%): P&L at 68% → TRIGGERED → Recommend CLOSE
-    · Stop Loss (1.5x): Not triggered (in profit)
-    · DTE Roll (14 DTE): 12 DTE → TRIGGERED → Recommend ROLL or CLOSE
-    · Delta Breach (0.30): Both deltas below 0.30 → OK
-
-  Liquidity Check:
-    Bid-ask spread: 0.3% → PASS (adjustment threshold: 3%)
-    → Can adjust/roll if desired (liquid enough)
-
-  RECOMMENDATION: CLOSE (take profit — 68% > 65% target AND within DTE window)
-```
-
-**Possible actions:**
-| Action | When | What Happens |
-|--------|------|--------------|
-| HOLD | No rules triggered | Do nothing |
-| CLOSE | Profit target hit OR DTE window OR stop loss | Book opposite trade to close |
-| ROLL | DTE approaching but still has edge | Close current, open new at later expiry |
-| ADJUST | One side tested but overall still profitable | Roll untested side closer |
-| HEDGE | Portfolio delta limit approaching | Add hedge position |
-
-### Step 8: Performance Diagnostics
-
-After accumulating trades, the system produces performance analytics.
-
-```bash
-# Full harness shows metrics in step 14
-python -m trading_cotrader.harness.runner --skip-sync
-```
-
-**Diagnostic data per portfolio:**
-```
-Portfolio: Medium Risk ($20,000)
-  ─────────────────────────────────
-  Total P&L:      +$2,340
-  Win Rate:        78% (14/18 trades)
-  Avg Winner:      $230
-  Avg Loser:      -$420
-  Profit Factor:   2.1  (gross profit / gross loss — want >1.5)
-  Expectancy:      $130/trade (avg P&L per trade — want >$0)
-  Max Drawdown:   -8.2% (want <20% for medium risk)
-  CAGR:            24% (target: 20%)
-  Sharpe Ratio:    1.8 (want >1.0)
-
-  By Strategy:
-    iron_condor:  82% WR, +$1,200 P&L, 1.9 profit factor
-    calendar:     71% WR, +$640 P&L, 1.6 profit factor
-    diagonal:     75% WR, +$500 P&L, 2.3 profit factor
-
-  By Source:
-    screener_vix: 85% WR (12 trades)
-    manual:       60% WR (5 trades)  ← Are your manual trades worse? Pay attention.
-    screener_iv:  100% WR (1 trade)  ← Too few trades to judge
-
-  Weekly P&L:
-    Week 1: +$340
-    Week 2: -$180
-    Week 3: +$520
-    Week 4: +$280
-```
-
-**Key questions the diagnostics answer:**
-1. **Am I making money?** → Total P&L, CAGR
-2. **Am I making money the right way?** → Win rate, profit factor, expectancy
-3. **Am I risking too much?** → Max drawdown, Sharpe
-4. **Which strategies work?** → Strategy breakdown
-5. **Is the system better than my instincts?** → Source breakdown (screener vs manual)
-6. **Am I improving?** → Weekly P&L trend, event log growth
-
-### Step 9: Event Log Audit Trail
-
-Every decision is logged as an immutable event. This is your audit trail AND your ML training data.
-
-```bash
-# Log a decision
-python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor \
-  --rationale "IV rank 45, RSI 52, flat regime. Screener recommended. Following system."
-```
-
-**What gets stored per event:**
-| Field | Purpose |
-|-------|---------|
-| Timestamp | When the decision was made |
-| Underlying | Which stock/ETF |
-| Strategy | Which strategy type |
-| Event Type | ENTRY / EXIT / ADJUSTMENT / ROLL / OBSERVATION |
-| Rationale | Your written reasoning (ML training data) |
-| Trade ID | Links to the trade object |
-| Market Context | VIX, price, IV rank at time of decision |
-
-**Harness step 9 shows:**
-- Total events by type (how many entries, exits, adjustments)
-- Events by underlying (where are you most active?)
-- ML readiness (do you have enough events for supervised learning? Need 500+)
-
-### Step 10: Full Diagnostic Summary
-
-Run this to see the entire system state at a glance:
-
-```bash
-# Everything in one run
-python -m trading_cotrader.harness.runner --skip-sync 2>&1 | less
-
-# Or targeted checks:
-python -c "
-from trading_cotrader.core.database.session import session_scope
-from trading_cotrader.services.portfolio_manager import PortfolioManager
-with session_scope() as s:
-    pm = PortfolioManager(s)
-    for p in pm.get_all_managed_portfolios():
-        print(f'{p.name}: equity={p.total_equity}, delta_limit={p.max_portfolio_delta}')
-"
-```
-
----
-
-## 12. Diagnostic Quick Reference
-
-Every piece of data the system produces, where it comes from, and what it means:
-
-| Data Point | Where to See It | What It Tells You |
-|------------|----------------|-------------------|
-| Macro assessment | Screener output | Is it safe to trade today? |
-| VIX regime | Screener output | Low/normal/elevated/crisis |
-| Technical snapshot | Screener output, harness step 16 | RSI, EMA, IV rank, regime per symbol |
-| Entry filter results | Harness step 16 | Which filters passed/failed for each rec |
-| Active strategy filter | Screener output | Was the rec removed because strategy isn't active? |
-| Confidence score | Recommendation list | 1-10, adjusted by macro context |
-| Liquidity check | Portfolio evaluation output | Bid-ask spread, OI, volume vs thresholds |
-| Exit rule evaluation | `evaluate_portfolio` output | Which exit rules triggered (profit/loss/DTE/delta) |
-| Portfolio Greeks | Harness step 5 | Net delta/gamma/theta/vega by underlying |
-| Risk limit status | Harness step 7 | Which limits are approaching/breached |
-| Trade booking validation | `book_trade --dry-run` | Legs, Greeks, portfolio routing check |
-| Performance metrics | Harness step 14 | Win rate, P&L, Sharpe, CAGR per portfolio |
-| Strategy breakdown | Harness step 14 | Which strategies are profitable/losing |
-| Source breakdown | Harness step 14 | Screener vs manual trade performance |
-| Event log stats | Harness step 9 | Event counts, ML readiness |
-| ML data readiness | Harness step 10 | Trade count vs 500 threshold, model status |
-| Container state | Harness step 11 | In-memory state consistency |
-
----
-
-## Appendix: CLI Command Reference
-
-```bash
-# === DAILY ===
-# Macro check + screener
+# Workflow
+python -m trading_cotrader.runners.run_workflow --once --no-broker --mock    # single cycle
+python -m trading_cotrader.runners.run_workflow --paper --no-broker          # continuous
+
+# Trade booking
+python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/<file>.json --no-broker
+python -m trading_cotrader.cli.book_trade --file <file>.json --no-broker --dry-run
+
+# Screeners
 python -m trading_cotrader.cli.run_screener --screener all --symbols SPY,QQQ --no-broker
 python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY --macro-outlook cautious --no-broker
 
-# Position evaluation
+# Recommendations
+python -m trading_cotrader.cli.accept_recommendation --list
+python -m trading_cotrader.cli.accept_recommendation --accept <ID> --notes "reason" --portfolio tastytrade
+python -m trading_cotrader.cli.accept_recommendation --reject <ID> --reason "too risky"
+
+# Portfolio evaluation
 python -m trading_cotrader.cli.evaluate_portfolio --all --no-broker --dry-run
 
-# Book a trade from template
-python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/<file>.json --no-broker
-python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/<file>.json --no-broker --dry-run
+# Multi-broker
+python -m trading_cotrader.cli.init_portfolios
+python -m trading_cotrader.cli.sync_fidelity --file Portfolio_Positions.csv
+python -m trading_cotrader.cli.load_stallion
 
-# Log a decision
-python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor --rationale "reason"
-
-# === WEEKLY ===
-# Review recommendations
-python -m trading_cotrader.cli.accept_recommendation --list
-python -m trading_cotrader.cli.accept_recommendation --accept <ID> --notes "reason" --portfolio medium_risk
-python -m trading_cotrader.cli.accept_recommendation --reject <ID> --reason "too risky"
-python -m trading_cotrader.cli.accept_recommendation --expire
-
-# === SYSTEM ===
-# Test harness (verify everything works)
-python -m trading_cotrader.harness.runner --skip-sync
-pytest trading_cotrader/tests/ -v
-
-# Database setup (first time only)
-python -m trading_cotrader.scripts.setup_database
+# System health
+pytest trading_cotrader/tests/ -v                        # 137 tests
+python -m trading_cotrader.harness.runner --skip-sync    # 17-step harness
+python -m trading_cotrader.scripts.setup_database        # DB setup
 ```
 
 ---
 
-## 13. Target: Continuous Workflow Engine
+## 19. Templates
 
-> This section describes where we're heading. Today the system is CLI-driven (you run commands manually).
-> The workflow engine will automate the sequencing, add decision points, and hold you accountable.
+27 templates in `config/templates/`:
 
-### Workflow State Machine
+| Cadence | Count | Examples |
+|---------|-------|---------|
+| 0DTE | 1 | `0dte_iron_butterfly_spy.json` |
+| Weekly | 4 | `weekly_call_calendar_spx_7_9.json`, `weekly_put_diagonal_qqq.json` |
+| Monthly | 16 | `monthly_iron_condor_spy.json`, `monthly_calendar_spread_spy.json` |
+| LEAPS | 5 | `leaps_deep_itm_call.json`, `leaps_pmcc.json` |
+| Custom | 1 | `custom_combo_spy.json` |
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                    CONTINUOUS TRADING WORKFLOW                        │
-│                                                                      │
-│  ┌─────────────┐     ┌──────────────┐     ┌──────────────┐         │
-│  │ MACRO_CHECK  │────▶│  WATCHLIST    │────▶│  SCREENING   │         │
-│  │              │     │  REFRESH     │     │              │         │
-│  │ VIX, macro   │     │ Update       │     │ VIX, IV rank │         │
-│  │ outlook,     │     │ symbols,     │     │ LEAPS, tech  │         │
-│  │ calendar     │     │ TastyTrade   │     │ filters      │         │
-│  └──────┬───────┘     └──────────────┘     └──────┬───────┘         │
-│         │                                          │                 │
-│    risk_off?                                  recommendations       │
-│    ──▶ HALT                                        │                 │
-│                                                    ▼                 │
-│                                          ┌──────────────────┐       │
-│                                          │ RECOMMENDATION   │       │
-│                                          │ REVIEW           │       │
-│                                          │                  │       │
-│                                          │ ⏸ USER DECISION  │       │
-│                                          │ accept / reject  │       │
-│                                          │ / modify / defer │       │
-│                                          └────────┬─────────┘       │
-│                                                   │                 │
-│         ┌─────────────────────────────────────────┘                 │
-│         ▼                                                           │
-│  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐       │
-│  │ TRADE        │────▶│ ORDER        │────▶│ POSITION     │       │
-│  │ PLANNING     │     │ STAGING      │     │ MONITORING   │       │
-│  │              │     │              │     │              │       │
-│  │ Load template│     │ WhatIf first │     │ Greeks, P&L  │       │
-│  │ Verify entry │     │ Paper/live   │     │ delta watch  │       │
-│  │ conditions   │     │ Liquidity ✓  │     │ DTE countdown│       │
-│  └──────────────┘     └──────────────┘     └──────┬───────┘       │
-│                                                    │                │
-│                                               exit rule             │
-│                                               triggered?            │
-│                                                    │                │
-│                                                    ▼                │
-│                                          ┌──────────────────┐      │
-│                                          │ EXIT_EVALUATION  │      │
-│                                          │                  │      │
-│                                          │ Profit target?   │      │
-│                                          │ Stop loss?       │      │
-│                                          │ DTE window?      │      │
-│                                          │ Delta breach?    │      │
-│                                          └────────┬─────────┘      │
-│                                                   │                 │
-│                                                   ▼                 │
-│                                          ┌──────────────────┐      │
-│                                          │ EXIT_REVIEW      │      │
-│                                          │                  │      │
-│                                          │ ⏸ USER DECISION  │      │
-│                                          │ close / roll /   │      │
-│                                          │ adjust / hold    │      │
-│                                          └────────┬─────────┘      │
-│                                                   │                 │
-│                                                   ▼                 │
-│                                          ┌──────────────────┐      │
-│                                          │ REPORTING        │      │
-│                                          │                  │      │
-│                                          │ Daily P&L        │      │
-│                                          │ Capital deploy   │      │
-│                                          │ Compliance       │      │
-│                                          │ Email summary    │      │
-│                                          └────────┬─────────┘      │
-│                                                   │                 │
-│                              ┌─────────────────────┘                │
-│                              │  LOOP (next cycle)                   │
-│                              ▼                                      │
-│                        MACRO_CHECK                                  │
-└──────────────────────────────────────────────────────────────────────┘
+Each template includes `entry_conditions` and `pnl_drivers` — the screener checks these before recommending.
 
-CIRCUIT BREAKERS (can halt workflow at any point):
-  ├── Daily loss > 3% ──▶ HALT (no new trades until tomorrow)
-  ├── Weekly loss > 5% ──▶ HALT (review required to resume)
-  ├── Portfolio drawdown exceeded ──▶ HALT (reduce positions)
-  ├── 3 consecutive losses in strategy ──▶ PAUSE strategy
-  ├── VIX > 35 ──▶ HALT (evaluate exits only)
-  └── Max trades/day exceeded ──▶ HALT (no new entries)
-```
+---
 
-### What the Workflow Engine Does That CLI Cannot
+## 20. Configuration Files
 
-| Capability | CLI Today | Workflow Engine |
-|-----------|-----------|-----------------|
-| Sequencing | You remember what to run next | State machine knows the next step |
-| Decision tracking | You accept/reject in separate command | Tracks time-to-decision, escalates if ignored |
-| Notifications | None (you check when you remember) | Email: "3 recs pending, SPY at 52% profit" |
-| Accountability | Honor system | "You have $15K idle. 4 days since last trade." |
-| Circuit breakers | You check risk limits manually | Auto-halts: "Down 3.2% today. HALTED." |
-| Compliance | You follow templates (or don't) | "Your trade deviated from template: wrong DTE." |
-| Scheduling | You remember Wed=calendars, Fri=diagonals | Auto-presents right template at right time |
-| Capital deployment | You check periodically | Continuous: "Core 62% deployed (target 85%)" |
-| Missed opportunities | You never know | "Rejected rec on SPY IC would have made $340" |
-| Resumability | Start over each time | Restarts exactly where it left off after crash |
+| File | What It Controls |
+|------|-----------------|
+| `config/workflow_rules.yaml` | Circuit breakers, trading constraints, scheduling, capital deployment, notifications, QA thresholds |
+| `config/risk_config.yaml` | 10 portfolios, strategy permissions, entry filters, exit rule profiles, position sizing, liquidity thresholds |
+| `config/brokers.yaml` | 4 broker definitions (Tastytrade, Fidelity, Zerodha, Stallion) |
+| `config/daily_macro.yaml` | Manual macro assessment override |
+| `config/templates/*.json` | 27 trade templates with entry conditions |
 
-### Workflow Rules (all in YAML)
-
-All trading rules, circuit breakers, scheduling, and constraints are configured in YAML — no hardcoded limits.
-
-```yaml
-# config/workflow_rules.yaml (target structure)
-
-workflow:
-  cycle_frequency_minutes: 30        # how often to run the loop during market hours
-  market_hours:
-    open: "09:30"
-    close: "16:00"
-    timezone: "US/Eastern"
-  no_trade_windows:
-    - start: "09:30"
-      end: "09:45"
-      reason: "Opening volatility — wait for price discovery"
-    - start: "15:30"
-      end: "16:00"
-      reason: "Closing auction — no new entries"
-
-circuit_breakers:
-  daily_loss_halt_pct: 3.0           # halt all new trades if daily P&L drops below -3%
-  weekly_loss_halt_pct: 5.0          # halt + require written review to resume
-  consecutive_loss_pause: 3          # pause strategy after 3 consecutive losses
-  consecutive_loss_halt: 5           # halt portfolio after 5 consecutive losses
-  vix_halt_threshold: 35             # no new entries above this VIX level
-  max_trades_per_day: 3              # across all portfolios
-  max_trades_per_week:
-    core_holdings: 3
-    medium_risk: 5
-    high_risk: 5
-    model_portfolio: 10
-
-capital_deployment:
-  target_deployed_pct:
-    core_holdings: 85                # alert if below this
-    medium_risk: 80
-    high_risk: 70
-  idle_alert_days: 3                 # alert if no trade in N days
-  weekly_report: true
-
-accountability:
-  decision_reminder_minutes: 60      # remind after 1 hour of pending rec
-  decision_escalation_minutes: 240   # nag after 4 hours
-  decision_timeout: "market_close"   # log as "no action" if not decided by close
-  missed_opportunity_tracking: true  # log P&L of rejected recs
-  compliance_tracking: true          # flag deviations from template
-
-scheduling:
-  # Which templates to present on which days
-  weekly_schedule:
-    monday:
-      - action: "review"
-        description: "Weekly review — check all positions, run screeners"
-    tuesday:
-      - action: "prep"
-        template: "weekly_call_calendar_spx_*.json"
-        description: "Prepare Wednesday SPX calendar template"
-    wednesday:
-      - action: "trade"
-        template: "weekly_call_calendar_spx_9_12.json"
-        time: "14:00"
-        description: "SPX 9/12 call calendar (conservative)"
-      - action: "trade"
-        template: "weekly_call_calendar_spx_7_9.json"
-        time: "15:00"
-        description: "SPX 7/9 call calendar (aggressive)"
-    thursday:
-      - action: "prep"
-        template: "weekly_put_diagonal_qqq.json"
-        description: "Prepare Friday QQQ diagonal template"
-    friday:
-      - action: "trade"
-        template: "weekly_put_diagonal_qqq.json"
-        time: "13:30"
-        description: "QQQ weekly put diagonal"
-
-  # 0DTE runs daily if conditions met
-  daily:
-    - action: "evaluate"
-      condition: "market_neutral AND rsi_40_60 AND not_fomc AND not_cpi"
-      template: "0dte_iron_butterfly_spy.json"
-      time: "09:45"
-      description: "0DTE iron butterfly if conditions met"
-
-notifications:
-  email:
-    enabled: true
-    recipient: "your_email@example.com"
-    daily_summary_time: "16:15"
-    weekly_digest_day: "friday"
-    weekly_digest_time: "17:00"
-  triggers:
-    - new_recommendation
-    - exit_rule_triggered
-    - risk_limit_approaching
-    - circuit_breaker_activated
-    - idle_capital_warning
-    - decision_timeout
-    - daily_summary
-    - weekly_digest
-```
+**Every rule is in YAML. No hardcoded thresholds anywhere.**

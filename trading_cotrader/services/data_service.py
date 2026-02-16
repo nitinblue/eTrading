@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 from trading_cotrader.config.settings import get_settings
 from trading_cotrader.core.database.session import session_scope, Session
-from trading_cotrader.adapters.tastytrade_adapter import TastytradeAdapter
+from trading_cotrader.adapters.base import BrokerAdapterBase
 from trading_cotrader.repositories.portfolio import PortfolioRepository
 from trading_cotrader.repositories.position import PositionRepository
 from trading_cotrader.repositories.trade import TradeRepository
@@ -58,35 +58,47 @@ class DataService:
     NO MOCK DATA - all data comes from broker or database.
     """
 
-    def __init__(self, container_manager=None):
+    def __init__(self, broker: Optional[BrokerAdapterBase] = None, container_manager=None):
         self.settings = get_settings()
-        self.broker: Optional[TastytradeAdapter] = None
+        self.broker: Optional[BrokerAdapterBase] = broker
         self.container_manager = container_manager
-        self._is_connected = False
+        self._is_connected = broker is not None and broker.is_authenticated
         self._portfolio_id: Optional[str] = None
 
     @property
     def is_connected(self) -> bool:
         return self._is_connected and self.broker is not None
 
-    def connect_broker(self) -> bool:
-        """Connect to TastyTrade broker"""
-        try:
-            logger.info("Connecting to TastyTrade broker...")
+    def set_broker(self, broker: BrokerAdapterBase) -> None:
+        """Set a pre-created broker adapter."""
+        self.broker = broker
+        self._is_connected = broker.is_authenticated
 
+    def connect_broker(self) -> bool:
+        """Connect to broker. Uses pre-set adapter or creates TastyTrade as fallback."""
+        if self.broker is not None:
+            if not self.broker.is_authenticated:
+                if not self.broker.authenticate():
+                    logger.error(f"Failed to authenticate with {self.broker.name}")
+                    return False
+            self._is_connected = True
+            logger.info(f"Connected to {self.broker.name}: {getattr(self.broker, 'account_id', 'N/A')}")
+            return True
+
+        # Fallback: create TastyTrade adapter for backward compatibility
+        try:
+            logger.info("No adapter set — creating TastyTrade adapter (fallback)...")
+            from trading_cotrader.adapters.tastytrade_adapter import TastytradeAdapter
             self.broker = TastytradeAdapter(
                 account_number=self.settings.tastytrade_account_number,
                 is_paper=self.settings.is_paper_trading
             )
-
             if not self.broker.authenticate():
                 logger.error("Failed to authenticate with TastyTrade")
                 return False
-
             self._is_connected = True
             logger.info(f"Connected to TastyTrade account: {self.broker.account_id}")
             return True
-
         except Exception as e:
             logger.error(f"Failed to connect to broker: {e}")
             self._is_connected = False
@@ -308,38 +320,13 @@ class DataService:
         portfolio_repo.update_from_domain(portfolio)
         logger.info(f"Portfolio Greeks updated: Delta={total_delta:.2f}, Theta={total_theta:.2f}")
 
-    def _refresh_containers(self, session: Session):
-        """Refresh all containers from database"""
+    def _refresh_containers(self, session: Session, portfolio_name: str = None):
+        """Refresh containers from database, optionally for a specific portfolio."""
         if not self.container_manager:
             return
 
-        portfolio_repo = PortfolioRepository(session)
-        position_repo = PositionRepository(session)
-        trade_repo = TradeRepository(session)
-
-        # Load portfolio
-        portfolios = portfolio_repo.get_all_portfolios()
-        if portfolios:
-            # Load into container using ORM objects directly
-            from trading_cotrader.core.database.schema import PortfolioORM
-            portfolio_orm = session.query(PortfolioORM).filter_by(id=portfolios[0].id).first()
-            if portfolio_orm:
-                self.container_manager.portfolio.load_from_orm(portfolio_orm)
-
-        # Load positions
-        if self._portfolio_id:
-            from trading_cotrader.core.database.schema import PositionORM
-            positions_orm = session.query(PositionORM).filter_by(
-                portfolio_id=self._portfolio_id
-            ).all()
-            self.container_manager.positions.load_from_orm_list(positions_orm)
-
-            # Aggregate risk factors
-            self.container_manager.risk_factors.aggregate_from_positions(
-                self.container_manager.positions
-            )
-
-        logger.info("Containers refreshed from database")
+        self.container_manager.load_from_repositories(session, portfolio_name=portfolio_name)
+        logger.info(f"Containers refreshed from database (portfolio={portfolio_name or 'default'})")
 
     def _portfolio_to_dict(self, portfolio: dm.Portfolio, positions: List[dm.Position]) -> Dict[str, Any]:
         """Convert portfolio to dict for UI"""
@@ -639,54 +626,17 @@ class DataService:
 
     def _fetch_option_quotes(self, streamer_symbols: List[str]) -> Dict[str, Dict]:
         """
-        Fetch bid/ask quotes for option symbols from DXLink.
-        Returns dict of {symbol: {bid, ask, mid}}.
+        Fetch bid/ask quotes for option symbols via broker adapter.
+        Returns dict of {symbol: {bid, ask}}.
         """
         try:
-            # Use DXLink Quote subscription
-            quotes = self.broker._run_async(
-                self._fetch_quotes_via_dxlink(streamer_symbols)
-            )
-            return quotes
+            return self.broker.get_quotes(streamer_symbols)
+        except NotImplementedError:
+            logger.debug(f"{self.broker.name} does not support quotes")
+            return {}
         except Exception as e:
             logger.warning(f"Failed to fetch quotes: {e}")
             return {}
-
-    async def _fetch_quotes_via_dxlink(self, symbols: List[str]) -> Dict[str, Dict]:
-        """Fetch quotes via DXLink streaming"""
-        from dxlink import DXLinkStreamer
-
-        quotes = {}
-
-        try:
-            async with DXLinkStreamer(self.broker.data_session) as streamer:
-                await streamer.subscribe_quote(symbols)
-
-                # Wait for quotes
-                timeout = 3.0
-                end_time = datetime.utcnow().timestamp() + timeout
-
-                while datetime.utcnow().timestamp() < end_time:
-                    try:
-                        event = await asyncio.wait_for(
-                            streamer.get_event('Quote'),
-                            timeout=0.5
-                        )
-                        if event:
-                            symbol = event.event_symbol
-                            quotes[symbol] = {
-                                'bid': float(event.bid_price or 0),
-                                'ask': float(event.ask_price or 0),
-                            }
-                            if len(quotes) >= len(symbols):
-                                break
-                    except asyncio.TimeoutError:
-                        continue
-
-        except Exception as e:
-            logger.warning(f"Quote fetch error: {e}")
-
-        return quotes
 
     def remove_whatif_trade(self, trade_id: str) -> Dict[str, Any]:
         """Remove a what-if trade from the container"""

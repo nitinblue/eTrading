@@ -17,6 +17,7 @@ from .portfolio_container import PortfolioContainer
 from .position_container import PositionContainer
 from .risk_factor_container import RiskFactorContainer
 from .trade_container import TradeContainer
+from .portfolio_bundle import PortfolioBundle
 from .container_manager import ContainerManager, CellUpdate, ContainerEvent
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     'PositionContainer',
     'RiskFactorContainer',
     'TradeContainer',
+    'PortfolioBundle',
     'ContainerManager',
     'CellUpdate',
     'ContainerEvent',

@@ -270,41 +270,9 @@ class TradeBookingService:
         return greeks_map, quotes_map
 
     def _fetch_quotes(self, symbols: List[str]) -> Dict[str, Dict]:
-        """Fetch bid/ask quotes via DXLink streaming."""
-        import asyncio
-        from tastytrade.streamer import DXLinkStreamer
-        from tastytrade.dxfeed import Quote as DXQuote
-
-        async def _stream_quotes() -> Dict[str, Dict]:
-            quotes = {}
-            try:
-                async with DXLinkStreamer(self.broker.data_session) as streamer:
-                    await streamer.subscribe(DXQuote, symbols)
-                    symbols_needed = set(symbols)
-                    timeout_seconds = 5
-
-                    start_time = asyncio.get_event_loop().time()
-                    while symbols_needed and (asyncio.get_event_loop().time() - start_time) < timeout_seconds:
-                        try:
-                            event = await asyncio.wait_for(
-                                streamer.get_event(DXQuote),
-                                timeout=2.0
-                            )
-                            sym = event.event_symbol
-                            if sym in symbols_needed:
-                                quotes[sym] = {
-                                    'bid': float(event.bid_price or 0),
-                                    'ask': float(event.ask_price or 0),
-                                }
-                                symbols_needed.remove(sym)
-                        except asyncio.TimeoutError:
-                            continue
-            except Exception as e:
-                logger.warning(f"Quote fetch error: {e}")
-            return quotes
-
+        """Fetch bid/ask quotes via broker adapter."""
         try:
-            return self.broker._run_async(_stream_quotes())
+            return self.broker.get_quotes(symbols)
         except Exception as e:
             logger.warning(f"Failed to fetch quotes: {e}")
             return {}
@@ -568,33 +536,30 @@ class TradeBookingService:
             logger.warning(f"Container refresh failed: {e}")
 
     def _update_snapshot_and_ml(self, trade: dm.Trade) -> None:
-        """Capture snapshot and feed ML pipeline."""
+        """Capture snapshot for the trade's portfolio and feed ML pipeline."""
         try:
             with session_scope() as session:
-                # Snapshot
                 from trading_cotrader.services.snapshot_service import SnapshotService
                 snapshot_svc = SnapshotService(session)
-
-                portfolio_repo = PortfolioRepository(session)
-                whatif_portfolio = portfolio_repo.get_by_account(
-                    broker='whatif', account_id='whatif'
-                )
-                if whatif_portfolio:
-                    snapshot_svc.capture_daily_snapshot(
-                        portfolio=whatif_portfolio,
-                        positions=[],
-                        trades=[trade],
-                    )
-                    logger.info("Snapshot captured for WhatIf portfolio")
+                results = snapshot_svc.capture_all_portfolio_snapshots()
+                ok = sum(results.values())
+                logger.info(f"Snapshot captured for {ok}/{len(results)} portfolios")
         except Exception as e:
             logger.warning(f"Snapshot capture failed (non-blocking): {e}")
 
         try:
-            # ML pipeline
             from trading_cotrader.ai_cotrader.data_pipeline import MLDataPipeline
+            from trading_cotrader.core.database.schema import PortfolioORM
             with session_scope() as session:
                 ml_pipeline = MLDataPipeline(session)
-                ml_pipeline.accumulate_training_data()
+                portfolio = session.query(PortfolioORM).filter(
+                    PortfolioORM.portfolio_type == 'real'
+                ).first()
+                if portfolio:
+                    ml_pipeline.accumulate_training_data(
+                        portfolio=portfolio,
+                        positions=portfolio.positions or [],
+                    )
                 logger.info("ML pipeline updated")
         except Exception as e:
             logger.warning(f"ML pipeline update failed (non-blocking): {e}")

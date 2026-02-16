@@ -104,10 +104,7 @@ class WatchlistService:
             return []
 
         try:
-            from tastytrade import PublicWatchlists
-            session = self.broker.session
-            counts_response = PublicWatchlists.get_public_watchlists(session)
-            return [wl.name for wl in counts_response] if counts_response else []
+            return self.broker.get_public_watchlists()
         except Exception as e:
             logger.error(f"Failed to list TastyTrade watchlists: {e}")
             return []
@@ -115,10 +112,7 @@ class WatchlistService:
     def _fetch_from_tastytrade(self, name: str) -> Optional[Watchlist]:
         """Fetch a public watchlist from TastyTrade and cache it."""
         try:
-            from tastytrade import PublicWatchlists
-            session = self.broker.session
-
-            wl_data = PublicWatchlists.get_public_watchlists(session, name)
+            wl_data = self.broker.get_public_watchlists(name)
             if not wl_data:
                 logger.warning(f"TastyTrade watchlist '{name}' not found")
                 return None

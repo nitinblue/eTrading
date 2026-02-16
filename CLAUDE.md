@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 16, 2026 (session 15)
+# Last Updated: February 16, 2026 (session 16, continued)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -92,7 +92,29 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 
 ## [CLAUDE OWNS] WHAT USER CAN DO TODAY
 
-**Multi-Broker Portfolios (NEW — Session 15):**
+**Web Approval Dashboard (NEW — Session 17):**
+- `python -m trading_cotrader.runners.run_workflow --web --port 8080` — starts dashboard embedded in workflow engine
+- Dashboard at `http://localhost:8080` — dark theme, auto-refresh every 15s, approve/reject/defer from browser
+- Both CLI and web work simultaneously (same process, same `handle_user_intent()` code path)
+- Endpoints: `/api/pending`, `/api/status`, `/api/approve/{id}`, `/api/reject/{id}`, `/api/defer/{id}`, `/api/history`, `/api/halt`, `/api/resume`, `/api/portfolios`
+- Approve modal: portfolio dropdown + notes field. Reject modal: reason field.
+- Remote access: expose port via ngrok, Tailscale, or Cloudflare Tunnel (Chicago + Hyderabad)
+- `server/` folder deleted — was decoupled from workflow engine and unused
+- `run_grid_server.py` shows deprecation notice pointing to `--web` flag
+
+**Broker Adapter Abstraction + Per-Portfolio Containers (Session 16):**
+- All `tastytrade` SDK imports confined to `adapters/tastytrade_adapter.py` — zero leakage to services/screeners/server
+- `BrokerAdapterBase` ABC in `adapters/base.py`: `authenticate()`, `get_positions()`, `get_quote()`, `get_quotes()`, `get_greeks()`, `get_option_chain()`, `get_public_watchlists()`
+- `ManualBrokerAdapter` (Fidelity) and `ReadOnlyAdapter` (Stallion) stub adapters
+- `BrokerAdapterFactory.create(broker_config)` — creates correct adapter from YAML config
+- `BrokerAdapterFactory.create_all_api(registry)` — batch-creates API-capable adapters
+- Per-portfolio `PortfolioBundle` containers: each real portfolio gets its own `PositionContainer`, `TradeContainer`, `RiskFactorContainer`
+- WhatIf portfolios share parent's bundle (positions visible from both)
+- `ContainerManager` rewritten: `Dict[str, PortfolioBundle]`, currency-filtered access, backward-compat properties
+- `QAAgent` runs daily in REPORTING state: pytest + coverage analysis, gap identification, test suggestions, persists to decision_log
+- Services cleaned up: `data_service.py`, `option_grid_service.py`, `macro_context_service.py`, `liquidity_service.py`, `trade_booking_service.py`, `vix_regime_screener.py`, `watchlist_service.py` — all use adapter interface
+
+**Multi-Broker Portfolios (Session 15):**
 - 10 portfolios: 5 real (Tastytrade, Fidelity IRA, Fidelity Personal, Zerodha, Stallion) + 5 WhatIf mirrors
 - 3-layer broker design: Broker Registry (`config/brokers.yaml`) → Portfolio Config (`risk_config.yaml`) → Execution Routing (`agents/execution/broker_router.py`)
 - Multi-currency: USD (Tastytrade, Fidelity) and INR (Zerodha, Stallion)
@@ -165,13 +187,23 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 
 **Testing:**
 - Harness: `python -m trading_cotrader.harness.runner --skip-sync` — 14/16 pass (2 skip without broker), 17 steps
-- Unit tests: `pytest trading_cotrader/tests/ -v` — 116 tests, all pass
+- Unit tests: `pytest trading_cotrader/tests/ -v` — 157 tests, all pass
 
 **Broker & Server:**
 - Authenticate TastyTrade, sync portfolio, pull live Greeks
-- Grid server: `python -m trading_cotrader.runners.run_grid_server`
+- Web approval dashboard: `python -m trading_cotrader.runners.run_workflow --web --port 8080`
+- Old grid server removed (`server/` folder deleted, `run_grid_server.py` shows deprecation notice)
+
+**Snapshot & AI/ML Pipeline (Session 16 continued):**
+- SnapshotService wired into workflow engine — captures daily snapshots for ALL active portfolios
+- ML pipeline wired: `MLDataPipeline.accumulate_training_data()` runs after every snapshot capture
+- 20 new snapshot + ML tests (157 total)
+- AI/ML assessment: `AI_ML_ASSESSMENT.md` — comprehensive evaluation of current ML capability
+- Data is now flowing; need 100+ closed trades for supervised learning, 500+ for RL
 
 **Blocked / Not Yet Working:**
+- AI/ML model training not wired (need data first — 100+ closed trades)
+- AI/ML recommendations not integrated into workflow (need trained models)
 - Live broker order execution (paper mode only — `--live` needs double-confirmation UI)
 - Trade plan compliance tracking (template comparison, deviation flagging)
 - Email notifications (framework built, SMTP not configured)
@@ -201,9 +233,11 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 | **Analysis** | `agents/analysis/macro.py`, `agents/analysis/screener.py`, `agents/analysis/evaluator.py`, `agents/analysis/risk.py`, `agents/analysis/capital.py` (idle capital monitoring) |
 | **Execution** | `agents/execution/executor.py`, `agents/execution/broker_router.py` (per-broker routing), `agents/execution/notifier.py`, `agents/execution/reporter.py` |
 | **Decision** | `agents/decision/interaction.py` (InteractionManager — routes user commands) |
-| **Learning** | `agents/learning/accountability.py` (decision tracking), `agents/learning/session_objectives.py` (agent self-assessment) |
+| **Learning** | `agents/learning/accountability.py` (decision tracking), `agents/learning/session_objectives.py` (agent self-assessment), `agents/learning/qa_agent.py` (daily QA assessment) |
 | **Workflow Config** | `config/workflow_rules.yaml`, `config/workflow_config_loader.py` |
+| **Broker Adapters** | `adapters/base.py` (BrokerAdapterBase ABC, ManualBrokerAdapter, ReadOnlyAdapter), `adapters/factory.py` (BrokerAdapterFactory), `adapters/tastytrade_adapter.py` (TastyTrade SDK — all `tastytrade` imports confined here) |
 | **Broker Config** | `config/brokers.yaml` (4 brokers), `config/broker_config_loader.py` (BrokerRegistry) |
+| **Containers** | `containers/portfolio_bundle.py` (per-portfolio bundle), `containers/container_manager.py` (Dict[str, PortfolioBundle]), `containers/portfolio_container.py`, `containers/position_container.py` |
 | **Portfolios** | `config/risk_config.yaml` (10 portfolios), `config/risk_config_loader.py`, `services/portfolio_manager.py` |
 | **Trade Booking** | `services/trade_booking_service.py`, `cli/book_trade.py`, `core/models/domain.py` (TradeStatus, TradeSource) |
 | **Screeners** | `services/screeners/` (vix, iv_rank, leaps), `services/recommendation_service.py`, `services/technical_analysis_service.py` |
@@ -216,7 +250,7 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 | **Pricing** | `analytics/pricing/` (BS, P&L), `analytics/greeks/engine.py`, `services/pricing/` |
 | **DB/ORM** | `core/database/schema.py` (19 tables incl. workflow_state, decision_log), `core/database/session.py`, `repositories/` |
 | **Broker** | `adapters/tastytrade_adapter.py`, `services/position_sync.py`, `services/portfolio_sync.py`, `cli/init_portfolios.py`, `cli/sync_fidelity.py`, `cli/load_stallion.py` |
-| **Server** | `server/api_v2.py` (FastAPI), `server/websocket_server.py`, `runners/run_grid_server.py` |
+| **Web Dashboard** | `web/approval_api.py` (FastAPI app factory, embedded in workflow engine), `ui/approval-dashboard.html` (self-contained dark theme) |
 | **Tests** | `tests/` (116 pytest), `harness/` (17 integration steps) |
 | **Templates** | `config/templates/` (27 templates: 1 0DTE, 4 weekly, 16 monthly, 5 LEAPS, 1 custom) |
 
@@ -271,6 +305,7 @@ pytest trading_cotrader/tests/ -v                        # 116 unit tests
 # Workflow engine (NEW)
 python -m trading_cotrader.runners.run_workflow --once --no-broker --mock    # single cycle test
 python -m trading_cotrader.runners.run_workflow --paper --no-broker          # continuous, no broker
+python -m trading_cotrader.runners.run_workflow --paper --no-broker --web    # continuous + web dashboard
 python -m trading_cotrader.runners.run_workflow --paper                       # continuous, with broker
 
 # Trade booking
@@ -296,8 +331,8 @@ python -m trading_cotrader.cli.sync_fidelity --file Portfolio_Positions.csv     
 python -m trading_cotrader.cli.load_stallion                                   # load 29 Stallion holdings
 python -m trading_cotrader.cli.load_stallion --dry-run                         # preview only
 
-# Server
-python -m trading_cotrader.runners.run_grid_server
+# Web dashboard (embedded in workflow)
+# python -m trading_cotrader.runners.run_workflow --web --port 8080 --no-broker --mock
 ```
 
 ### Critical runtime notes

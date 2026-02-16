@@ -1,0 +1,39 @@
+# =============================================================================
+# Broker Registry — Defines each brokerage and its capabilities
+# =============================================================================
+# Layer 1 of the 3-layer broker design:
+#   Layer 1: BROKER REGISTRY (this file) — name, currency, API, adapter
+#   Layer 2: PORTFOLIO CONFIG (risk_config.yaml) — portfolios reference broker by name
+#   Layer 3: EXECUTION ROUTING (agents/execution/broker_router.py) — dispatches per broker
+
+brokers:
+  tastytrade:
+    display_name: "Tastytrade"
+    currency: USD
+    has_api: true
+    is_data_broker: true        # default data source for USD
+    adapter: tastytrade          # maps to TastytradeAdapter class
+    manual_execution: false
+
+  fidelity:
+    display_name: "Fidelity"
+    currency: USD
+    has_api: false
+    is_data_broker: false
+    manual_execution: true       # user executes at broker manually
+
+  zerodha:
+    display_name: "Zerodha"
+    currency: INR
+    has_api: true
+    is_data_broker: true        # default data source for INR
+    adapter: zerodha             # future adapter
+    manual_execution: false
+
+  stallion:
+    display_name: "Stallion Asset"
+    currency: INR
+    has_api: false
+    is_data_broker: false
+    manual_execution: false
+    read_only: true              # fully managed fund — user cannot place trades

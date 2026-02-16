@@ -148,30 +148,19 @@ class LiquidityService:
         )
 
     def _fetch_liquidity(self, symbol: str) -> LiquiditySnapshot:
-        """Fetch real liquidity data from broker via DXLink."""
-        import asyncio
-        from tastytrade.streamer import DXLinkStreamer
-        from tastytrade.dxfeed import Quote as DXQuote
-
+        """Fetch real liquidity data from broker adapter."""
         bid = Decimal('0')
         ask = Decimal('0')
 
-        async def _stream_quote():
-            nonlocal bid, ask
-            try:
-                async with DXLinkStreamer(self.broker.data_session) as streamer:
-                    await streamer.subscribe(DXQuote, [symbol])
-                    event = await asyncio.wait_for(
-                        streamer.get_event(DXQuote), timeout=3.0
-                    )
-                    bid = Decimal(str(event.bid_price or 0))
-                    ask = Decimal(str(event.ask_price or 0))
-            except asyncio.TimeoutError:
-                logger.warning(f"Timeout fetching quote for {symbol}")
-            except Exception as e:
-                logger.warning(f"Error fetching quote for {symbol}: {e}")
-
-        self.broker._run_async(_stream_quote())
+        try:
+            quote = self.broker.get_quote(symbol)
+            if quote:
+                bid = Decimal(str(quote.get('bid', 0) or 0))
+                ask = Decimal(str(quote.get('ask', 0) or 0))
+        except NotImplementedError:
+            logger.debug(f"{self.broker.name} does not support quotes")
+        except Exception as e:
+            logger.warning(f"Error fetching quote for {symbol}: {e}")
 
         mid = (bid + ask) / 2 if (bid and ask) else Decimal('0')
         spread = ask - bid

@@ -90,21 +90,13 @@ class VixRegimeScreener(ScreenerBase):
             return Decimal('18')
 
         try:
-            # Fetch VIX via DXLink quote
-            import asyncio
-            from tastytrade.streamer import DXLinkStreamer
-            from tastytrade.dxfeed import Quote as DXQuote
-
-            async def _get_vix_quote():
-                async with DXLinkStreamer(self.broker.data_session) as streamer:
-                    await streamer.subscribe(DXQuote, ['VIX'])
-                    event = await asyncio.wait_for(
-                        streamer.get_event(DXQuote), timeout=5.0
-                    )
-                    mid = ((event.bid_price or 0) + (event.ask_price or 0)) / 2
-                    return Decimal(str(mid))
-
-            return self.broker._run_async(_get_vix_quote())
+            quote = self.broker.get_quote('VIX')
+            if quote:
+                bid = float(quote.get('bid', 0))
+                ask = float(quote.get('ask', 0))
+                mid = (bid + ask) / 2
+                return Decimal(str(mid)) if mid > 0 else None
+            return None
         except Exception as e:
             logger.error(f"Failed to fetch VIX: {e}")
             return None
@@ -301,20 +293,13 @@ class VixRegimeScreener(ScreenerBase):
             return mock_prices.get(symbol, Decimal('100'))
 
         try:
-            import asyncio
-            from tastytrade.streamer import DXLinkStreamer
-            from tastytrade.dxfeed import Quote as DXQuote
-
-            async def _get_quote():
-                async with DXLinkStreamer(self.broker.data_session) as streamer:
-                    await streamer.subscribe(DXQuote, [symbol])
-                    event = await asyncio.wait_for(
-                        streamer.get_event(DXQuote), timeout=5.0
-                    )
-                    mid = ((event.bid_price or 0) + (event.ask_price or 0)) / 2
-                    return Decimal(str(mid))
-
-            return self.broker._run_async(_get_quote())
+            quote = self.broker.get_quote(symbol)
+            if quote:
+                bid = float(quote.get('bid', 0))
+                ask = float(quote.get('ask', 0))
+                mid = (bid + ask) / 2
+                return Decimal(str(mid)) if mid > 0 else None
+            return None
         except Exception as e:
             logger.warning(f"Failed to get price for {symbol}: {e}")
             return None

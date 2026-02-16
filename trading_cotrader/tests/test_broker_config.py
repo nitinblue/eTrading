@@ -460,6 +460,217 @@ class TestPortfolioManagerMultiBroker:
         assert len(first) == len(second) == 10
 
 
+class TestBrokerAdapterFactory:
+    """Adapter factory creates correct adapter types from config."""
+
+    def test_factory_creates_manual_for_fidelity(self):
+        from trading_cotrader.adapters.factory import BrokerAdapterFactory
+        from trading_cotrader.adapters.base import ManualBrokerAdapter
+
+        config = BrokerConfig(
+            name='fidelity', currency='USD', manual_execution=True,
+        )
+        adapter = BrokerAdapterFactory.create(config)
+        assert isinstance(adapter, ManualBrokerAdapter)
+        assert adapter.name == 'fidelity'
+        assert adapter.currency == 'USD'
+        assert adapter.is_authenticated is True
+
+    def test_factory_creates_readonly_for_stallion(self):
+        from trading_cotrader.adapters.factory import BrokerAdapterFactory
+        from trading_cotrader.adapters.base import ReadOnlyAdapter
+
+        config = BrokerConfig(
+            name='stallion', currency='INR', read_only=True,
+        )
+        adapter = BrokerAdapterFactory.create(config)
+        assert isinstance(adapter, ReadOnlyAdapter)
+        assert adapter.name == 'stallion'
+        assert adapter.currency == 'INR'
+        assert adapter.get_positions() == []
+
+    def test_factory_manual_adapter_methods(self):
+        from trading_cotrader.adapters.factory import BrokerAdapterFactory
+        from trading_cotrader.adapters.base import ManualBrokerAdapter
+
+        config = BrokerConfig(name='fid', manual_execution=True)
+        adapter = BrokerAdapterFactory.create(config)
+        assert adapter.authenticate() is True
+        assert adapter.get_account_balance() == {}
+        assert adapter.get_positions() == []
+
+    def test_factory_readonly_adapter_methods(self):
+        from trading_cotrader.adapters.factory import BrokerAdapterFactory
+        from trading_cotrader.adapters.base import ReadOnlyAdapter
+
+        config = BrokerConfig(name='ro', read_only=True)
+        adapter = BrokerAdapterFactory.create(config)
+        assert adapter.authenticate() is True
+        assert adapter.get_account_balance() == {}
+        assert adapter.get_positions() == []
+
+    def test_factory_create_all_api(self):
+        from trading_cotrader.adapters.factory import BrokerAdapterFactory
+        from trading_cotrader.adapters.base import ManualBrokerAdapter
+
+        registry = _build_test_registry()
+        # This would try to create TastyTrade and Zerodha adapters
+        # TastyTrade will fail (no credentials) but zerodha falls back to manual
+        adapters = BrokerAdapterFactory.create_all_api(registry)
+        # At minimum, both API brokers were attempted
+        assert isinstance(adapters, dict)
+
+    def test_factory_unknown_adapter_fallback(self):
+        from trading_cotrader.adapters.factory import BrokerAdapterFactory
+        from trading_cotrader.adapters.base import ManualBrokerAdapter
+
+        config = BrokerConfig(
+            name='unknown', has_api=True, adapter='nonexistent',
+        )
+        adapter = BrokerAdapterFactory.create(config)
+        assert isinstance(adapter, ManualBrokerAdapter)
+
+    def test_adapter_base_notimplemented(self):
+        from trading_cotrader.adapters.base import ManualBrokerAdapter
+
+        adapter = ManualBrokerAdapter('test')
+        with pytest.raises(NotImplementedError):
+            adapter.get_option_chain('SPY')
+        with pytest.raises(NotImplementedError):
+            adapter.get_quote('SPY')
+        with pytest.raises(NotImplementedError):
+            adapter.get_quotes(['SPY'])
+        with pytest.raises(NotImplementedError):
+            adapter.get_greeks(['.SPY260320P550'])
+
+
+class TestContainerBundles:
+    """Per-portfolio container bundles and ContainerManager."""
+
+    def test_bundle_creation(self):
+        from trading_cotrader.containers.portfolio_bundle import PortfolioBundle
+        bundle = PortfolioBundle(config_name='tastytrade', currency='USD')
+        assert bundle.config_name == 'tastytrade'
+        assert bundle.currency == 'USD'
+        assert bundle.portfolio_ids == []
+        assert bundle.portfolio is not None
+        assert bundle.positions is not None
+
+    def test_bundle_add_portfolio_id(self):
+        from trading_cotrader.containers.portfolio_bundle import PortfolioBundle
+        bundle = PortfolioBundle(config_name='test', currency='USD')
+        bundle.add_portfolio_id('pid-1')
+        bundle.add_portfolio_id('pid-2')
+        bundle.add_portfolio_id('pid-1')  # duplicate
+        assert len(bundle.portfolio_ids) == 2
+
+    def test_bundle_get_full_state(self):
+        from trading_cotrader.containers.portfolio_bundle import PortfolioBundle
+        bundle = PortfolioBundle(config_name='test', currency='INR')
+        state = bundle.get_full_state()
+        assert state['config_name'] == 'test'
+        assert state['currency'] == 'INR'
+        assert 'portfolio' in state
+        assert 'positions' in state
+        assert 'whatif_portfolio' in state
+
+    def test_container_manager_initialize_bundles(self):
+        from trading_cotrader.containers.container_manager import ContainerManager
+        cm = ContainerManager()
+        config = _build_test_portfolios()
+        cm.initialize_bundles(config)
+        # 3 real portfolios → 3 bundles
+        assert len(cm.get_all_bundles()) == 3
+        assert 'tastytrade' in cm.get_bundle_names()
+        assert 'fidelity_ira' in cm.get_bundle_names()
+        assert 'stallion' in cm.get_bundle_names()
+
+    def test_container_manager_whatif_resolves_to_parent(self):
+        from trading_cotrader.containers.container_manager import ContainerManager
+        cm = ContainerManager()
+        config = _build_test_portfolios()
+        cm.initialize_bundles(config)
+        # WhatIf resolves to parent bundle
+        parent = cm.get_bundle('tastytrade')
+        whatif = cm.get_bundle('tastytrade_whatif')
+        assert parent is whatif
+
+    def test_container_manager_currency_filter(self):
+        from trading_cotrader.containers.container_manager import ContainerManager
+        cm = ContainerManager()
+        config = _build_test_portfolios()
+        cm.initialize_bundles(config)
+        usd = cm.get_bundles_by_currency('USD')
+        inr = cm.get_bundles_by_currency('INR')
+        assert len(usd) == 2  # tastytrade, fidelity_ira
+        assert len(inr) == 1  # stallion
+
+    def test_container_manager_backward_compat_properties(self):
+        from trading_cotrader.containers.container_manager import ContainerManager
+        cm = ContainerManager()
+        config = _build_test_portfolios()
+        cm.initialize_bundles(config)
+        # Default properties should work (first bundle)
+        assert cm.portfolio is not None
+        assert cm.positions is not None
+        assert cm.risk_factors is not None
+        assert cm.trades is not None
+
+    def test_container_manager_get_full_state_default(self):
+        from trading_cotrader.containers.container_manager import ContainerManager
+        cm = ContainerManager()
+        config = _build_test_portfolios()
+        cm.initialize_bundles(config)
+        state = cm.get_full_state()
+        assert 'portfolio' in state
+        assert 'positions' in state
+
+    def test_container_manager_get_full_state_specific(self):
+        from trading_cotrader.containers.container_manager import ContainerManager
+        cm = ContainerManager()
+        config = _build_test_portfolios()
+        cm.initialize_bundles(config)
+        state = cm.get_full_state('stallion')
+        assert state['config_name'] == 'stallion'
+        assert state['currency'] == 'INR'
+
+    def test_container_manager_get_all_states(self):
+        from trading_cotrader.containers.container_manager import ContainerManager
+        cm = ContainerManager()
+        config = _build_test_portfolios()
+        cm.initialize_bundles(config)
+        states = cm.get_all_states()
+        assert len(states) == 3
+
+    def test_container_manager_empty_state(self):
+        from trading_cotrader.containers.container_manager import ContainerManager
+        cm = ContainerManager()
+        state = cm.get_full_state()
+        assert state['positions'] == []
+
+    def test_portfolio_state_currency_field(self):
+        from trading_cotrader.containers.portfolio_container import PortfolioState
+        ps = PortfolioState(portfolio_id='1', name='test', currency='INR')
+        d = ps.to_dict()
+        assert d['currency'] == 'INR'
+
+
+class TestQAAgent:
+    """QA agent basic tests."""
+
+    def test_qa_agent_creates(self):
+        from trading_cotrader.agents.learning.qa_agent import QAAgent
+        qa = QAAgent()
+        assert qa.name == 'qa_agent'
+        assert qa._min_coverage_pct == 70.0
+
+    def test_qa_agent_safety_check(self):
+        from trading_cotrader.agents.learning.qa_agent import QAAgent
+        qa = QAAgent()
+        ok, reason = qa.safety_check({})
+        assert ok is True
+
+
 class TestLoadBrokerRegistryFromYAML:
     """Load broker registry from actual YAML file."""
 

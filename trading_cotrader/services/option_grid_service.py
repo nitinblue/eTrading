@@ -319,11 +319,9 @@ class OptionGridService:
         strikes_below = strikes_below or self.strikes_below_atm
 
         try:
-            from tastytrade import get_option_chain
-
-            # Get option chain - returns list of option objects
+            # Get option chain via broker adapter
             logger.info(f"Fetching option chain for {underlying}...")
-            chain = get_option_chain(self.broker.session, underlying)
+            chain = self.broker.get_option_chain(underlying)
 
             if not chain:
                 logger.warning(f"No options found for {underlying}")

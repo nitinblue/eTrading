@@ -22,7 +22,7 @@ from trading_cotrader.core.database.schema import (
     DailyPerformanceORM,
     GreeksHistoryORM,
     PortfolioORM,
-    PositionORM
+    PositionORM,
 )
 import trading_cotrader.core.models.domain as dm
 
@@ -230,6 +230,165 @@ class SnapshotService:
         self.session.flush()
         return captured
     
+    def capture_all_portfolio_snapshots(self) -> Dict[str, bool]:
+        """
+        Capture daily snapshots for ALL active portfolios directly from ORM.
+
+        Called by the workflow engine in REPORTING state and during monitoring.
+        Works directly with ORM objects — no domain conversion needed.
+
+        Returns:
+            Dict mapping portfolio name → success bool
+        """
+        results = {}
+        snapshot_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        try:
+            # Get all non-deprecated portfolios
+            portfolios = self.session.query(PortfolioORM).filter(
+                ~PortfolioORM.tags.contains('"deprecated"')
+            ).all()
+
+            # SQLite JSON contains workaround — filter in Python
+            active_portfolios = []
+            for p in portfolios:
+                tags = p.tags or []
+                if 'deprecated' not in tags:
+                    active_portfolios.append(p)
+
+            logger.info(f"Capturing snapshots for {len(active_portfolios)} portfolios")
+
+            for portfolio_orm in active_portfolios:
+                try:
+                    success = self._capture_portfolio_snapshot_from_orm(
+                        portfolio_orm, snapshot_date
+                    )
+                    results[portfolio_orm.name] = success
+                    if success:
+                        logger.info(f"  Snapshot: {portfolio_orm.name} — OK")
+                    else:
+                        logger.warning(f"  Snapshot: {portfolio_orm.name} — FAILED")
+                except Exception as e:
+                    logger.error(f"  Snapshot error for {portfolio_orm.name}: {e}")
+                    results[portfolio_orm.name] = False
+
+            self.session.commit()
+            logger.info(
+                f"Snapshots captured: {sum(results.values())}/{len(results)} portfolios"
+            )
+
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to capture portfolio snapshots: {e}")
+
+        return results
+
+    def _capture_portfolio_snapshot_from_orm(
+        self, portfolio_orm: PortfolioORM, snapshot_date: datetime
+    ) -> bool:
+        """Capture a single portfolio snapshot directly from ORM data."""
+        from trading_cotrader.core.database.schema import TradeORM
+
+        portfolio_id = portfolio_orm.id
+        equity = portfolio_orm.total_equity or Decimal('0')
+        cash = portfolio_orm.cash_balance or Decimal('0')
+        daily_pnl = portfolio_orm.daily_pnl or Decimal('0')
+        realized = portfolio_orm.realized_pnl or Decimal('0')
+        unrealized = portfolio_orm.unrealized_pnl or Decimal('0')
+
+        # Position count
+        positions = portfolio_orm.positions or []
+        num_positions = len(positions)
+
+        # Open trade count
+        open_trades = self.session.query(TradeORM).filter(
+            TradeORM.portfolio_id == portfolio_id,
+            TradeORM.is_open == True,
+        ).count()
+
+        # Upsert daily snapshot
+        existing = self.session.query(DailyPerformanceORM).filter_by(
+            portfolio_id=portfolio_id,
+            date=snapshot_date,
+        ).first()
+
+        if existing:
+            existing.total_equity = equity
+            existing.cash_balance = cash
+            existing.daily_pnl = daily_pnl
+            existing.realized_pnl = realized
+            existing.unrealized_pnl = unrealized
+            existing.num_positions = num_positions
+            existing.num_trades = open_trades
+            existing.portfolio_delta = portfolio_orm.portfolio_delta
+            existing.portfolio_gamma = portfolio_orm.portfolio_gamma
+            existing.portfolio_theta = portfolio_orm.portfolio_theta
+            existing.portfolio_vega = portfolio_orm.portfolio_vega
+            existing.var_1d_95 = portfolio_orm.var_1d_95
+            existing.var_1d_99 = portfolio_orm.var_1d_99
+        else:
+            snapshot = DailyPerformanceORM(
+                id=str(dm.uuid.uuid4()),
+                portfolio_id=portfolio_id,
+                date=snapshot_date,
+                total_equity=equity,
+                cash_balance=cash,
+                daily_pnl=daily_pnl,
+                realized_pnl=realized,
+                unrealized_pnl=unrealized,
+                num_positions=num_positions,
+                num_trades=open_trades,
+                portfolio_delta=portfolio_orm.portfolio_delta,
+                portfolio_gamma=portfolio_orm.portfolio_gamma,
+                portfolio_theta=portfolio_orm.portfolio_theta,
+                portfolio_vega=portfolio_orm.portfolio_vega,
+                var_1d_95=portfolio_orm.var_1d_95,
+                var_1d_99=portfolio_orm.var_1d_99,
+                created_at=datetime.utcnow(),
+            )
+            self.session.add(snapshot)
+
+        # Capture Greeks history for each position
+        for pos_orm in positions:
+            self._capture_position_greeks_from_orm(pos_orm, snapshot_date)
+
+        self.session.flush()
+        return True
+
+    def _capture_position_greeks_from_orm(
+        self, pos_orm: PositionORM, snapshot_date: datetime
+    ) -> None:
+        """Capture Greeks history for a single position from ORM."""
+        if not pos_orm.delta and not pos_orm.theta:
+            return  # No Greeks data
+
+        existing = self.session.query(GreeksHistoryORM).filter_by(
+            position_id=pos_orm.id,
+            timestamp=snapshot_date,
+        ).first()
+
+        if existing:
+            existing.delta = pos_orm.delta
+            existing.gamma = pos_orm.gamma
+            existing.theta = pos_orm.theta
+            existing.vega = pos_orm.vega
+            existing.rho = pos_orm.rho
+            existing.underlying_price = pos_orm.current_underlying_price
+        else:
+            history = GreeksHistoryORM(
+                id=str(dm.uuid.uuid4()),
+                position_id=pos_orm.id,
+                timestamp=snapshot_date,
+                delta=pos_orm.delta,
+                gamma=pos_orm.gamma,
+                theta=pos_orm.theta,
+                vega=pos_orm.vega,
+                rho=pos_orm.rho,
+                underlying_price=pos_orm.current_underlying_price,
+                created_at=datetime.utcnow(),
+            )
+            self.session.add(history)
+
     def get_portfolio_history(
         self,
         portfolio_id: str,

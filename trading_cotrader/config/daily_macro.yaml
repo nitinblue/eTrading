@@ -1,0 +1,23 @@
+# =============================================================================
+# Daily Macro Override — Edit before running screeners (optional)
+# =============================================================================
+# Uncomment and set values to override automatic VIX-based assessment.
+# If all lines are commented, system auto-assesses from VIX level.
+#
+# market_probability: bullish / neutral / bearish / uncertain
+# expected_volatility: low / normal / high / extreme
+# notes: Free text — e.g. "FOMC meeting tomorrow", "Earnings season"
+#
+# Examples:
+#   market_probability: uncertain
+#   expected_volatility: extreme
+#   notes: "FOMC meeting tomorrow — skip all screening"
+#
+#   market_probability: bullish
+#   expected_volatility: low
+#   notes: "Strong uptrend, earnings behind us"
+# =============================================================================
+
+# market_probability: neutral
+# expected_volatility: normal
+# notes: ""

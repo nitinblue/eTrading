@@ -10,9 +10,6 @@
 .env
 .env.local
 .env.*.local
-*.yaml
-!risk_limits.yaml  # Risk limits are OK to commit (no secrets)
-!.github/**/*.yaml  # GitHub config is OK
 tastytrade_broker.yaml
 credentials.yaml
 secrets.yaml
@@ -131,8 +128,11 @@ ai_cotrader/models/*.joblib
 
 # Training data (can be large)
 training_data/
-*.csv
 *.parquet
+
+# Data CSVs (portfolio exports, broker data)
+Portfolio_Positions*.csv
+*.csv
 !examples/**/*.csv  # Example CSVs are OK
 
 

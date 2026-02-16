@@ -1,8 +1,8 @@
 """
-Container Manager - Orchestrates all containers and event distribution
+Container Manager - Orchestrates per-portfolio container bundles and event distribution
 
 Provides:
-- Unified container management
+- Per-portfolio container bundles (real + whatif share a bundle)
 - Event bus for container updates
 - Cell-level change tracking for WebSocket push
 - Repository integration for loading data
@@ -10,15 +10,15 @@ Provides:
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Any, Callable, Optional, Literal
+from typing import Dict, List, Any, Callable, Optional
 from enum import Enum
 import logging
-import asyncio
 
 from .portfolio_container import PortfolioContainer
 from .position_container import PositionContainer
 from .risk_factor_container import RiskFactorContainer
 from .trade_container import TradeContainer
+from .portfolio_bundle import PortfolioBundle
 
 logger = logging.getLogger(__name__)
 
@@ -76,33 +76,144 @@ class ContainerEvent:
 
 class ContainerManager:
     """
-    Manages all containers and coordinates updates.
+    Manages per-portfolio container bundles and coordinates updates.
 
-    Provides:
-    - Single point of access to all containers
-    - Event distribution for real-time updates
-    - Cell-level change tracking for efficient UI updates
-    - Integration with repositories for data loading
+    Each real portfolio (+ its WhatIf mirror) gets one PortfolioBundle.
+    Bundles are currency-isolated: USD positions never mix with INR.
+
+    Backward compatibility:
+    - .portfolio, .positions, .risk_factors, .trades still work (default bundle)
+    - get_full_state() without args returns default bundle
     """
 
     def __init__(self):
-        self.portfolio = PortfolioContainer()
-        self.positions = PositionContainer()
-        self.risk_factors = RiskFactorContainer()
-        self.trades = TradeContainer()  # Holds both real and what-if trades
+        self._bundles: Dict[str, PortfolioBundle] = {}
+        # Maps whatif config_name → real config_name for bundle lookup
+        self._whatif_to_real: Dict[str, str] = {}
 
         self._event_listeners: List[Callable] = []
-        self._pending_cell_updates: List[CellUpdate] = []
 
-        # Wire up internal change listeners
-        self.portfolio.add_change_listener(self._on_portfolio_change)
-        self.positions.add_change_listener(self._on_position_change)
-        self.risk_factors.add_change_listener(self._on_risk_factor_change)
-        self.trades.add_change_listener(self._on_trade_change)
+        # Default bundle name (first real portfolio initialized)
+        self._default_bundle: Optional[str] = None
+
+    # -----------------------------------------------------------------
+    # Bundle initialization
+    # -----------------------------------------------------------------
+
+    def initialize_bundles(self, portfolios_config) -> None:
+        """
+        Create one bundle per REAL portfolio. WhatIf shares parent's bundle.
+
+        Args:
+            portfolios_config: PortfoliosConfig from risk_config_loader
+        """
+        from trading_cotrader.config.risk_config_loader import PortfoliosConfig
+
+        for pc in portfolios_config.get_real_portfolios():
+            bundle = PortfolioBundle(
+                config_name=pc.name,
+                currency=pc.currency,
+            )
+            self._bundles[pc.name] = bundle
+            if self._default_bundle is None:
+                self._default_bundle = pc.name
+            logger.info(f"Created bundle: {pc.name} ({pc.currency})")
+
+        # Map whatif → real parent
+        for pc in portfolios_config.get_whatif_portfolios():
+            if pc.mirrors_real and pc.mirrors_real in self._bundles:
+                self._whatif_to_real[pc.name] = pc.mirrors_real
+                logger.debug(f"WhatIf {pc.name} → bundle {pc.mirrors_real}")
+
+        logger.info(f"Initialized {len(self._bundles)} portfolio bundles")
+
+    # -----------------------------------------------------------------
+    # Bundle access
+    # -----------------------------------------------------------------
+
+    def get_bundle(self, config_name: str) -> Optional[PortfolioBundle]:
+        """
+        Get bundle by config name. Resolves whatif names to parent bundle.
+        """
+        # Direct lookup
+        if config_name in self._bundles:
+            return self._bundles[config_name]
+        # WhatIf → parent
+        real_name = self._whatif_to_real.get(config_name)
+        if real_name:
+            return self._bundles.get(real_name)
+        return None
+
+    def get_all_bundles(self) -> List[PortfolioBundle]:
+        """Get all portfolio bundles."""
+        return list(self._bundles.values())
+
+    def get_bundles_by_currency(self, currency: str) -> List[PortfolioBundle]:
+        """Get bundles filtered by currency."""
+        return [b for b in self._bundles.values() if b.currency == currency]
+
+    def get_bundle_names(self) -> List[str]:
+        """Get all bundle config names."""
+        return list(self._bundles.keys())
+
+    # -----------------------------------------------------------------
+    # Backward compatibility: default bundle properties
+    # -----------------------------------------------------------------
+
+    @property
+    def _default(self) -> Optional[PortfolioBundle]:
+        """Get the default bundle (first real portfolio)."""
+        if self._default_bundle:
+            return self._bundles.get(self._default_bundle)
+        if self._bundles:
+            return next(iter(self._bundles.values()))
+        return None
+
+    @property
+    def portfolio(self) -> PortfolioContainer:
+        b = self._default
+        if b:
+            return b.portfolio
+        # Fallback: create empty container
+        if not hasattr(self, '_fallback_portfolio'):
+            self._fallback_portfolio = PortfolioContainer()
+        return self._fallback_portfolio
+
+    @property
+    def positions(self) -> PositionContainer:
+        b = self._default
+        if b:
+            return b.positions
+        if not hasattr(self, '_fallback_positions'):
+            self._fallback_positions = PositionContainer()
+        return self._fallback_positions
+
+    @property
+    def risk_factors(self) -> RiskFactorContainer:
+        b = self._default
+        if b:
+            return b.risk_factors
+        if not hasattr(self, '_fallback_risk_factors'):
+            self._fallback_risk_factors = RiskFactorContainer()
+        return self._fallback_risk_factors
+
+    @property
+    def trades(self) -> TradeContainer:
+        b = self._default
+        if b:
+            return b.trades
+        if not hasattr(self, '_fallback_trades'):
+            self._fallback_trades = TradeContainer()
+        return self._fallback_trades
 
     @property
     def is_initialized(self) -> bool:
-        return self.portfolio.is_initialized
+        b = self._default
+        return b.portfolio.is_initialized if b else False
+
+    # -----------------------------------------------------------------
+    # Event handling
+    # -----------------------------------------------------------------
 
     def add_event_listener(self, callback: Callable):
         """Add listener for container events"""
@@ -121,115 +232,57 @@ class ContainerManager:
             except Exception as e:
                 logger.error(f"Error in event listener: {e}")
 
-    def _on_portfolio_change(self, source: str, changes: Dict[str, Any]):
-        """Handle portfolio container changes"""
-        cell_updates = []
-        for field_name, change in changes.items():
-            cell_updates.append(CellUpdate(
-                grid_type='portfolio',
-                row_id='portfolio_summary',
-                column=field_name,
-                old_value=change.get('old'),
-                new_value=change.get('new'),
-            ))
+    # -----------------------------------------------------------------
+    # Data loading — per-portfolio
+    # -----------------------------------------------------------------
 
-        event = ContainerEvent(
-            event_type=EventType.PORTFOLIO_UPDATE,
-            source='portfolio',
-            data=changes,
-            cell_updates=cell_updates,
-        )
-        self._emit_event(event)
-
-    def _on_position_change(self, source: str, data: Dict[str, Any]):
-        """Handle position container changes"""
-        position_id = data.get('position_id')
-        changes = data.get('changes', {})
-
-        cell_updates = []
-        for field_name, change in changes.items():
-            if field_name.startswith('_'):
-                continue
-            cell_updates.append(CellUpdate(
-                grid_type='positions',
-                row_id=position_id,
-                column=field_name,
-                old_value=change.get('old'),
-                new_value=change.get('new'),
-            ))
-
-        event = ContainerEvent(
-            event_type=EventType.POSITION_UPDATE,
-            source='positions',
-            data={'position_id': position_id, 'changes': changes},
-            cell_updates=cell_updates,
-        )
-        self._emit_event(event)
-
-    def _on_risk_factor_change(self, source: str, data: Dict[str, Any]):
-        """Handle risk factor container changes"""
-        underlying = data.get('underlying')
-        changes = data.get('changes', {})
-
-        cell_updates = []
-        for field_name, change in changes.items():
-            cell_updates.append(CellUpdate(
-                grid_type='risk_factors',
-                row_id=underlying,
-                column=field_name,
-                old_value=change.get('old'),
-                new_value=change.get('new'),
-            ))
-
-        event = ContainerEvent(
-            event_type=EventType.RISK_FACTOR_UPDATE,
-            source='risk_factors',
-            data={'underlying': underlying, 'changes': changes},
-            cell_updates=cell_updates,
-        )
-        self._emit_event(event)
-
-    def _on_trade_change(self, source: str, data: Dict[str, Any]):
-        """Handle trade container changes"""
-        trade_id = data.get('trade_id')
-        changes = data.get('changes', {})
-
-        cell_updates = []
-        for field_name, change in changes.items():
-            if field_name.startswith('_'):
-                continue
-            cell_updates.append(CellUpdate(
-                grid_type='trades',
-                row_id=trade_id,
-                column=field_name,
-                old_value=change.get('old') if isinstance(change, dict) else None,
-                new_value=change.get('new') if isinstance(change, dict) else change,
-            ))
-
-        event = ContainerEvent(
-            event_type=EventType.POSITION_UPDATE,  # Reuse for trades
-            source='trades',
-            data={'trade_id': trade_id, 'changes': changes},
-            cell_updates=cell_updates,
-        )
-        self._emit_event(event)
-
-    def load_from_repositories(self, session) -> ContainerEvent:
+    def load_from_repositories(self, session, portfolio_name: str = None) -> ContainerEvent:
         """
-        Load all containers from database repositories.
+        Load containers from database repositories.
+
+        If portfolio_name is given, loads only that bundle.
+        Otherwise loads the default bundle (backward compat).
+
         Returns event with all changes.
         """
         from trading_cotrader.repositories.portfolio import PortfolioRepository
-        from trading_cotrader.core.database.schema import PositionORM
+        from trading_cotrader.core.database.schema import PositionORM, PortfolioORM
 
-        all_cell_updates = []
+        target_name = portfolio_name or self._default_bundle
+        bundle = self.get_bundle(target_name) if target_name else self._default
 
-        # Load portfolio
-        portfolio_repo = PortfolioRepository(session)
-        portfolios = session.query(portfolio_repo.model_class).all()
-        if portfolios:
-            portfolio_orm = portfolios[0]  # Use first portfolio
-            changes = self.portfolio.load_from_orm(portfolio_orm)
+        if not bundle:
+            logger.warning(f"No bundle found for '{target_name}'")
+            return ContainerEvent(
+                event_type=EventType.FULL_REFRESH,
+                source='repository',
+                data={},
+                cell_updates=[],
+            )
+
+        all_cell_updates: List[CellUpdate] = []
+
+        # Load portfolio ORM — filter by portfolio IDs in this bundle
+        if bundle.portfolio_ids:
+            portfolio_orm = session.query(PortfolioORM).filter(
+                PortfolioORM.id.in_(bundle.portfolio_ids)
+            ).first()
+        else:
+            # Fallback: query by broker+account from config
+            portfolio_repo = PortfolioRepository(session)
+            portfolios = portfolio_repo.get_all_portfolios()
+            portfolio_orm = None
+            if portfolios:
+                # Find by name match
+                for p in portfolios:
+                    p_orm = session.query(PortfolioORM).filter_by(id=p.id).first()
+                    if p_orm:
+                        portfolio_orm = p_orm
+                        bundle.add_portfolio_id(p.id)
+                        break
+
+        if portfolio_orm:
+            changes = bundle.portfolio.load_from_orm(portfolio_orm)
             for field_name, change in changes.items():
                 all_cell_updates.append(CellUpdate(
                     grid_type='portfolio',
@@ -239,9 +292,15 @@ class ContainerManager:
                     new_value=change.get('new'),
                 ))
 
-        # Load positions
-        positions_orm = session.query(PositionORM).all()
-        pos_changes = self.positions.load_from_orm_list(positions_orm)
+        # Load positions — filtered by portfolio IDs in this bundle
+        if bundle.portfolio_ids:
+            positions_orm = session.query(PositionORM).filter(
+                PositionORM.portfolio_id.in_(bundle.portfolio_ids)
+            ).all()
+        else:
+            positions_orm = session.query(PositionORM).all()
+
+        pos_changes = bundle.positions.load_from_orm_list(positions_orm)
         for pos_id, changes in pos_changes.items():
             for field_name, change in changes.items():
                 if field_name.startswith('_'):
@@ -254,8 +313,8 @@ class ContainerManager:
                     new_value=change.get('new'),
                 ))
 
-        # Aggregate risk factors from positions
-        rf_changes = self.risk_factors.aggregate_from_positions(self.positions)
+        # Aggregate risk factors from filtered positions
+        rf_changes = bundle.risk_factors.aggregate_from_positions(bundle.positions)
         for underlying, changes in rf_changes.items():
             for field_name, change in changes.items():
                 all_cell_updates.append(CellUpdate(
@@ -269,21 +328,37 @@ class ContainerManager:
         event = ContainerEvent(
             event_type=EventType.FULL_REFRESH,
             source='repository',
-            data={'positions_count': self.positions.count},
+            data={
+                'portfolio_name': bundle.config_name,
+                'positions_count': bundle.positions.count,
+            },
             cell_updates=all_cell_updates,
         )
 
+        self._emit_event(event)
         return event
+
+    def load_all_bundles(self, session) -> None:
+        """Load all bundles from repositories."""
+        for name in self._bundles:
+            self.load_from_repositories(session, portfolio_name=name)
 
     def load_from_snapshot(self, snapshot) -> ContainerEvent:
         """
-        Load all containers from a MarketSnapshot.
+        Load default bundle from a MarketSnapshot.
         For compatibility with existing data provider.
         """
-        all_cell_updates = []
+        bundle = self._default
+        if not bundle:
+            # Create a temporary default bundle
+            bundle = PortfolioBundle(config_name="default", currency="USD")
+            self._bundles["default"] = bundle
+            self._default_bundle = "default"
+
+        all_cell_updates: List[CellUpdate] = []
 
         # Load portfolio from snapshot
-        changes = self.portfolio.load_from_snapshot(snapshot)
+        changes = bundle.portfolio.load_from_snapshot(snapshot)
         for field_name, change in changes.items():
             all_cell_updates.append(CellUpdate(
                 grid_type='portfolio',
@@ -295,7 +370,7 @@ class ContainerManager:
 
         # Load positions
         positions = getattr(snapshot, 'positions', [])
-        pos_changes = self.positions.load_from_snapshot_positions(positions)
+        pos_changes = bundle.positions.load_from_snapshot_positions(positions)
         for pos_id, changes in pos_changes.items():
             for field_name, change in changes.items():
                 if field_name.startswith('_'):
@@ -310,7 +385,7 @@ class ContainerManager:
 
         # Load risk factors
         risk_by_underlying = getattr(snapshot, 'risk_by_underlying', {})
-        rf_changes = self.risk_factors.load_from_snapshot_risk(risk_by_underlying)
+        rf_changes = bundle.risk_factors.load_from_snapshot_risk(risk_by_underlying)
         for underlying, changes in rf_changes.items():
             for field_name, change in changes.items():
                 all_cell_updates.append(CellUpdate(
@@ -324,43 +399,61 @@ class ContainerManager:
         event = ContainerEvent(
             event_type=EventType.FULL_REFRESH,
             source='snapshot',
-            data={'positions_count': self.positions.count},
+            data={'positions_count': bundle.positions.count},
             cell_updates=all_cell_updates,
         )
 
         return event
 
-    def get_full_state(self) -> Dict[str, Any]:
-        """Get complete current state for initial load"""
-        whatif_greeks = self.trades.aggregate_what_if_greeks()
+    # -----------------------------------------------------------------
+    # State access
+    # -----------------------------------------------------------------
 
+    def get_full_state(self, config_name: str = None) -> Dict[str, Any]:
+        """
+        Get complete current state.
+
+        Args:
+            config_name: Portfolio bundle name. None = default bundle.
+
+        Returns:
+            Full state dict for UI/API.
+        """
+        if config_name:
+            bundle = self.get_bundle(config_name)
+        else:
+            bundle = self._default
+
+        if bundle:
+            return bundle.get_full_state()
+
+        # Empty state fallback
         return {
-            'portfolio': self.portfolio.to_grid_row() if self.portfolio.state else {},
-            'positions': self.positions.to_grid_rows(),
-            'riskFactors': self.risk_factors.to_grid_rows(),
-            'trades': self.trades.to_grid_rows(),
-            'whatif_trades': self.trades.to_whatif_cards(),
+            'portfolio': {},
+            'positions': [],
+            'riskFactors': [],
+            'trades': [],
+            'whatif_trades': [],
             'whatif_portfolio': {
-                'delta': float(whatif_greeks['delta']),
-                'gamma': float(whatif_greeks['gamma']),
-                'theta': float(whatif_greeks['theta']),
-                'vega': float(whatif_greeks['vega']),
-                'trade_count': self.trades.what_if_count,
+                'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0,
+                'trade_count': 0,
             },
             'timestamp': datetime.utcnow().isoformat(),
         }
 
-    def refresh(self, session=None, snapshot=None) -> ContainerEvent:
+    def get_all_states(self) -> Dict[str, Dict[str, Any]]:
+        """Get full state for all bundles."""
+        return {name: bundle.get_full_state() for name, bundle in self._bundles.items()}
+
+    def refresh(self, session=None, snapshot=None, portfolio_name: str = None) -> ContainerEvent:
         """
-        Refresh all containers.
-        Either from repository (session) or snapshot.
+        Refresh containers. Either from repository (session) or snapshot.
         """
         if session:
-            return self.load_from_repositories(session)
+            return self.load_from_repositories(session, portfolio_name=portfolio_name)
         elif snapshot:
             return self.load_from_snapshot(snapshot)
         else:
-            # Return empty event if no data source
             return ContainerEvent(
                 event_type=EventType.FULL_REFRESH,
                 source='none',

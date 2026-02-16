@@ -44,6 +44,7 @@ from trading_cotrader.agents.execution.notifier import NotifierAgent
 from trading_cotrader.agents.execution.reporter import ReporterAgent
 from trading_cotrader.agents.learning.accountability import AccountabilityAgent
 from trading_cotrader.agents.learning.session_objectives import SessionObjectivesAgent
+from trading_cotrader.agents.learning.qa_agent import QAAgent
 from trading_cotrader.agents.analysis.capital import CapitalUtilizationAgent
 from trading_cotrader.agents.decision.interaction import InteractionManager
 
@@ -83,18 +84,25 @@ class WorkflowEngine:
         # Load configuration
         self.config: WorkflowConfig = load_workflow_config(config_path)
 
-        # Initialize broker router
-        from trading_cotrader.config.broker_config_loader import load_broker_registry
-        try:
-            broker_registry = load_broker_registry()
-        except FileNotFoundError:
-            from trading_cotrader.config.broker_config_loader import BrokerRegistry
-            broker_registry = BrokerRegistry()
+        # Initialize broker registry and adapter factory
+        from trading_cotrader.config.broker_config_loader import load_broker_registry, BrokerRegistry
+        from trading_cotrader.adapters.factory import BrokerAdapterFactory
 
+        try:
+            self.broker_registry = load_broker_registry()
+        except FileNotFoundError:
+            self.broker_registry = BrokerRegistry()
+
+        # Create adapters via factory (or use pre-provided broker)
         adapters = {}
         if broker:
             adapters['tastytrade'] = broker
-        self.broker_router = BrokerRouter(broker_registry, adapters)
+        else:
+            # Create API adapters from registry
+            api_adapters = BrokerAdapterFactory.create_all_api(self.broker_registry)
+            adapters.update(api_adapters)
+
+        self.broker_router = BrokerRouter(self.broker_registry, adapters)
 
         # Shared context between all agents
         self.context: dict = {
@@ -117,6 +125,7 @@ class WorkflowEngine:
         self.accountability = AccountabilityAgent()
         self.capital_utilization = CapitalUtilizationAgent(self.config)
         self.session_objectives = SessionObjectivesAgent()
+        self.qa_agent = QAAgent(self.config)
         self.interaction = InteractionManager(self)
 
         # State machine — states are string values from WorkflowStates
@@ -324,7 +333,7 @@ class WorkflowEngine:
         self.report()
 
     def on_enter_reporting(self, event):
-        """Generate reports, run accountability, send notifications."""
+        """Generate reports, run accountability, capture snapshots, send notifications."""
         logger.info("=== REPORTING ===")
 
         # Accountability metrics first (reporter needs them)
@@ -333,11 +342,22 @@ class WorkflowEngine:
         # Final capital utilization snapshot
         self.capital_utilization.run(self.context)
 
+        # Capture daily snapshots for all portfolios (feeds analytics + ML)
+        snapshot_results = self._capture_snapshots()
+        self.context['snapshot_results'] = snapshot_results
+
+        # Accumulate ML training data
+        self._accumulate_ml_data()
+
         # Session performance evaluation (objectives vs actuals)
         perf_result = self.session_objectives.evaluate_performance(self.context)
         self._log_agent(perf_result)
 
-        # Generate report (now includes capital + session sections)
+        # QA assessment
+        qa_result = self.qa_agent.run(self.context)
+        self._log_agent(qa_result)
+
+        # Generate report (now includes capital + session + QA sections)
         self.reporter.run(self.context)
         self.notifier.send_daily_summary(self.context)
         self.go_idle()
@@ -499,6 +519,53 @@ class WorkflowEngine:
     # -----------------------------------------------------------------
     # Internal helpers
     # -----------------------------------------------------------------
+
+    def _capture_snapshots(self) -> dict:
+        """Capture daily snapshots for all active portfolios."""
+        try:
+            from trading_cotrader.core.database.session import session_scope
+            from trading_cotrader.services.snapshot_service import SnapshotService
+
+            with session_scope() as session:
+                svc = SnapshotService(session)
+                results = svc.capture_all_portfolio_snapshots()
+                total = len(results)
+                ok = sum(results.values())
+                logger.info(f"Snapshots: {ok}/{total} portfolios captured")
+                return results
+        except Exception as e:
+            logger.error(f"Snapshot capture failed: {e}")
+            return {}
+
+    def _accumulate_ml_data(self) -> None:
+        """Feed ML pipeline with latest snapshot data."""
+        try:
+            from trading_cotrader.core.database.session import session_scope
+            from trading_cotrader.ai_cotrader.data_pipeline import MLDataPipeline
+            from trading_cotrader.core.database.schema import PortfolioORM
+
+            with session_scope() as session:
+                pipeline = MLDataPipeline(session)
+
+                # Get first real portfolio for ML accumulation
+                portfolio = session.query(PortfolioORM).filter(
+                    PortfolioORM.portfolio_type == 'real'
+                ).first()
+
+                if portfolio:
+                    pipeline.accumulate_training_data(
+                        portfolio=portfolio,
+                        positions=portfolio.positions or [],
+                    )
+
+                status = pipeline.get_ml_status()
+                self.context['ml_status'] = status
+                logger.info(
+                    f"ML pipeline: {status.get('snapshots', 0)} snapshots, "
+                    f"{status.get('events_with_outcomes', 0)} labeled events"
+                )
+        except Exception as e:
+            logger.warning(f"ML pipeline update failed (non-blocking): {e}")
 
     def _log_agent(self, result):
         """Log agent result."""

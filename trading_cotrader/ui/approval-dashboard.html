@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CoTrader — Approval Dashboard</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #111111;
+      --bg-tertiary: #171717;
+      --bg-card: #141414;
+      --border: #262626;
+      --border-light: #333333;
+      --text-primary: #e5e5e5;
+      --text-secondary: #a3a3a3;
+      --text-muted: #737373;
+      --green: #22c55e;
+      --green-dim: #166534;
+      --green-bg: rgba(34, 197, 94, 0.1);
+      --red: #ef4444;
+      --red-dim: #991b1b;
+      --red-bg: rgba(239, 68, 68, 0.1);
+      --yellow: #eab308;
+      --yellow-bg: rgba(234, 179, 8, 0.1);
+      --blue: #3b82f6;
+      --blue-bg: rgba(59, 130, 246, 0.1);
+      --purple: #a855f7;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 12px;
+      min-height: 100vh;
+    }
+
+    /* ===== HEADER ===== */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 20px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      font-weight: 700;
+      font-size: 14px;
+      color: #fff;
+      letter-spacing: 2px;
+    }
+
+    .logo span { color: var(--text-muted); font-weight: 400; font-size: 11px; letter-spacing: 0; }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background 0.3s;
+    }
+    .status-dot.connected { background: var(--green); }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .refresh-btn {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+    }
+    .refresh-btn:hover { border-color: var(--text-muted); color: var(--text-primary); }
+
+    /* ===== HALT BANNER ===== */
+    .halt-banner {
+      display: none;
+      background: var(--red-bg);
+      border-bottom: 1px solid var(--red-dim);
+      padding: 10px 20px;
+      color: var(--red);
+      font-weight: 600;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .halt-banner.visible { display: flex; }
+    .halt-banner button {
+      background: var(--red-dim);
+      color: #fff;
+      border: none;
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+    }
+
+    /* ===== STATUS BAR ===== */
+    .status-bar {
+      display: flex;
+      gap: 24px;
+      padding: 8px 20px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .status-item {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .status-label { color: var(--text-muted); }
+    .status-value { color: var(--text-primary); font-weight: 500; }
+    .status-value.state-monitoring { color: var(--green); }
+    .status-value.state-review { color: var(--yellow); }
+    .status-value.state-halted { color: var(--red); }
+
+    /* ===== MAIN CONTENT ===== */
+    .main {
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    /* ===== PENDING TABLE ===== */
+    .rec-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .rec-table th {
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .rec-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .rec-table tr:last-child td { border-bottom: none; }
+
+    .rec-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .type-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .type-entry { background: var(--blue-bg); color: var(--blue); }
+    .type-exit { background: var(--red-bg); color: var(--red); }
+    .type-roll { background: var(--yellow-bg); color: var(--yellow); }
+    .type-adjust { background: var(--green-bg); color: var(--green); }
+
+    .confidence-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .confidence-fill {
+      height: 6px;
+      border-radius: 3px;
+      min-width: 4px;
+    }
+    .conf-low { background: var(--red); }
+    .conf-mid { background: var(--yellow); }
+    .conf-high { background: var(--green); }
+
+    .rationale-cell {
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text-secondary);
+      font-size: 11px;
+    }
+
+    .action-btns {
+      display: flex;
+      gap: 6px;
+    }
+
+    .btn {
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-approve { background: var(--green-dim); color: var(--green); border-color: var(--green-dim); }
+    .btn-approve:hover:not(:disabled) { background: var(--green); color: #000; }
+    .btn-reject { background: var(--red-dim); color: var(--red); border-color: var(--red-dim); }
+    .btn-reject:hover:not(:disabled) { background: var(--red); color: #fff; }
+    .btn-defer { background: var(--bg-tertiary); color: var(--text-muted); }
+    .btn-defer:hover:not(:disabled) { color: var(--text-primary); border-color: var(--text-muted); }
+
+    /* ===== MODAL ===== */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-overlay.visible { display: flex; }
+
+    .modal {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 20px;
+      width: 420px;
+      max-width: 90vw;
+    }
+
+    .modal h3 {
+      font-size: 13px;
+      margin-bottom: 16px;
+      color: var(--text-primary);
+    }
+
+    .modal label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }
+
+    .modal select, .modal input, .modal textarea {
+      width: 100%;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 12px;
+    }
+    .modal textarea { resize: vertical; min-height: 60px; }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      justify-content: flex-end;
+    }
+
+    .modal-actions .btn { padding: 6px 16px; }
+
+    /* ===== HISTORY ===== */
+    .history-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .history-grid { grid-template-columns: 1fr; }
+    }
+
+    .history-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .history-card h4 {
+      font-size: 11px;
+      padding: 8px 12px;
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    .history-item {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+    }
+    .history-item:last-child { border-bottom: none; }
+
+    .history-item .hi-left { color: var(--text-secondary); }
+    .history-item .hi-time { color: var(--text-muted); font-size: 10px; }
+
+    /* ===== TOAST ===== */
+    .toast-container {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: inherit;
+      animation: slideIn 0.2s ease-out;
+      max-width: 360px;
+    }
+    .toast-success { background: var(--green-dim); color: var(--green); border: 1px solid var(--green-dim); }
+    .toast-error { background: var(--red-dim); color: var(--red); border: 1px solid var(--red-dim); }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+    }
+
+    .age-cell { color: var(--text-muted); font-size: 11px; }
+  </style>
+</head>
+
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">COTRADER <span>approval dashboard</span></div>
+      <div class="status-dot" id="statusDot" title="Disconnected"></div>
+    </div>
+    <div class="header-right">
+      <span id="lastRefresh">--</span>
+      <button class="refresh-btn" onclick="refreshAll()">Refresh</button>
+    </div>
+  </div>
+
+  <!-- Halt Banner -->
+  <div class="halt-banner" id="haltBanner">
+    <span>TRADING HALTED</span>
+    <button onclick="promptResume()">Resume Trading</button>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar" id="statusBar">
+    <div class="status-item">
+      <span class="status-label">State:</span>
+      <span class="status-value" id="sState">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Cycle:</span>
+      <span class="status-value" id="sCycle">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">VIX:</span>
+      <span class="status-value" id="sVix">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Open:</span>
+      <span class="status-value" id="sOpen">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Today:</span>
+      <span class="status-value" id="sToday">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Pending:</span>
+      <span class="status-value" id="sPending">--</span>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main">
+
+    <!-- Pending Recommendations -->
+    <div>
+      <div class="section-title">Pending Recommendations</div>
+      <div id="pendingContainer">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Recent Decisions -->
+    <div>
+      <div class="section-title">Recent Decisions</div>
+      <div class="history-grid">
+        <div class="history-card">
+          <h4>ACCEPTED</h4>
+          <div id="acceptedList"><div class="empty-state">None</div></div>
+        </div>
+        <div class="history-card">
+          <h4>REJECTED</h4>
+          <div id="rejectedList"><div class="empty-state">None</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Approve Modal -->
+  <div class="modal-overlay" id="approveModal">
+    <div class="modal">
+      <h3>Approve Recommendation</h3>
+      <div id="modalRecSummary" style="color:var(--text-secondary);margin-bottom:8px;font-size:11px;"></div>
+      <label>Portfolio</label>
+      <select id="modalPortfolio"></select>
+      <label>Notes</label>
+      <textarea id="modalNotes" placeholder="Why are you approving this trade?"></textarea>
+      <div class="modal-actions">
+        <button class="btn btn-defer" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-approve" id="modalConfirmBtn" onclick="confirmApprove()">Confirm Approve</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reject Modal -->
+  <div class="modal-overlay" id="rejectModal">
+    <div class="modal">
+      <h3>Reject Recommendation</h3>
+      <div id="rejectModalSummary" style="color:var(--text-secondary);margin-bottom:8px;font-size:11px;"></div>
+      <label>Reason</label>
+      <textarea id="rejectReason" placeholder="Why are you rejecting?"></textarea>
+      <div class="modal-actions">
+        <button class="btn btn-defer" onclick="closeRejectModal()">Cancel</button>
+        <button class="btn btn-reject" id="rejectConfirmBtn" onclick="confirmReject()">Confirm Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    // =====================================================================
+    // State
+    // =====================================================================
+    const API = window.location.origin;
+    let portfolioList = [];
+    let pendingRecs = [];
+    let currentApproveId = null;
+    let currentRejectId = null;
+    let connected = false;
+
+    // =====================================================================
+    // Init
+    // =====================================================================
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchPortfolios();
+      refreshAll();
+      setInterval(refreshAll, 15000);
+    });
+
+    async function refreshAll() {
+      await Promise.all([fetchStatus(), fetchPending(), fetchHistory()]);
+      document.getElementById('lastRefresh').textContent =
+        new Date().toLocaleTimeString();
+    }
+
+    // =====================================================================
+    // API calls
+    // =====================================================================
+
+    async function apiFetch(path, opts = {}) {
+      try {
+        const resp = await fetch(API + path, {
+          headers: { 'Content-Type': 'application/json' },
+          ...opts,
+        });
+        setConnected(true);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return await resp.json();
+      } catch (e) {
+        setConnected(false);
+        throw e;
+      }
+    }
+
+    function setConnected(v) {
+      connected = v;
+      const dot = document.getElementById('statusDot');
+      dot.className = 'status-dot' + (v ? ' connected' : '');
+      dot.title = v ? 'Connected' : 'Disconnected';
+    }
+
+    async function fetchPortfolios() {
+      try {
+        const data = await apiFetch('/api/portfolios');
+        portfolioList = data.portfolios || [];
+        populatePortfolioDropdown();
+      } catch (e) {
+        console.warn('Could not load portfolios:', e);
+      }
+    }
+
+    function populatePortfolioDropdown() {
+      const sel = document.getElementById('modalPortfolio');
+      sel.innerHTML = '<option value="">(auto / suggested)</option>';
+      portfolioList.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        sel.appendChild(opt);
+      });
+    }
+
+    async function fetchStatus() {
+      try {
+        const data = await apiFetch('/api/status');
+        const d = data.data || {};
+        const msg = data.message || '';
+
+        // Parse status message lines
+        const lines = msg.split('\n');
+        const get = (prefix) => {
+          const line = lines.find(l => l.startsWith(prefix));
+          return line ? line.split(': ').slice(1).join(': ').trim() : '--';
+        };
+
+        const state = get('State');
+        const el = document.getElementById('sState');
+        el.textContent = state;
+        el.className = 'status-value';
+        if (state.includes('monitoring')) el.classList.add('state-monitoring');
+        else if (state.includes('review')) el.classList.add('state-review');
+        else if (state.includes('halted')) el.classList.add('state-halted');
+
+        document.getElementById('sCycle').textContent = get('Cycle');
+        document.getElementById('sVix').textContent = get('VIX');
+        document.getElementById('sOpen').textContent = get('Open trades');
+        document.getElementById('sToday').textContent = get('Trades today');
+        document.getElementById('sPending').textContent = get('Pending entry');
+
+        // Halt banner
+        const banner = document.getElementById('haltBanner');
+        if (state.includes('halted')) {
+          banner.classList.add('visible');
+        } else {
+          banner.classList.remove('visible');
+        }
+      } catch (e) {
+        console.warn('Status fetch failed:', e);
+      }
+    }
+
+    async function fetchPending() {
+      try {
+        pendingRecs = await apiFetch('/api/pending');
+        renderPending();
+      } catch (e) {
+        console.warn('Pending fetch failed:', e);
+      }
+    }
+
+    async function fetchHistory() {
+      try {
+        const data = await apiFetch('/api/history');
+        renderHistory('acceptedList', data.accepted || []);
+        renderHistory('rejectedList', data.rejected || []);
+      } catch (e) {
+        console.warn('History fetch failed:', e);
+      }
+    }
+
+    // =====================================================================
+    // Renderers
+    // =====================================================================
+
+    function renderPending() {
+      const container = document.getElementById('pendingContainer');
+      if (!pendingRecs.length) {
+        container.innerHTML = '<div class="empty-state">No pending recommendations</div>';
+        return;
+      }
+
+      let html = `<table class="rec-table">
+        <thead><tr>
+          <th>Type</th><th>Underlying</th><th>Strategy</th>
+          <th>Conf</th><th>Urgency</th><th>Rationale</th><th>Age</th><th>Actions</th>
+        </tr></thead><tbody>`;
+
+      pendingRecs.forEach(rec => {
+        const type = rec.recommendation_type || 'entry';
+        const typeCls = 'type-' + type;
+        const conf = rec.confidence || 0;
+        const confCls = conf >= 7 ? 'conf-high' : conf >= 4 ? 'conf-mid' : 'conf-low';
+        const age = timeAgo(rec.created_at);
+        const urgency = rec.exit_urgency || '--';
+        const rationale = (rec.rationale || '').substring(0, 80);
+        const shortId = rec.id.substring(0, 8);
+
+        html += `<tr>
+          <td><span class="type-badge ${typeCls}">${type}</span></td>
+          <td style="font-weight:600">${rec.underlying || '--'}</td>
+          <td>${formatStrategy(rec.strategy_type)}</td>
+          <td>
+            <div class="confidence-bar">
+              <div class="confidence-fill ${confCls}" style="width:${conf * 8}px"></div>
+              <span>${conf}</span>
+            </div>
+          </td>
+          <td>${urgency}</td>
+          <td class="rationale-cell" title="${escHtml(rec.rationale || '')}">${escHtml(rationale)}</td>
+          <td class="age-cell">${age}</td>
+          <td>
+            <div class="action-btns">
+              <button class="btn btn-approve" onclick="openApproveModal('${rec.id}')">Approve</button>
+              <button class="btn btn-reject" onclick="openRejectModal('${rec.id}')">Reject</button>
+              <button class="btn btn-defer" onclick="deferRec('${rec.id}')">Defer</button>
+            </div>
+          </td>
+        </tr>`;
+      });
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    function renderHistory(containerId, recs) {
+      const el = document.getElementById(containerId);
+      if (!recs.length) {
+        el.innerHTML = '<div class="empty-state" style="padding:16px;">None</div>';
+        return;
+      }
+      let html = '';
+      recs.forEach(r => {
+        const time = r.reviewed_at ? new Date(r.reviewed_at).toLocaleString() : '--';
+        html += `<div class="history-item">
+          <span class="hi-left">${r.underlying || '--'} ${formatStrategy(r.strategy_type)}</span>
+          <span class="hi-time">${time}</span>
+        </div>`;
+      });
+      el.innerHTML = html;
+    }
+
+    // =====================================================================
+    // Actions
+    // =====================================================================
+
+    function openApproveModal(recId) {
+      currentApproveId = recId;
+      const rec = pendingRecs.find(r => r.id === recId);
+      document.getElementById('modalRecSummary').textContent = rec
+        ? `${rec.recommendation_type.toUpperCase()} ${rec.underlying} ${formatStrategy(rec.strategy_type)} (conf: ${rec.confidence})`
+        : recId.substring(0, 8);
+      document.getElementById('modalNotes').value = '';
+      if (rec && rec.suggested_portfolio) {
+        document.getElementById('modalPortfolio').value = rec.suggested_portfolio;
+      } else {
+        document.getElementById('modalPortfolio').value = '';
+      }
+      document.getElementById('approveModal').classList.add('visible');
+    }
+
+    function closeModal() {
+      document.getElementById('approveModal').classList.remove('visible');
+      currentApproveId = null;
+    }
+
+    async function confirmApprove() {
+      if (!currentApproveId) return;
+      const btn = document.getElementById('modalConfirmBtn');
+      btn.disabled = true;
+      btn.textContent = 'Approving...';
+
+      try {
+        const body = {
+          notes: document.getElementById('modalNotes').value,
+          portfolio: document.getElementById('modalPortfolio').value,
+        };
+        const result = await apiFetch(`/api/approve/${currentApproveId}`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        showToast(result.message || 'Approved', 'success');
+        closeModal();
+        await refreshAll();
+      } catch (e) {
+        showToast('Approve failed: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Confirm Approve';
+      }
+    }
+
+    function openRejectModal(recId) {
+      currentRejectId = recId;
+      const rec = pendingRecs.find(r => r.id === recId);
+      document.getElementById('rejectModalSummary').textContent = rec
+        ? `${rec.recommendation_type.toUpperCase()} ${rec.underlying} ${formatStrategy(rec.strategy_type)}`
+        : recId.substring(0, 8);
+      document.getElementById('rejectReason').value = '';
+      document.getElementById('rejectModal').classList.add('visible');
+    }
+
+    function closeRejectModal() {
+      document.getElementById('rejectModal').classList.remove('visible');
+      currentRejectId = null;
+    }
+
+    async function confirmReject() {
+      if (!currentRejectId) return;
+      const btn = document.getElementById('rejectConfirmBtn');
+      btn.disabled = true;
+      btn.textContent = 'Rejecting...';
+
+      try {
+        const body = { reason: document.getElementById('rejectReason').value };
+        const result = await apiFetch(`/api/reject/${currentRejectId}`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        showToast(result.message || 'Rejected', 'success');
+        closeRejectModal();
+        await refreshAll();
+      } catch (e) {
+        showToast('Reject failed: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Confirm Reject';
+      }
+    }
+
+    async function deferRec(recId) {
+      try {
+        const result = await apiFetch(`/api/defer/${recId}`, { method: 'POST' });
+        showToast(result.message || 'Deferred', 'success');
+        await refreshAll();
+      } catch (e) {
+        showToast('Defer failed: ' + e.message, 'error');
+      }
+    }
+
+    async function promptResume() {
+      const rationale = prompt('Rationale for resuming trading:');
+      if (!rationale) return;
+      try {
+        const result = await apiFetch('/api/resume', {
+          method: 'POST',
+          body: JSON.stringify({ rationale }),
+        });
+        showToast(result.message || 'Resumed', 'success');
+        await refreshAll();
+      } catch (e) {
+        showToast('Resume failed: ' + e.message, 'error');
+      }
+    }
+
+    // =====================================================================
+    // Utilities
+    // =====================================================================
+
+    function timeAgo(isoStr) {
+      if (!isoStr) return '--';
+      const diff = Date.now() - new Date(isoStr).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + 'm ago';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + 'h ago';
+      return Math.floor(hrs / 24) + 'd ago';
+    }
+
+    function formatStrategy(s) {
+      if (!s) return '--';
+      return s.replace(/_/g, ' ');
+    }
+
+    function escHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function showToast(msg, type) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = 'toast toast-' + type;
+      toast.textContent = msg;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 4000);
+    }
+  </script>
+
+</body>
+</html>

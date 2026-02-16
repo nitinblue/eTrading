@@ -76,24 +76,21 @@ class MLDataPipeline:
             True if data accumulated successfully
         """
         try:
-            # Step 1: Ensure daily snapshot exists (from your SnapshotService)
-            # This is probably already being called - just verify
-
-            snapshot_svc = SnapshotService(self.session)
-            
-            # Check if today's snapshot exists
+            # Step 1: Ensure daily snapshot exists
+            # Workflow engine calls capture_all_portfolio_snapshots() before this.
+            # If snapshot is missing, capture via ORM-direct method.
 
             today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-            
+
             existing = self.session.query(DailyPerformanceORM).filter_by(
                 portfolio_id=portfolio.id,
                 date=today
             ).first()
-            
+
             if not existing:
-                # Capture if not exists
-                snapshot_svc.capture_daily_snapshot(portfolio, positions)
-                logger.info("ML Pipeline: Captured daily snapshot")
+                snapshot_svc = SnapshotService(self.session)
+                snapshot_svc.capture_all_portfolio_snapshots()
+                logger.info("ML Pipeline: Captured daily snapshots via ORM")
             
             # Step 2: Extract and store ML features
             # (We could create a separate MLFeatureORM, but for now
