@@ -1,0 +1,30 @@
+{
+  "_comment": "Trade Booking JSON Template",
+  "_usage": [
+    "python -m trading_cotrader.cli.book_trade --file path/to/trade.json",
+    "python -m trading_cotrader.cli.book_trade --file path/to/trade.json --dry-run",
+    "python -m trading_cotrader.cli.book_trade --file path/to/trade.json --no-broker"
+  ],
+  "_symbol_format": ".TICKER YYMMDD P/C STRIKE  e.g. .SPY260320P550 = SPY Put, strike 550, expiry 2026-03-20",
+  "_quantity": "positive = buy, negative = sell",
+  "_strategy_types": [
+    "single", "vertical_spread", "iron_condor", "iron_butterfly",
+    "straddle", "strangle", "butterfly", "condor", "jade_lizard",
+    "big_lizard", "ratio_spread", "calendar_spread",
+    "covered_call", "protective_put", "collar", "diagonal",
+    "calendar_double", "custom"
+  ],
+  "_portfolio_names": ["core_holdings", "medium_risk", "high_risk", "model_portfolio"],
+
+  "underlying": "SPY",
+  "strategy_type": "vertical_spread",
+  "legs": [
+    { "streamer_symbol": ".SPY260320P550", "quantity": -1 },
+    { "streamer_symbol": ".SPY260320P540", "quantity":  1 }
+  ],
+
+  "portfolio_name": "model_portfolio",
+  "notes": "SPY put credit spread, 550/540, Mar expiry",
+  "rationale": "High IV rank, selling premium into support level",
+  "confidence": 7
+}

@@ -5,7 +5,7 @@ Position Repository - Data access for positions
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime
+from datetime import date, datetime
 import logging
 
 from trading_cotrader.repositories.base import BaseRepository, DuplicateEntityError
@@ -207,8 +207,9 @@ class SymbolRepository(BaseRepository[dm.Symbol, SymbolORM]):
     
     def get_or_create_from_domain(self, symbol: dm.Symbol) -> Optional[SymbolORM]:
         """
-        Get existing symbol or create new one
-        Prevents duplicate symbols in database
+        Get existing symbol or create new one.
+        Uses savepoint so IntegrityError on duplicate doesn't
+        roll back the outer transaction.
         """
         try:
             # Build query
@@ -216,21 +217,27 @@ class SymbolRepository(BaseRepository[dm.Symbol, SymbolORM]):
                 ticker=symbol.ticker,
                 asset_type=symbol.asset_type.value
             )
-            
+
             # Add option-specific filters
             if symbol.asset_type == dm.AssetType.OPTION:
+                # Normalize expiration: DB stores datetime, domain may pass date
+                exp = symbol.expiration
+                if exp and isinstance(exp, date) and not isinstance(exp, datetime):
+                    exp = datetime(exp.year, exp.month, exp.day)
+
                 query = query.filter_by(
                     option_type=symbol.option_type.value,
                     strike=symbol.strike,
-                    expiration=symbol.expiration
+                    expiration=exp
                 )
-            
+
             # Try to find existing
             existing = query.first()
             if existing:
                 return existing
-            
-            # Create new
+
+            # Create new — use savepoint so IntegrityError only
+            # rolls back this insert, not the entire session
             symbol_orm = SymbolORM(
                 id=str(dm.uuid.uuid4()),
                 ticker=symbol.ticker,
@@ -241,10 +248,17 @@ class SymbolRepository(BaseRepository[dm.Symbol, SymbolORM]):
                 description=symbol.description,
                 multiplier=symbol.multiplier
             )
-            
-            created = self.create(symbol_orm)
-            return created
-            
+
+            try:
+                nested = self.session.begin_nested()
+                self.session.add(symbol_orm)
+                nested.commit()
+                return symbol_orm
+            except IntegrityError:
+                nested.rollback()
+                # Another transaction created it — fetch and return
+                return query.first()
+
         except Exception as e:
             logger.error(f"Error getting/creating symbol {symbol.ticker}: {e}")
             return None

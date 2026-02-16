@@ -15,7 +15,8 @@
       "Bash(wc:*)",
       "Bash(python -m harness.runner:*)",
       "Bash(python -m trading_cotrader.harness.runner:*)",
-      "Bash(python -m trading_cotrader.cli.book_trade:*)"
+      "Bash(python -m trading_cotrader.cli.book_trade:*)",
+      "Bash(python -m trading_cotrader.scripts.setup_database:*)"
     ]
   }
 }

@@ -126,6 +126,18 @@ class RiskCategory(Enum):
     MIXED = "mixed"            # Combination
 
 
+class TradeSource(Enum):
+    """Where did this trade originate? Used for performance attribution by source."""
+    MANUAL = "manual"                      # User-originated trade
+    SCREENER_VIX = "screener_vix"          # VIX regime screener
+    SCREENER_IV_RANK = "screener_iv_rank"  # IV rank screener
+    SCREENER_TECHNICAL = "screener_technical"  # Technical analysis screener
+    ASTROLOGY = "astrology"                # Astrology-based recommendation
+    AI_RECOMMENDATION = "ai_recommendation"  # AI/ML model recommendation
+    RESEARCH = "research"                  # Research-based trade
+    HEDGE = "hedge"                        # Hedging recommendation
+
+
 # ============================================================================
 # Value Objects (Immutable)
 # ============================================================================
@@ -674,11 +686,15 @@ class Trade:
     rolled_from_id: Optional[str] = None        # If this is a roll
     rolled_to_id: Optional[str] = None          # If rolled out
     
+    # === SOURCE TRACKING ===
+    trade_source: TradeSource = TradeSource.MANUAL
+    recommendation_id: Optional[str] = None  # Links to the recommendation that spawned this trade
+
     # === METADATA ===
     notes: str = ""
     tags: List[str] = field(default_factory=list)
     broker_trade_id: Optional[str] = None
-    
+
     @property
     def is_open(self) -> bool:
         return self.trade_status in [TradeStatus.EXECUTED, TradeStatus.PARTIAL]

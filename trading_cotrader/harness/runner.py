@@ -46,6 +46,7 @@ from trading_cotrader.harness.steps.step10_ml_status import MLStatusStep
 from trading_cotrader.harness.steps.step12_trade_booking import TradeBookingStep
 from trading_cotrader.harness.steps.step13_strategy_templates import StrategyTemplateStep
 from trading_cotrader.harness.steps.step14_portfolio_performance import PortfolioPerformanceStep
+from trading_cotrader.harness.steps.step15_recommendations import RecommendationStep
 
 
 def run_harness(skip_sync: bool = False, use_mock: bool = False):
@@ -82,6 +83,7 @@ def run_harness(skip_sync: bool = False, use_mock: bool = False):
         TradeBookingStep(context),
         StrategyTemplateStep(context),
         PortfolioPerformanceStep(context),
+        RecommendationStep(context),
         ]
     
     # Run all steps

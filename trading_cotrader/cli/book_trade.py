@@ -1,14 +1,14 @@
 """
-CLI: Book a WhatIf trade from a YAML file
-==========================================
+CLI: Book a WhatIf trade from a JSON (or YAML) file
+=====================================================
 
 Usage:
-    python -m trading_cotrader.cli.book_trade --file trade.yaml
-    python -m trading_cotrader.cli.book_trade --file trade.yaml --dry-run
-    python -m trading_cotrader.cli.book_trade --file trade.yaml --no-broker
+    python -m trading_cotrader.cli.book_trade --file trade.json
+    python -m trading_cotrader.cli.book_trade --file trade.json --dry-run
+    python -m trading_cotrader.cli.book_trade --file trade.json --no-broker
 
 Template:
-    See trading_cotrader/config/trade_template.yaml
+    See trading_cotrader/config/trade_template.json
 
 Supports:
     - Past-dated trades via trade_date field
@@ -17,13 +17,12 @@ Supports:
 """
 
 import argparse
+import json
 import sys
 from datetime import datetime, date
 from decimal import Decimal
 from pathlib import Path
 from typing import Dict, Any, Optional
-
-import yaml
 
 from trading_cotrader.services.trade_booking_service import (
     TradeBookingService, LegInput, TradeBookingResult
@@ -31,15 +30,21 @@ from trading_cotrader.services.trade_booking_service import (
 from trading_cotrader.harness.base import rich_table, format_currency, format_greek
 
 
-def load_trade_yaml(filepath: str) -> Dict[str, Any]:
-    """Load and validate a trade YAML file."""
+def load_trade_file(filepath: str) -> Dict[str, Any]:
+    """Load and validate a trade JSON or YAML file (auto-detects by extension)."""
     path = Path(filepath)
     if not path.exists():
         print(f"ERROR: File not found: {filepath}")
         sys.exit(1)
 
-    with open(path, 'r') as f:
-        data = yaml.safe_load(f)
+    ext = path.suffix.lower()
+    if ext in ('.yaml', '.yml'):
+        import yaml
+        with open(path, 'r') as f:
+            data = yaml.safe_load(f)
+    else:
+        with open(path, 'r') as f:
+            data = json.load(f)
 
     # Validate required fields
     required = ['underlying', 'strategy_type', 'legs']
@@ -361,20 +366,20 @@ def display_result(result: TradeBookingResult) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Book a WhatIf trade from YAML",
+        description="Book a WhatIf trade from JSON (or YAML)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m trading_cotrader.cli.book_trade --file trade.yaml
-  python -m trading_cotrader.cli.book_trade --file trade.yaml --no-broker
-  python -m trading_cotrader.cli.book_trade --file trade.yaml --dry-run
+  python -m trading_cotrader.cli.book_trade --file trade.json
+  python -m trading_cotrader.cli.book_trade --file trade.json --no-broker
+  python -m trading_cotrader.cli.book_trade --file trade.json --dry-run
 
 Template:
-  See trading_cotrader/config/trade_template.yaml
+  See trading_cotrader/config/trade_template.json
         """
     )
 
-    parser.add_argument('--file', '-f', required=True, help='Path to trade YAML file')
+    parser.add_argument('--file', '-f', required=True, help='Path to trade JSON file (YAML also supported)')
     parser.add_argument('--dry-run', action='store_true', help='Parse and validate only, do not book')
     parser.add_argument('--no-broker', action='store_true',
                        help='Book without broker (uses manual_greeks from YAML or zeros)')
@@ -382,10 +387,10 @@ Template:
     args = parser.parse_args()
 
     # Load YAML
-    trade_data = load_trade_yaml(args.file)
+    trade_data = load_trade_file(args.file)
 
     print("=" * 60)
-    print("  TRADE BOOKING FROM YAML")
+    print("  TRADE BOOKING")
     print("=" * 60)
     print(f"  File: {args.file}")
     print(f"  Underlying: {trade_data['underlying']}")

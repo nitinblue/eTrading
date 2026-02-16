@@ -1,0 +1,25 @@
+{
+  "underlying": "AAPL",
+  "strategy_type": "iron_condor",
+  "portfolio_name": "model_portfolio",
+  "trade_date": "2026-02-01",
+  "notes": "AAPL iron condor, Feb expiry, after earnings",
+  "rationale": "Post-earnings IV crush play, selling premium at elevated vol",
+  "confidence": 8,
+
+  "legs": [
+    { "streamer_symbol": ".AAPL260221P210", "quantity":  1 },
+    { "streamer_symbol": ".AAPL260221P220", "quantity": -1 },
+    { "streamer_symbol": ".AAPL260221C250", "quantity": -1 },
+    { "streamer_symbol": ".AAPL260221C260", "quantity":  1 }
+  ],
+
+  "manual_greeks": {
+    "legs": [
+      { "delta":  0.15, "gamma": 0.01, "theta": -0.02, "vega":  0.05, "mid_price": 1.20, "bid": 1.10, "ask": 1.30 },
+      { "delta": -0.30, "gamma": 0.02, "theta":  0.06, "vega": -0.10, "mid_price": 3.50, "bid": 3.40, "ask": 3.60 },
+      { "delta": -0.25, "gamma": 0.02, "theta":  0.05, "vega": -0.08, "mid_price": 2.80, "bid": 2.70, "ask": 2.90 },
+      { "delta":  0.10, "gamma": 0.01, "theta": -0.01, "vega":  0.04, "mid_price": 0.90, "bid": 0.80, "ask": 1.00 }
+    ]
+  }
+}

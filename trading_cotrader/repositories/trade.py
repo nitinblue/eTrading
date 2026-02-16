@@ -10,6 +10,7 @@ Updated for enhanced domain.py with:
 
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 import logging
 
@@ -127,6 +128,10 @@ class TradeRepository(BaseRepository[dm.Trade, TradeORM]):
                 rolled_from_id=getattr(trade, 'rolled_from_id', None),
                 rolled_to_id=getattr(trade, 'rolled_to_id', None),
                 
+                # Source tracking
+                trade_source=self._get_trade_source(trade),
+                recommendation_id=getattr(trade, 'recommendation_id', None),
+
                 # State
                 is_open=is_open,
                 notes=getattr(trade, 'notes', ''),
@@ -158,6 +163,15 @@ class TradeRepository(BaseRepository[dm.Trade, TradeORM]):
             logger.exception("Full trace:")
             return None
     
+    def _get_trade_source(self, trade) -> str:
+        """Extract trade_source value as a string."""
+        source = getattr(trade, 'trade_source', None)
+        if source is None:
+            return 'manual'
+        if hasattr(source, 'value'):
+            return source.value
+        return str(source)
+
     def _get_greek(self, trade, greeks_attr: str, greek_name: str):
         """Safely get a Greek value from a trade's Greeks object"""
         greeks = getattr(trade, greeks_attr, None)
@@ -499,6 +513,16 @@ class TradeRepository(BaseRepository[dm.Trade, TradeORM]):
         for field in ['intent_trade_id', 'executed_trade_id', 'rolled_from_id', 'rolled_to_id', 'portfolio_id']:
             if hasattr(dm.Trade, field):
                 trade_kwargs[field] = getattr(trade_orm, field, None)
+
+        # Add source tracking
+        if hasattr(dm.Trade, 'trade_source') and hasattr(trade_orm, 'trade_source'):
+            source_val = getattr(trade_orm, 'trade_source', 'manual') or 'manual'
+            try:
+                trade_kwargs['trade_source'] = dm.TradeSource(source_val)
+            except (ValueError, AttributeError):
+                trade_kwargs['trade_source'] = dm.TradeSource.MANUAL
+        if hasattr(dm.Trade, 'recommendation_id') and hasattr(trade_orm, 'recommendation_id'):
+            trade_kwargs['recommendation_id'] = getattr(trade_orm, 'recommendation_id', None)
         
         # Build entry Greeks if available
         if hasattr(dm.Trade, 'entry_greeks') and hasattr(trade_orm, 'entry_delta'):
@@ -567,9 +591,18 @@ class StrategyRepository(BaseRepository[dm.Strategy, StrategyORM]):
                 dte_exit=getattr(strategy, 'dte_exit', 7),
                 description=strategy.description
             )
-            
-            created = self.create(strategy_orm)
-            return created
+
+            try:
+                nested = self.session.begin_nested()
+                self.session.add(strategy_orm)
+                nested.commit()
+                return strategy_orm
+            except IntegrityError:
+                nested.rollback()
+                return self.session.query(StrategyORM).filter_by(
+                    name=strategy.name,
+                    strategy_type=strategy_type_value
+                ).first()
             
         except Exception as e:
             logger.error(f"Error getting/creating strategy {strategy.name}: {e}")

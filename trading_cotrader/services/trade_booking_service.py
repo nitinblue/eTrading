@@ -123,6 +123,8 @@ class TradeBookingService:
         confidence: int = 5,
         portfolio_name: Optional[str] = None,
         trade_date: Optional[date] = None,
+        trade_source: Optional['dm.TradeSource'] = None,
+        recommendation_id: Optional[str] = None,
     ) -> TradeBookingResult:
         """
         Book a WhatIf trade end-to-end.
@@ -176,9 +178,17 @@ class TradeBookingService:
                 trade_date=trade_date,
             )
 
+            # Step 3b: Set source tracking
+            if trade_source:
+                trade.trade_source = trade_source
+            if recommendation_id:
+                trade.recommendation_id = recommendation_id
+
             # Step 4: Persist to DB
+            source_tag = trade_source.value if trade_source else 'manual'
             event = self._create_event(trade, strategy_type, rationale, confidence,
-                                       trade_date=trade_date)
+                                       trade_date=trade_date,
+                                       extra_tags=[f'source:{source_tag}'])
             self._persist_trade(trade, event, portfolio_name=portfolio_name)
 
             # Step 5: Update containers
@@ -235,6 +245,10 @@ class TradeBookingService:
         """
         greeks_map: Dict[str, dm.Greeks] = {}
         quotes_map: Dict[str, Dict] = {}
+
+        if not self.broker:
+            logger.info("No broker — skipping market data fetch (mock mode)")
+            return greeks_map, quotes_map
 
         # Fetch option Greeks via DXLink
         if option_symbols:
@@ -474,6 +488,7 @@ class TradeBookingService:
         rationale: str,
         confidence: int,
         trade_date: Optional[date] = None,
+        extra_tags: Optional[List[str]] = None,
     ) -> ev.TradeEvent:
         """Create a TradeEvent for AI learning."""
         timestamp = datetime.utcnow()
@@ -495,7 +510,7 @@ class TradeBookingService:
                 rationale=rationale or trade.notes,
                 confidence_level=confidence,
             ),
-            tags=['what_if', strategy_type],
+            tags=['what_if', strategy_type] + (extra_tags or []),
         )
 
     def _persist_trade(

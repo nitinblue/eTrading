@@ -264,6 +264,50 @@ class PerformanceMetricsService:
             results.append(metrics)
         return results
 
+    def calculate_source_breakdown(
+        self,
+        portfolio_id: str,
+        label: str = "",
+    ) -> Dict[str, PerformanceMetrics]:
+        """
+        Calculate performance metrics grouped by trade source.
+
+        Enables performance attribution by origin: which screener, manual
+        decision, or external source produces better results?
+
+        Args:
+            portfolio_id: Portfolio UUID.
+            label: Display label prefix.
+
+        Returns:
+            Dict of source → PerformanceMetrics.
+        """
+        closed_statuses = ['closed', 'expired', 'rolled']
+        trades = (
+            self.session.query(TradeORM)
+            .filter(TradeORM.portfolio_id == portfolio_id)
+            .filter(TradeORM.trade_status.in_(closed_statuses))
+            .order_by(TradeORM.closed_at.asc())
+            .all()
+        )
+
+        # Group by trade_source
+        by_source: Dict[str, List[TradeORM]] = {}
+        for trade in trades:
+            source = getattr(trade, 'trade_source', 'manual') or 'manual'
+            by_source.setdefault(source, []).append(trade)
+
+        result = {}
+        for source, source_trades in by_source.items():
+            result[source] = self._compute_metrics(
+                trades=source_trades,
+                open_trades=[],
+                label=f"{label} [{source}]" if label else source,
+                portfolio_id=portfolio_id,
+            )
+
+        return result
+
     # =========================================================================
     # Internal computation
     # =========================================================================

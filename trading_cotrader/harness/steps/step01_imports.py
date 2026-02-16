@@ -35,8 +35,8 @@ class ImportStep(TestStep):
             ("Domain", "core.models.events", True),
             ("Market Data", "services.market_data.MarketDataService", True),
             ("Market Data", "services.market_data.InstrumentRegistry", True),
-            ("Hedging", "services.hedging.HedgeCalculator", True),
-            ("Hedging", "services.hedging.RiskBucket", True),
+            ("Hedging", "services.hedging.hedge_calculator.HedgeCalculator", True),
+            ("Hedging", "server.contracts.RiskBucket", True),
         ]
         
         for category, module_path, required in modules:

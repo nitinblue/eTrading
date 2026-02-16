@@ -1,6 +1,11 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 15, 2026 (session 6)
+# Last Updated: February 15, 2026 (session 7)
+
+## STANDING INSTRUCTIONS
+- **ALWAYS update CLAUDE.md** after any major change (new files, new features, schema changes, architectural decisions). Update: session log, code map, file structure, "what user can do today", and any affected sections.
+- **ALWAYS update MEMORY.md** (`~/.claude/projects/.../memory/MEMORY.md`) with session summary.
+- If context is running low, prioritize writing CLAUDE.md updates BEFORE doing more work.
 
 ---
 
@@ -92,6 +97,7 @@ Not touching today: UI
   Write this in claude.ai BEFORE opening Claude Code.
 -->
 
+Not sure if this was fully done, please pick it up from here.. ONce this is done, please check new business objective for Feb 15, 2026 (Session 2)
 FILE: trading_cotrader\harness\steps\step03_portfolio.py - please do not mock any tades here (remove _get_mock_positions), always look for what if trades you have in whatif portfolio.
 FILE: trading_cotrader\harness\steps\step12_trade_booking.py - lets improve the interface, can i run a cli command passing yaml for trade that needs to be booked, Please give me yaml template..can we support booking of what-if trade for past dated trades. 
 FILE: trading_cotrader\harness\runner.py [3/11] Step 3: Portfolio Sync .. Lets ensure Portfolio tables have virtual construct of our various portfolios. And when printing portfolio please dont print portfolio as is, print all virtual portflio side by side... Please enable  #EventsStep(context), #MLStatusStep(context) and print something meaningfull, for now may be print table stats and top 5 recent entries.
@@ -106,12 +112,12 @@ COMMAND TO RUN:
 - User can sync portfolio and pull live positions with current market prices and Greeks
 - User can create a WhatIf trade (identical object to a real trade, just flagged as WHAT_IF)
 - User can book a WhatIf trade end-to-end via `TradeBookingService` with live DXLink Greeks/quotes → DB → containers → snapshot → ML
-- User can book a WhatIf trade from YAML via CLI: `python -m trading_cotrader.cli.book_trade --file trade.yaml [--no-broker] [--dry-run]`
-- User can book past-dated WhatIf trades (via `trade_date` field in YAML or `trade_date` param in `TradeBookingService`)
+- User can book a WhatIf trade from JSON via CLI: `python -m trading_cotrader.cli.book_trade --file trade.json [--no-broker] [--dry-run]`
+- User can book past-dated WhatIf trades (via `trade_date` field in JSON or `trade_date` param in `TradeBookingService`)
 - User can book trades with manual Greeks (no broker needed) — useful for historical/backtesting data
 - User can book any of 12 strategy types as WhatIf trades (single, vertical, iron condor, iron butterfly, straddle, strangle, butterfly, condor, jade lizard, big lizard, ratio spread, calendar spread)
 - User can look up strategy templates (risk category, bias, theta/vega profile, exit rules) via `strategy_templates.py`
-- User can run the test harness (`python -m trading_cotrader.harness.runner`) — 13 steps in skip-sync mode (steps 9+10 now enabled with event/ML stats)
+- User can run the test harness (`python -m trading_cotrader.harness.runner --skip-sync`) — 12/14 pass (2 skip without broker), 15 steps total
 - User can see all portfolios side by side in step 3 (virtual portfolios + broker + whatif, with trade counts, capital, P&L)
 - User can see event table stats (by type, by underlying, ML readiness) and top 5 recent events in step 9
 - User can see ML data readiness (trade stats, supervised/RL thresholds, model import status) in step 10
@@ -119,15 +125,24 @@ COMMAND TO RUN:
 - User can view performance metrics per portfolio (win rate, P&L, profit factor, expectancy, max drawdown, Sharpe, CAGR) via `PerformanceMetricsService`
 - User can see strategy permissions matrix — which strategies are allowed in which portfolio tier
 - User can route WhatIf trades to specific portfolios via `portfolio_name` parameter in `TradeBookingService`
+- User can run the VIX regime screener against any watchlist via CLI: `python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY,QQQ,IWM --no-broker`
+- User can list pending recommendations: `python -m trading_cotrader.cli.accept_recommendation --list`
+- User can accept a recommendation (books WhatIf trade with source tracking): `python -m trading_cotrader.cli.accept_recommendation --accept <ID> --notes "reason"`
+- User can reject a recommendation: `python -m trading_cotrader.cli.accept_recommendation --reject <ID> --reason "too risky"`
+- User can see which trade source (screener, manual, astrology, etc.) each trade came from
+- User can get performance metrics sliced by trade source via `PerformanceMetricsService.calculate_source_breakdown()`
+- User can create custom watchlists or fetch TastyTrade public watchlists
+- User can expire old recommendations automatically
 - User can log events against trades via CLI
 - User can start the grid server (`python -m trading_cotrader.runners.run_grid_server`) and view positions in browser
 
 **Blocked / Not Yet Working:**
-- `is_open` property vs field mismatch in `repositories/trade.py` — breaks trade persistence round-trips
+- `is_open` property vs field mismatch in `repositories/trade.py` — breaks trade persistence round-trips (trade_status is source of truth, is_open should be computed)
 - WhatIf end-to-end lifecycle (intent → evaluate → execute → close) not yet validated
 - 6 strategies not yet testable via harness: covered call, protective put, collar (need equity legs), diagonal, calendar double (need two expirations), custom (no fixed structure)
 - UI exists as HTML/JSX prototypes (`ui/`) but is not a production React app yet
-- `base.py:create()` rollback on SymbolORM IntegrityError cascades and breaks event FK in same session — pre-existing repo pattern issue
+- Performance metrics return zeros (no closed trades yet to measure)
+- IV rank screener is a stub (needs IV rank data source)
 
 ---
 
@@ -194,7 +209,7 @@ COMMAND TO RUN:
 - OBJECTIVE IT SERVES: #7 (risk aggregation needs all state in one place)
 
 ### Decision 11: Test Harness Over pytest for Integration Testing (Feb 14, 2026)
-- DECISION: `harness/` provides a step-based integration test framework (steps 01-14) with rich terminal output. The harness tests the full vertical slice: imports → broker → portfolio → market data → risk → hedging → trades → events → ML status → containers → trade booking → strategy templates → portfolio tiers + performance metrics. pytest reserved for unit tests (not yet written).
+- DECISION: `harness/` provides a step-based integration test framework (steps 01-15) with rich terminal output. The harness tests the full vertical slice: imports → broker → portfolio → market data → risk → hedging → trades → events → ML status → containers → trade booking → strategy templates → portfolio tiers + performance metrics → recommendations & screeners. pytest reserved for unit tests (not yet written).
 - CONSTRAINT THAT FORCED IT: Integration testing across broker + DB + domain requires ordered steps with shared state. pytest fixtures don't naturally model this.
 - OBJECTIVE IT SERVES: All objectives (validates the entire stack works end-to-end)
 
@@ -214,6 +229,10 @@ COMMAND TO RUN:
 | 1 (Deploy 250K) | `config/risk_config.yaml` — 4 portfolio tiers defined (Core $200K, Medium $20K, High $10K, Model $25K). `config/risk_config_loader.py` — risk + portfolio config loading with `PortfolioConfig`, `PortfoliosConfig` dataclasses. `services/portfolio_manager.py` — initializes portfolios from YAML, validates allocations, routes trades. `core/database/schema.py` — portfolio_type, per-portfolio risk limits in ORM. |
 | 2 (Income generation) | `analytics/pricing/option_pricer.py` — Black-Scholes. `analytics/greeks/engine.py` — Greeks. `analytics/pricing/pnl_calculator.py` — P&L. `services/pricing/` — additional BS, greeks, implied vol, probability, scenarios. |
 | 3 (80/20 risk book) | `services/risk/limits.py` — risk limits manager. `services/risk/portfolio_risk.py` — portfolio risk analyzer. `core/models/domain.py` — `PortfolioType` enum, `RiskCategory` on trades. `services/risk_manager.py` — top-level risk orchestration. `config/risk_config.yaml` — per-portfolio strategy permissions (Core=5, Med=10, High=10, Model=17 allowed strategies). `services/portfolio_manager.py` — validates strategy-to-portfolio routing. |
+| Session2-1 (Screeners) | `services/screeners/` — VIX regime screener (iron condor/butterfly/calendar by VIX level), IV rank screener (stub). `services/recommendation_service.py` — orchestrator. `services/watchlist_service.py` — TastyTrade + custom watchlists. `core/models/recommendation.py` — Recommendation lifecycle (PENDING→ACCEPTED/REJECTED/EXPIRED). |
+| Session2-2 (Watchlists) | `services/watchlist_service.py` — fetches TastyTrade public watchlists via SDK, caches in DB (`WatchlistORM`), supports custom. `repositories/watchlist.py` — CRUD. |
+| Session2-3 (Rec workflow) | Recommendations are first-class objects. NOT auto-added to portfolio. User must accept with rationale. `cli/accept_recommendation.py` — CLI for accept/reject/list. |
+| Session2-4 (Source tracking) | `TradeSource` enum on every trade. `trade_source` + `recommendation_id` columns in DB. `PerformanceMetricsService.calculate_source_breakdown()` — metrics by source. |
 | 4 (Wheel strategy / CSP) | Domain objects support all trade types. `core/models/strategy_templates.py` — 18 strategy templates with risk/bias/Greeks profiles. `services/trade_booking_service.py` — end-to-end WhatIf booking with live Greeks. No strategy-specific automation yet — this is a gap. |
 | 5 (Every decision logged) | `services/event_logger.py` — event logging service. `core/models/events.py` — event sourcing models. `repositories/event.py` — event repository. `cli/log_event.py` — CLI interface. `services/trade_booking_service.py` — auto-logs TradeEvent on every WhatIf booking. |
 | 6 (System surfaces insights) | `ai_cotrader/` — structure exists. Feature extraction and RL agents stubbed. NOT YET WIRED TO LIVE DATA. |
@@ -225,11 +244,13 @@ COMMAND TO RUN:
 ## [CLAUDE OWNS] CURRENT BLOCKER
 <!-- What is actively broken right now. Claude updates this every session. -->
 
-**Blocker:** `is_open` property vs field mismatch in `repositories/trade.py`
-**Impact:** Trade persistence round-trips break — the repo tries to read/write `is_open` as a stored DB field, but the domain model defines it as a computed property from `trade_status`.
-**Fix:** `is_open` must be computed from `trade_status`, never read from DB as a stored field. Remove all `is_open` field access in `repositories/trade.py`.
+**Blocker (reduced severity):** `is_open` property vs field mismatch in `repositories/trade.py`
+**Impact:** `is_open` is stored as a DB field but should be computed from `trade_status`. Currently doesn't block normal operation (trades create/read correctly) but will cause inconsistencies when trade lifecycle state transitions are implemented.
+**Fix needed:** Remove `is_open` stored field usage; make it purely computed from `trade_status`.
 **File to fix:** `repositories/trade.py` (lines ~58-65, ~273-275, ~451-453)
-**Test command after fix:** `python -m harness.runner --skip-sync`
+
+**Resolved (session 7):** SymbolORM IntegrityError cascade — fixed with savepoint pattern. Trade + event + legs now persist correctly even when symbols already exist.
+**Resolved (session 7):** date vs datetime symbol lookup — normalized in `get_or_create_from_domain()`.
 
 ---
 
@@ -238,6 +259,36 @@ COMMAND TO RUN:
   RULE: Claude appends one entry at TOP after every session. Never deletes.
   This is the permanent record of what got done.
 -->
+
+### Feb 15, 2026 (session 7)
+- FIXED: **SymbolORM IntegrityError cascade** — `SymbolRepository.get_or_create_from_domain()` now uses savepoint (`session.begin_nested()`) so duplicate symbol IntegrityError only rolls back the insert, not the entire session. Previously, booking a trade with existing symbols would silently fail to persist the trade + event.
+- FIXED: **date vs datetime mismatch** — Symbol lookups failed because DB stores `datetime(2026,2,21,0,0)` but domain passes `date(2026,2,21)`. Added normalization in `get_or_create_from_domain()`.
+- FIXED: Same savepoint fix applied to `StrategyRepository.get_or_create_from_domain()` in `repositories/trade.py`
+- FIXED: Step 1 import paths — `HedgeCalculator` → `services.hedging.hedge_calculator.HedgeCalculator`, `RiskBucket` → `server.contracts.RiskBucket`
+- CONVERTED: Trade templates from YAML to JSON — `config/trade_template.json`, `config/sample_past_trade.json` (YAML files removed)
+- UPDATED: `cli/book_trade.py` — auto-detects JSON/YAML by extension, removed hard `import yaml` dependency
+- TESTED: Full recommendation pipeline — VIX screener at 3 regimes (12/18/30), trade_source DB round-trip, CLI accept/reject, edge cases (empty watchlist, invalid portfolio, expired recs, double reject)
+- VERIFIED: 12/14 harness steps pass (2 skip due to no broker), all bugs from session 6 resolved
+
+### Feb 15, 2026 (session 6)
+- BUILT: `core/models/recommendation.py` — Recommendation, RecommendationStatus, RecommendedLeg, MarketSnapshot, Watchlist domain models
+- BUILT: `core/models/domain.py` — Added `TradeSource` enum (MANUAL, SCREENER_VIX, SCREENER_IV_RANK, SCREENER_TECHNICAL, ASTROLOGY, AI_RECOMMENDATION, RESEARCH, HEDGE), `trade_source` + `recommendation_id` fields on Trade
+- BUILT: `core/database/schema.py` — Added `RecommendationORM` + `WatchlistORM` tables, `trade_source` + `recommendation_id` columns on TradeORM
+- BUILT: `repositories/recommendation.py` — CRUD for recommendations (create, get_pending, get_by_status, update, expire_old)
+- BUILT: `repositories/watchlist.py` — CRUD for watchlists (create, get_by_name, upsert, get_all)
+- BUILT: `services/watchlist_service.py` — Fetches TastyTrade public watchlists, caches in DB, custom watchlist support
+- BUILT: `services/screeners/screener_base.py` — Abstract screener base with strike selection + expiration helpers
+- BUILT: `services/screeners/vix_regime_screener.py` — VIX regime screener: low vol → iron condor, normal → iron butterfly, high vol → calendar spread
+- BUILT: `services/screeners/iv_rank_screener.py` — IV rank screener stub (needs IV data)
+- BUILT: `services/recommendation_service.py` — Orchestrator: run_screener, accept/reject lifecycle, auto-suggest portfolio from YAML config
+- BUILT: `cli/run_screener.py` — CLI to run screeners (`python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY,QQQ`)
+- BUILT: `cli/accept_recommendation.py` — CLI to list/accept/reject recommendations
+- BUILT: `harness/steps/step15_recommendations.py` — Tests full pipeline: watchlist → screener → recommendations → accept → trade with source
+- EXTENDED: `services/trade_booking_service.py` — Added `trade_source`, `recommendation_id` params; handles None broker gracefully
+- EXTENDED: `services/performance_metrics_service.py` — Added `calculate_source_breakdown()` for metrics by trade source
+- EXTENDED: `repositories/trade.py` — Maps `trade_source` + `recommendation_id` in create/to_domain
+- VERIFIED: 11/14 harness steps pass (3 skip due to no broker), step 15 passes in 448ms
+- NEXT: Implement Session 2 objectives 2-4 (TastyTrade watchlist fetch, recommendation workflow refinement)
 
 ### Feb 15, 2026 (session 5)
 - BUILT: `config/risk_config.yaml` — 4 portfolio tiers (Core Holdings $200K, Medium Risk $20K, High Risk $10K, Model Portfolio $25K) with allowed strategies, risk limits, exit rule profiles, preferred underlyings
@@ -344,7 +395,7 @@ with session_scope() as session:
 # Database setup
 python -m trading_cotrader.scripts.setup_database
 
-# Test harness (primary test/validation tool — 14 steps)
+# Test harness (primary test/validation tool — 15 steps)
 python -m trading_cotrader.harness.runner --skip-sync   # use existing DB data, no broker needed
 python -m trading_cotrader.harness.runner --mock        # mock data, no broker
 python -m trading_cotrader.harness.runner               # full test with broker connection
@@ -361,6 +412,17 @@ python -m trading_cotrader.playground.validate_data
 
 # Log a trading decision
 python -m trading_cotrader.cli.log_event --underlying SPY --strategy iron_condor --rationale "High IV rank"
+
+# Run screener (recommendations pipeline)
+python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY,QQQ,IWM --no-broker
+python -m trading_cotrader.cli.run_screener --screener vix --watchlist "Tom's Watchlist"
+python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY --mock-vix 28 --no-broker
+
+# Manage recommendations
+python -m trading_cotrader.cli.accept_recommendation --list
+python -m trading_cotrader.cli.accept_recommendation --accept <ID> --notes "Looks good" --portfolio high_risk
+python -m trading_cotrader.cli.accept_recommendation --reject <ID> --reason "Too risky"
+python -m trading_cotrader.cli.accept_recommendation --expire
 
 # Tests (note: tests/ dir is currently empty — harness is the primary test tool)
 pytest
@@ -419,6 +481,9 @@ with session_scope() as s:
 | Containers | Domain object state management (`containers/`) | ✅ Built |
 | Portfolio Mgmt | Multi-tier from YAML (`services/portfolio_manager.py`) | ✅ Built |
 | Performance | OptionsKit metrics (`services/performance_metrics_service.py`) | ✅ Built, needs trade data |
+| Screeners | VIX regime + IV rank stubs (`services/screeners/`) | ✅ VIX working, IV rank stub |
+| Recommendations | First-class rec objects (`services/recommendation_service.py`) | ✅ Built |
+| Source Tracking | TradeSource enum + source breakdown metrics | ✅ Built |
 
 ---
 
@@ -435,11 +500,16 @@ trading_cotrader/
 │   ├── volatility_surface.py        ✅ IV surface
 │   └── functional_portfolio.py      ✅ Functional portfolio analysis
 ├── cli/
-│   └── log_event.py                 ✅ CLI for logging trade decisions
+│   ├── log_event.py                 ✅ CLI for logging trade decisions
+│   ├── book_trade.py                ✅ CLI for booking WhatIf trades from YAML
+│   ├── run_screener.py              ✅ CLI for running screeners against watchlists
+│   └── accept_recommendation.py     ✅ CLI for listing/accepting/rejecting recommendations
 ├── config/
 │   ├── settings.py                  ✅
 │   ├── risk_config_loader.py        ✅ (extended with PortfolioConfig, PortfoliosConfig, ExitRuleProfile)
-│   └── risk_config.yaml             ✅ 4 portfolio tiers, exit rules, underlyings, strategy rules
+│   ├── risk_config.yaml             ✅ 4 portfolio tiers, exit rules, underlyings, strategy rules
+│   ├── trade_template.json          ✅ Trade booking template (JSON, replaces YAML)
+│   └── sample_past_trade.json       ✅ Sample past-dated trade with manual Greeks
 ├── containers/
 │   ├── container_manager.py         ✅ Orchestrates all containers
 │   ├── portfolio_container.py       ✅ Portfolio state
@@ -453,6 +523,7 @@ trading_cotrader/
 │   ├── models/events.py             ✅ Event sourcing models
 │   ├── models/calculations.py       ✅
 │   ├── models/strategy_templates.py  ✅ 18 strategy templates (risk, bias, Greeks, exits)
+│   ├── models/recommendation.py     ✅ Recommendation, Watchlist, RecommendedLeg domain models
 │   └── validation/validators.py     ✅
 ├── harness/                          ✅ TEST FRAMEWORK (replaces old debug_autotrader)
 │   ├── runner.py                    ✅ Main orchestrator (python -m trading_cotrader.harness.runner)
@@ -473,13 +544,16 @@ trading_cotrader/
 │       ├── step11_containers.py     ✅ Container integration
 │       ├── step12_trade_booking.py  ✅ Single WhatIf trade booking
 │       ├── step13_strategy_templates.py ✅ All 12 strategy template bookings
-│       └── step14_portfolio_performance.py ✅ Multi-tier portfolios + performance metrics
+│       ├── step14_portfolio_performance.py ✅ Multi-tier portfolios + performance metrics
+│       └── step15_recommendations.py ✅ Recommendation pipeline (watchlist → screener → accept)
 ├── repositories/
 │   ├── base.py                      ✅
 │   ├── portfolio.py                 ✅
 │   ├── trade.py                     ⚠️ is_open bug — fix first
 │   ├── position.py                  ✅
-│   └── event.py                     ✅
+│   ├── event.py                     ✅
+│   ├── recommendation.py            ✅ CRUD for recommendations
+│   └── watchlist.py                 ✅ CRUD for watchlists
 ├── runners/
 │   └── run_grid_server.py           ✅ WebSocket + REST server for UI
 ├── scripts/
@@ -502,6 +576,12 @@ trading_cotrader/
 │   ├── trade_booking_service.py     ✅ End-to-end WhatIf booking (DXLink → DB → containers → ML) + portfolio routing
 │   ├── portfolio_manager.py         ✅ Multi-tier portfolio init from YAML, strategy routing, validation
 │   ├── performance_metrics_service.py ✅ Win rate, CAGR, Sharpe, drawdown, strategy breakdown, weekly P&L
+│   ├── watchlist_service.py          ✅ TastyTrade + custom watchlist management
+│   ├── recommendation_service.py    ✅ Screener orchestrator, accept/reject lifecycle
+│   ├── screeners/                   ✅ Screener framework
+│   │   ├── screener_base.py         ✅ Abstract base with strike/expiration helpers
+│   │   ├── vix_regime_screener.py   ✅ VIX-based strategy recommendations
+│   │   └── iv_rank_screener.py      ⚠️ Stub (needs IV rank data)
 │   ├── risk_manager.py              ✅ Top-level risk orchestration
 │   ├── real_risk_check.py           ✅ Live risk validation
 │   ├── hedging/hedge_calculator.py  ✅ Hedge recommendations
