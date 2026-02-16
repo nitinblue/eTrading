@@ -15,14 +15,17 @@
 ## [NITIN OWNS] WHY THIS EXISTS
 
 20 years pricing and risk analytics on institutional trading floors — IR, commodities, FX, mortgages.
-The gap: institutional discipline has never been applied to personal wealth. 250K sits idle (50K personal, 200K self-directed IRA).
-This tool deploys capital systematically, safely, with full risk visibility at every level: trade, strategy, portfolio.
+The gap: 1. Time flies by, Nitin did not even realized how much opportunity cost this has been. 2. Nitin does not believe in doing the same things over and over again, believes in building systems and automation. Level of automation Nitin expected was not possible till recently when  Agentic AI has arrived.. 3. Failing in managing own money has not been because of lack of knowledge but is more of a behaviour change that is required, and just because we build a robust trading platform with great UI will not change the behaviour. 4. institutional discipline has never been applied to personal wealth. 250K sits idle (50K personal, 200K self-directed IRA).
+Agent based approach deploys capital systematically, safely, with full risk visibility at every level: trade, strategy, portfolio. Work that can be delegated to Agents should be done so. Nitin is a technologist enjoys building models, applications but cannot sit around and use it all day long.
 Mental model: Macro Context → My Exposure → Action Required. Never "I have an iron condor." Always "I have -150 SPY delta, +$450 theta/day. Am I within limits?"
 
 ---
 
 ## [NITIN OWNS] BUSINESS OBJECTIVES — CURRENT
 <!-- Add new entries at TOP with date. Move completed sessions to CLAUDE_ARCHIVE.md. -->
+### Feb 16, 2026 (Session 6) — Continuous Trading Workflow Engine
+Updating the objective set in Session 5 on Feb 16. I want to get started with building Agents who will be taking full responsiblility of prortfolo management, trading, growing the money. Nitin will be there to help take decisions. System is not expected to be big time on LLM,
+but most definitely System needs to be smart enough to continously improve the payoff, and capable of reinforcement learning. Nitin is very new to creating Agents, Claude is responsible to propose the most simple, elegant solution to writting agents which is not suppose to have general intelligenece, but knows in and out of the system and understands the execution on a daily basis. I am happy with the AI/ML learning capabilities at this point. However in future Agents should be able to adapt to latest and greatest. Main objective is to develop a product, that acts as a cotrader, and does not expect end user to do repeat mundane work. I have always believed in codifying rules and decision anyway, so why should any one be required to get up every morning and look at charts and markets.
 
 ### Feb 16, 2026 (Session 5) — Continuous Trading Workflow Engine
 
