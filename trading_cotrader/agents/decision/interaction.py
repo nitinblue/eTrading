@@ -162,10 +162,12 @@ class InteractionManager:
             decision_type=intent.parameters.get('type', 'entry'),
         )
 
-        # Add to approved actions
+        # Add to approved actions — resolve portfolio alias to config key
+        raw_portfolio = intent.parameters.get('portfolio')
+        resolved_portfolio = resolve_portfolio_name(raw_portfolio) if raw_portfolio else None
         action = {
             'recommendation_id': intent.target,
-            'portfolio': intent.parameters.get('portfolio'),
+            'portfolio': resolved_portfolio,
             'notes': intent.rationale or 'Approved via workflow',
         }
         approved = self.engine.context.get('approved_actions', [])
@@ -672,61 +674,118 @@ class InteractionManager:
         )
 
     def _positions(self, intent: UserIntent = None) -> SystemResponse:
-        """Open trades: underlying, strategy, entry, P&L, Greeks, DTE."""
+        """Open + WhatIf trades grouped by portfolio."""
         from trading_cotrader.core.database.session import session_scope
-        from trading_cotrader.core.database.schema import TradeORM, StrategyORM
+        from trading_cotrader.core.database.schema import TradeORM, PortfolioORM
+
+        # Build name → alias lookup
+        aliases = _load_portfolio_aliases()
+        key_to_alias: dict[str, str] = {}
+        for alias, config_key in aliases.items():
+            if alias == config_key:
+                continue
+            if config_key not in key_to_alias or len(alias) < len(key_to_alias[config_key]):
+                key_to_alias[config_key] = alias
+        name_to_alias: dict[str, str] = {}
+        try:
+            from trading_cotrader.config.risk_config_loader import get_risk_config
+            rc = get_risk_config()
+            for key, pc in rc.portfolios.portfolios.items():
+                short = key_to_alias.get(key, key)
+                name_to_alias[pc.display_name] = short
+                if pc.account_number:
+                    name_to_alias[pc.account_number] = short
+        except Exception:
+            pass
 
         with session_scope() as session:
             trades = (
                 session.query(TradeORM)
-                .filter(TradeORM.is_open == True)
-                .order_by(TradeORM.underlying_symbol, TradeORM.opened_at)
+                .filter(TradeORM.trade_status.in_([
+                    'executed', 'partial', 'intent', 'pending',
+                ]))
+                .order_by(TradeORM.underlying_symbol)
                 .all()
             )
             if not trades:
-                return SystemResponse(message="No open positions.")
+                return SystemResponse(message="No positions. Book one with: book <#> --portfolio <alias>")
+
+            # Group by portfolio
+            by_portfolio: dict[str, list] = {}
+            for t in trades:
+                pname = '—'
+                if t.portfolio:
+                    pname = t.portfolio.name or '—'
+                by_portfolio.setdefault(pname, []).append(t)
 
             hdr = (
-                f"{'ID':<10} {'Underlying':<10} {'Strategy':<20} "
-                f"{'Entry':>8} {'Curr':>8} {'P&L':>10} "
-                f"{'Delta':>7} {'Theta':>7} {'DTE':>5} {'Source':<14}"
+                f"  {'ID':<10} {'Underlying':<10} {'Strategy':<18} {'Status':<8} "
+                f"{'Entry':>10} {'P&L':>10} "
+                f"{'Delta':>7} {'Theta':>7}"
             )
-            sep = "\u2500" * len(hdr)
-            lines = ["OPEN POSITIONS", "\u2550" * len(hdr), hdr, sep]
+            sep = "\u2500" * (len(hdr) + 2)
 
-            for t in trades:
-                strategy_name = '—'
-                if t.strategy_id and t.strategy:
-                    strategy_name = t.strategy.strategy_type or '—'
+            lines = ["POSITIONS BY PORTFOLIO"]
+            total_count = 0
+            whatif_count = 0
 
-                entry = t.entry_price
-                curr = t.current_price
-                pnl = t.total_pnl or Decimal(0)
-                delta = t.current_delta or Decimal(0)
-                theta = t.current_theta or Decimal(0)
-                source = (t.trade_source or 'manual')[:13]
+            for pname in sorted(by_portfolio.keys()):
+                ptrades = by_portfolio[pname]
+                short = name_to_alias.get(pname, '—')
+                p_delta = Decimal(0)
+                p_theta = Decimal(0)
 
-                # Calculate DTE from legs or opened_at
-                dte_str = '—'
-                if t.opened_at:
-                    days_open = (datetime.utcnow() - t.opened_at).days
-                    dte_str = str(days_open)
+                lines.append("")
+                lines.append(f"\u2550\u2550 {pname} [{short}]  ({len(ptrades)} trades) \u2550" * 1)
+                lines.append(hdr)
+                lines.append(sep)
+
+                for t in ptrades:
+                    strategy_name = '—'
+                    if t.strategy_id and t.strategy:
+                        strategy_name = t.strategy.strategy_type or '—'
+
+                    entry = t.entry_price
+                    pnl = t.total_pnl or Decimal(0)
+                    delta = t.current_delta or Decimal(0)
+                    theta = t.current_theta or Decimal(0)
+                    p_delta += delta
+                    p_theta += theta
+
+                    status = t.trade_status or '—'
+                    if status == 'intent' and t.trade_type == 'what_if':
+                        status = 'WHATIF'
+                        whatif_count += 1
+                    elif status == 'executed':
+                        status = 'OPEN'
+                    elif status == 'pending':
+                        status = 'PENDING'
+
+                    lines.append(
+                        f"  {t.id[:8]:<10} {t.underlying_symbol[:9]:<10} "
+                        f"{strategy_name[:17]:<18} {status:<8} "
+                        f"{_fmt_dec(entry, 2, '$'):>10} "
+                        f"{_fmt_dec(pnl, 0, '$'):>10} "
+                        f"{_fmt_dec(delta, 1, '+'):>7} {_fmt_dec(theta, 1, '+'):>7}"
+                    )
+                    total_count += 1
 
                 lines.append(
-                    f"{t.id[:9]:<10} {t.underlying_symbol[:9]:<10} "
-                    f"{strategy_name[:19]:<20} "
-                    f"{_fmt_dec(entry, 2, '$'):>8} {_fmt_dec(curr, 2, '$'):>8} "
-                    f"{_fmt_dec(pnl, 0, '$'):>10} "
-                    f"{_fmt_dec(delta, 1, '+'):>7} {_fmt_dec(theta, 1, '+'):>7} "
-                    f"{dte_str:>5} {source:<14}"
+                    f"  {'':10} {'':10} {'':18} {'':8} "
+                    f"{'':>10} {'':>10} "
+                    f"{_fmt_dec(p_delta, 1, '+'):>7} {_fmt_dec(p_theta, 1, '+'):>7}"
                 )
 
-            lines.append(sep)
-            lines.append(f"Total open: {len(trades)}")
+            lines.append("")
+            lines.append(f"Total: {total_count}  (WHATIF: {whatif_count})")
+            if whatif_count:
+                lines.append("")
+                lines.append("Execute a WhatIf:  execute <id>           (preview)")
+                lines.append("                   execute <id> --confirm (place order)")
 
         return SystemResponse(
             message="\n".join(lines),
-            data={'open_count': len(trades)},
+            data={'total_count': total_count, 'whatif_count': whatif_count},
         )
 
     def _greeks(self, intent: UserIntent = None) -> SystemResponse:
@@ -1069,19 +1128,35 @@ class InteractionManager:
         )
 
         with session_scope() as session:
+            # Support partial ID matching (like git short hashes)
             trade = session.query(TradeORM).filter_by(id=trade_id).first()
+            if not trade:
+                matches = (
+                    session.query(TradeORM)
+                    .filter(TradeORM.id.like(f"{trade_id}%"))
+                    .all()
+                )
+                if len(matches) == 1:
+                    trade = matches[0]
+                    trade_id = trade.id  # expand to full ID
+                elif len(matches) > 1:
+                    ids = ", ".join(m.id[:8] for m in matches[:5])
+                    return SystemResponse(
+                        message=f"Ambiguous ID '{trade_id}' matches {len(matches)} trades: {ids}\n"
+                                f"Use more characters to disambiguate.",
+                    )
             if not trade:
                 return SystemResponse(message=f"Trade not found: {trade_id}")
 
-            # Validate: must be a WhatIf/paper trade that is open
+            # Validate: must be a WhatIf/paper trade that is open or intent
             if trade.trade_type not in ('what_if', 'paper'):
                 return SystemResponse(
                     message=f"Trade {trade_id[:8]} is type '{trade.trade_type}' — "
                             f"only what_if/paper trades can be executed live.",
                 )
-            if not trade.is_open:
+            if trade.trade_status in ('closed', 'cancelled', 'expired'):
                 return SystemResponse(
-                    message=f"Trade {trade_id[:8]} is not open (status: {trade.trade_status}).",
+                    message=f"Trade {trade_id[:8]} is {trade.trade_status} — cannot execute.",
                 )
             if not trade.legs:
                 return SystemResponse(
