@@ -3,11 +3,11 @@ Workflow Engine — Core orchestrator for the continuous trading workflow.
 
 Uses `transitions` state machine to coordinate all agents through
 the trading day: boot → macro → screen → review → execute →
-monitor → evaluate exits → review exits → report → idle.
+monitor → trade management → trade review → report → idle.
 
-Portfolio evaluation for adjustments, take profit, and stop loss
-runs in the EXIT_EVALUATION state and produces recommendations in
-EXIT_REVIEW for user approval.
+Trade management (rolls, adjustments, exits) runs in the
+TRADE_MANAGEMENT state and produces signals in TRADE_REVIEW
+for user approval.
 
 Usage:
     engine = WorkflowEngine(paper_mode=True, use_mock=True)
@@ -58,7 +58,7 @@ class WorkflowEngine:
 
     Human pause points:
         - RECOMMENDATION_REVIEW: entry recommendations await user decision
-        - EXIT_REVIEW: exit/roll/adjust signals await user decision
+        - TRADE_REVIEW: roll/adjust/exit signals await user decision
 
     Portfolio evaluation covers:
         - Profit targets (take profit)
@@ -252,21 +252,21 @@ class WorkflowEngine:
         logger.info("=== MONITORING ===")
         self._persist_state()
 
-    def on_enter_exit_evaluation(self, event):
+    def on_enter_trade_management(self, event):
         """
-        Evaluate ALL open positions for:
+        Trade management — evaluate ALL open positions for:
+            - Roll opportunities (approaching expiration)
+            - Adjustments (rebalancing legs, delta correction)
             - Profit targets (take profit)
             - Stop losses (book loss)
             - DTE-based exits (time decay)
             - Delta breach (hedging failure)
-            - Roll opportunities (approaching expiration)
-            - Adjustments (rebalancing legs)
             - Liquidity check (illiquid → force close)
 
         Uses PortfolioEvaluationService which wires RulesEngine
         to live trade data.
         """
-        logger.info("=== EXIT EVALUATION ===")
+        logger.info("=== TRADE MANAGEMENT ===")
 
         # Refresh portfolio state before evaluation
         ps_result = self.portfolio_state.run(self.context)
@@ -278,19 +278,19 @@ class WorkflowEngine:
 
         signals = self.context.get('exit_signals', [])
         if signals:
-            logger.info(f"Exit evaluation found {len(signals)} signal(s)")
-            self.review_exits()
+            logger.info(f"Trade management found {len(signals)} signal(s) (roll/adjust/exit)")
+            self.review_trades()
         else:
-            logger.info("No exit signals — back to monitoring")
+            logger.info("No trade management signals — back to monitoring")
             self.skip_to_monitor()
 
-    def on_enter_exit_review(self, event):
-        """HUMAN PAUSE — present exit signals and wait for user input."""
+    def on_enter_trade_review(self, event):
+        """HUMAN PAUSE — present roll/adjust/exit signals and wait for user input."""
         signals = self.context.get('exit_signals', [])
         self.notifier.notify_exits(signals)
         self._persist_state()
         logger.info(
-            f"WAITING FOR USER: {len(signals)} exit signal(s) pending review. "
+            f"WAITING FOR USER: {len(signals)} trade management signal(s) pending review. "
             f"Use 'approve <id>' / 'reject <id>' / 'list'"
         )
 
@@ -398,8 +398,8 @@ class WorkflowEngine:
             current = self.state
             if current == WorkflowStates.RECOMMENDATION_REVIEW.value:
                 self.execute()
-            elif current == WorkflowStates.EXIT_REVIEW.value:
-                self.execute_exit()
+            elif current == WorkflowStates.TRADE_REVIEW.value:
+                self.execute_trade_action()
 
         return response
 
@@ -437,8 +437,8 @@ class WorkflowEngine:
             self.halt()
             return
 
-        # Evaluate exits (take profit, stop loss, DTE, delta, adjustments)
-        self.evaluate_exits()
+        # Trade management (rolls, adjustments, exits)
+        self.manage_trades()
 
     def run_once(self):
         """Run a single complete cycle for testing."""

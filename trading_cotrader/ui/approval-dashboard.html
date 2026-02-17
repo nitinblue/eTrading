@@ -219,7 +219,7 @@
     .conf-high { background: var(--green); }
 
     .rationale-cell {
-      max-width: 300px;
+      max-width: 200px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -634,8 +634,9 @@
 
       let html = `<table class="rec-table">
         <thead><tr>
-          <th>Type</th><th>Underlying</th><th>Strategy</th>
-          <th>Conf</th><th>Urgency</th><th>Rationale</th><th>Age</th><th>Actions</th>
+          <th>Type</th><th>Underlying</th><th>Strategy</th><th>Portfolio</th>
+          <th>Risk</th><th>Max Loss</th>
+          <th>Conf</th><th>Rationale</th><th>Age</th><th>Actions</th>
         </tr></thead><tbody>`;
 
       pendingRecs.forEach(rec => {
@@ -644,21 +645,28 @@
         const conf = rec.confidence || 0;
         const confCls = conf >= 7 ? 'conf-high' : conf >= 4 ? 'conf-mid' : 'conf-low';
         const age = timeAgo(rec.created_at);
-        const urgency = rec.exit_urgency || '--';
         const rationale = (rec.rationale || '').substring(0, 80);
-        const shortId = rec.id.substring(0, 8);
+
+        // Trade financials
+        const portfolio = rec.suggested_portfolio || '--';
+        const riskType = rec.risk_display || (rec.risk_category || 'defined').toUpperCase();
+        const riskCls = riskType === 'UNDEFINED' ? 'style="color:var(--red);font-weight:600"' : 'style="color:var(--green)"';
+        const maxLoss = rec.max_loss_display || '--';
+        const maxLossCls = maxLoss === 'Undefined' ? 'style="color:var(--red)"' : '';
 
         html += `<tr>
           <td><span class="type-badge ${typeCls}">${type}</span></td>
           <td style="font-weight:600">${rec.underlying || '--'}</td>
           <td>${formatStrategy(rec.strategy_type)}</td>
+          <td style="color:var(--text-secondary);font-size:11px">${escHtml(formatStrategy(portfolio))}</td>
+          <td ${riskCls}>${riskType}</td>
+          <td ${maxLossCls}>${maxLoss}</td>
           <td>
             <div class="confidence-bar">
               <div class="confidence-fill ${confCls}" style="width:${conf * 8}px"></div>
               <span>${conf}</span>
             </div>
           </td>
-          <td>${urgency}</td>
           <td class="rationale-cell" title="${escHtml(rec.rationale || '')}">${escHtml(rationale)}</td>
           <td class="age-cell">${age}</td>
           <td>
@@ -699,9 +707,15 @@
     function openApproveModal(recId) {
       currentApproveId = recId;
       const rec = pendingRecs.find(r => r.id === recId);
-      document.getElementById('modalRecSummary').textContent = rec
-        ? `${rec.recommendation_type.toUpperCase()} ${rec.underlying} ${formatStrategy(rec.strategy_type)} (conf: ${rec.confidence})`
-        : recId.substring(0, 8);
+      if (rec) {
+        const risk = rec.risk_display || (rec.risk_category || '').toUpperCase();
+        const maxLoss = rec.max_loss_display || '--';
+        document.getElementById('modalRecSummary').innerHTML =
+          `${rec.recommendation_type.toUpperCase()} <b>${rec.underlying}</b> ${formatStrategy(rec.strategy_type)} ` +
+          `(conf: ${rec.confidence}) &mdash; ${risk} risk, max loss: ${escHtml(maxLoss)}`;
+      } else {
+        document.getElementById('modalRecSummary').textContent = recId.substring(0, 8);
+      }
       document.getElementById('modalNotes').value = '';
       if (rec && rec.suggested_portfolio) {
         document.getElementById('modalPortfolio').value = rec.suggested_portfolio;

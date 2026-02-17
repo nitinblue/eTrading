@@ -37,8 +37,8 @@ but most definitely System needs to be smart enough to continously improve the p
 
 | # | Objective | Signal (observable behavior) | Status |
 |---|-----------|-------------------------------|--------|
-| 1 | **Workflow state machine** — Continuous loop: BOOT → MACRO_CHECK → SCREENING → RECOMMENDATION_REVIEW → EXECUTION → MONITORING → EXIT_EVALUATION → EXIT_REVIEW → REPORTING. State persisted in DB. Can resume after restart. | `python -m trading_cotrader.runners.run_workflow --once --no-broker --mock` runs single cycle. State in DB/CLI. | DONE (s13) |
-| 2 | **User decision points** — Workflow pauses at RECOMMENDATION_REVIEW and EXIT_REVIEW. Presents options (approve/reject/defer). Tracks time-to-decision via DecisionLogORM. | Workflow stops, notifies user, waits. Interactive CLI: approve/reject/defer/status/list/halt/resume/override. | DONE (s13) |
+| 1 | **Workflow state machine** — Continuous loop: BOOT → MACRO_CHECK → SCREENING → RECOMMENDATION_REVIEW → EXECUTION → MONITORING → TRADE_MANAGEMENT → TRADE_REVIEW → REPORTING. State persisted in DB. Can resume after restart. | `python -m trading_cotrader.runners.run_workflow --once --no-broker --mock` runs single cycle. State in DB/CLI. | DONE (s13) |
+| 2 | **User decision points** — Workflow pauses at RECOMMENDATION_REVIEW and TRADE_REVIEW. Presents options (approve/reject/defer). Tracks time-to-decision via DecisionLogORM. | Workflow stops, notifies user, waits. Interactive CLI: approve/reject/defer/status/list/halt/resume/override. | DONE (s13) |
 | 3 | **Notifications & approvals** — Console notifications always on. Email framework built (off by default). Recommendations, exits, halts, daily summaries. | NotifierAgent: console + email (SMTP/TLS). Enable in workflow_rules.yaml when ready. | DONE (s13) |
 | 4 | **Capital deployment accountability** — Track deployed vs idle capital per portfolio. Days since last trade. Recs ignored. Time-to-decision. | AccountabilityAgent queries DecisionLogORM + TradeORM. Writes accountability_metrics to context. | DONE (s13) |
 | 5 | **Trade plan compliance** — Every execution compared to template. Deviations flagged: wrong strikes, wrong DTE, wrong timing, wrong portfolio, skipped entry conditions. "Did you follow the playbook?" metric. Source comparison: system recs vs manual overrides, with performance tracking on both. | Monthly compliance report: "87% of trades followed template. Manual overrides underperformed system recs by 12%." | NOT STARTED |
@@ -152,7 +152,7 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 - Single cycle: `python -m trading_cotrader.runners.run_workflow --once --no-broker --mock`
 - Continuous mode: `python -m trading_cotrader.runners.run_workflow --paper --no-broker`
 - Interactive CLI: `status`, `list`, `approve <id>`, `reject <id>`, `defer <id>`, `halt`, `resume --rationale "..."`, `override`, `help`
-- Full state machine: IDLE → BOOT → MACRO_CHECK → SCREENING → RECOMMENDATION_REVIEW → EXECUTION → MONITORING → EXIT_EVALUATION → EXIT_REVIEW → REPORTING
+- Full state machine: IDLE → BOOT → MACRO_CHECK → SCREENING → RECOMMENDATION_REVIEW → EXECUTION → MONITORING → TRADE_MANAGEMENT → TRADE_REVIEW → REPORTING
 - Exit evaluation covers: take profit, stop loss, DTE exits, delta breach, roll opportunities, adjustments, liquidity downgrade
 - Guardian agent: circuit breakers (daily loss 3%, weekly 5%, VIX>35, drawdown, consecutive losses) + trading constraints (max trades/day, time-of-day, undefined risk approval)
 - All rules in `config/workflow_rules.yaml` — no hardcoded thresholds

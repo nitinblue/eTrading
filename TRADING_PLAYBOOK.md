@@ -10,7 +10,7 @@
 CoTrader is a **continuous workflow engine** that manages 10 portfolios across 4 brokers. It runs a state machine loop during market hours, pausing only when it needs your decision. You don't run CLI commands. You respond to the agent.
 
 ```
-Start:  python -m trading_cotrader.runners.run_workflow --paper --no-broker
+Start:  python -m trading_cotrader.runners.run_workflow --web --port 8080
 Single: python -m trading_cotrader.runners.run_workflow --once --no-broker --mock
 ```
 
@@ -21,7 +21,7 @@ IDLE → BOOT → MACRO_CHECK → SCREENING → RECOMMENDATION_REVIEW (⏸ YOU) 
                                                                               ↓
                    REPORTING ← EOD_EVALUATION ← MONITORING ← ←←←←←←←←←←←←←←←
                        ↓              ↓
-                     IDLE      EXIT_EVALUATION → EXIT_REVIEW (⏸ YOU) → EXECUTION → MONITORING
+                     IDLE      TRADE_MANAGEMENT → TRADE_REVIEW (⏸ YOU) → EXECUTION → MONITORING
 ```
 
 **Two pause points.** Everything else is autonomous.
@@ -34,8 +34,8 @@ IDLE → BOOT → MACRO_CHECK → SCREENING → RECOMMENDATION_REVIEW (⏸ YOU) 
 | **RECOMMENDATION_REVIEW** | **Workflow pauses. Presents recommendations.** | **Until you act** | **approve / reject / defer** |
 | EXECUTION | Books approved trades (paper mode), Guardian safety check | ~3 sec | None |
 | MONITORING | Home state. Refreshes every 30 min. Checks exits. | 30 min cycles | Status check anytime |
-| EXIT_EVALUATION | Evaluates all open positions against exit rules | ~5 sec | None |
-| **EXIT_REVIEW** | **Workflow pauses. Presents exit signals.** | **Until you act** | **approve / reject / defer** |
+| TRADE_MANAGEMENT | Evaluates all open positions against exit rules | ~5 sec | None |
+| **TRADE_REVIEW** | **Workflow pauses. Presents exit signals.** | **Until you act** | **approve / reject / defer** |
 | EOD_EVALUATION | Final position check at 3:30 PM ET | ~5 sec | None |
 | REPORTING | Daily summary, accountability, capital efficiency, QA, agent grades | ~15 sec | Read report |
 | HALTED | Circuit breaker tripped or manual halt | Until you resume | **resume --rationale "..."** |
@@ -328,7 +328,7 @@ The engine stays in MONITORING between cycles. Every 30 minutes:
 2. PortfolioStateAgent — refresh positions + P&L
 3. CapitalUtilizationAgent — check idle capital (respects 4-hour nag frequency)
 4. GuardianAgent — circuit breaker check (halt if tripped)
-5. Trigger EXIT_EVALUATION
+5. Trigger TRADE_MANAGEMENT
 
 ---
 
@@ -722,7 +722,7 @@ Email is off by default. Enable in `workflow_rules.yaml` → `notifications.emai
 ```bash
 # Workflow
 python -m trading_cotrader.runners.run_workflow --once --no-broker --mock    # single cycle
-python -m trading_cotrader.runners.run_workflow --paper --no-broker          # continuous
+python -m trading_cotrader.runners.run_workflow --web --port 8080            # web dashboard + continuous
 
 # Trade booking
 python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/templates/<file>.json --no-broker

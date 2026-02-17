@@ -4,7 +4,7 @@ Workflow State Machine Definition — Uses `transitions` library.
 States represent phases of the trading day. Transitions encode
 the valid paths between phases, with conditions that must be met.
 
-The engine enters RECOMMENDATION_REVIEW and EXIT_REVIEW as human pause
+The engine enters RECOMMENDATION_REVIEW and TRADE_REVIEW as human pause
 points where the workflow stops and waits for user input.
 """
 
@@ -20,8 +20,8 @@ class WorkflowStates(str, Enum):
     RECOMMENDATION_REVIEW = "recommendation_review"   # human pause
     EXECUTION = "execution"
     MONITORING = "monitoring"                          # home state during market hours
-    EXIT_EVALUATION = "exit_evaluation"
-    EXIT_REVIEW = "exit_review"                        # human pause
+    TRADE_MANAGEMENT = "trade_management"              # evaluate positions: roll, adjust, exit
+    TRADE_REVIEW = "trade_review"                      # human pause — review roll/adjust/exit signals
     EOD_EVALUATION = "eod_evaluation"
     REPORTING = "reporting"
     HALTED = "halted"                                  # circuit breaker
@@ -52,22 +52,22 @@ TRANSITIONS = [
         WorkflowStates.SCREENING,
     ], 'dest': WorkflowStates.MONITORING},
 
-    # Monitoring → exit evaluation
-    {'trigger': 'evaluate_exits', 'source': WorkflowStates.MONITORING, 'dest': WorkflowStates.EXIT_EVALUATION},
+    # Monitoring → trade management (roll, adjust, exit evaluation)
+    {'trigger': 'manage_trades', 'source': WorkflowStates.MONITORING, 'dest': WorkflowStates.TRADE_MANAGEMENT},
 
-    # Exit evaluation → review or skip
-    {'trigger': 'review_exits', 'source': WorkflowStates.EXIT_EVALUATION, 'dest': WorkflowStates.EXIT_REVIEW,
+    # Trade management → review or skip
+    {'trigger': 'review_trades', 'source': WorkflowStates.TRADE_MANAGEMENT, 'dest': WorkflowStates.TRADE_REVIEW,
      'conditions': ['has_exit_signals']},
-    {'trigger': 'skip_to_monitor', 'source': WorkflowStates.EXIT_EVALUATION, 'dest': WorkflowStates.MONITORING},
+    {'trigger': 'skip_to_monitor', 'source': WorkflowStates.TRADE_MANAGEMENT, 'dest': WorkflowStates.MONITORING},
 
-    # Exit review → execute
-    {'trigger': 'execute_exit', 'source': WorkflowStates.EXIT_REVIEW, 'dest': WorkflowStates.EXECUTION},
+    # Trade review → execute
+    {'trigger': 'execute_trade_action', 'source': WorkflowStates.TRADE_REVIEW, 'dest': WorkflowStates.EXECUTION},
 
     # EOD
     {'trigger': 'eod', 'source': WorkflowStates.MONITORING, 'dest': WorkflowStates.EOD_EVALUATION},
     {'trigger': 'report', 'source': [
         WorkflowStates.EOD_EVALUATION,
-        WorkflowStates.EXIT_REVIEW,
+        WorkflowStates.TRADE_REVIEW,
     ], 'dest': WorkflowStates.REPORTING},
     {'trigger': 'go_idle', 'source': [
         WorkflowStates.REPORTING,

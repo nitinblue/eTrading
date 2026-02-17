@@ -31,6 +31,66 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Trade financial helpers
+# ---------------------------------------------------------------------------
+
+def _compute_trade_financials(rec) -> dict:
+    """
+    Compute max_loss, max_profit, risk_display from recommendation legs.
+
+    For defined-risk strategies: max_loss = spread width * qty * multiplier.
+    For undefined-risk: max_loss shown as 'Undefined'.
+    Max profit requires premium data (not available on recs), so shown as '--'.
+    """
+    legs = rec.legs or []
+    risk_category = rec.risk_category or "defined"
+    strikes = [float(l.strike) for l in legs if l.strike is not None]
+    quantities = [abs(l.quantity) for l in legs if l.quantity]
+
+    result = {
+        'risk_display': risk_category.upper(),
+        'max_loss': None,
+        'max_loss_display': '--',
+        'max_profit_display': '--',
+        'spread_width': None,
+    }
+
+    if risk_category == "undefined":
+        result['max_loss_display'] = 'Undefined'
+        return result
+
+    if len(strikes) < 2:
+        return result
+
+    # For defined-risk: compute spread width
+    # Group legs by option_type to handle multi-spread structures (iron condors)
+    puts = [l for l in legs if l.option_type == 'put' and l.strike is not None]
+    calls = [l for l in legs if l.option_type == 'call' and l.strike is not None]
+
+    put_strikes = sorted([float(l.strike) for l in puts])
+    call_strikes = sorted([float(l.strike) for l in calls])
+
+    put_width = (put_strikes[-1] - put_strikes[0]) if len(put_strikes) >= 2 else 0
+    call_width = (call_strikes[-1] - call_strikes[0]) if len(call_strikes) >= 2 else 0
+
+    # Max risk is the wider side (for iron condors both sides can't lose simultaneously)
+    width = max(put_width, call_width) if (put_width and call_width) else (put_width or call_width)
+
+    if width <= 0:
+        return result
+
+    qty = quantities[0] if quantities else 1
+    multiplier = 100  # standard equity options
+    max_loss = width * qty * multiplier
+
+    result['spread_width'] = width
+    result['max_loss'] = max_loss
+    result['max_loss_display'] = f'${max_loss:,.0f}'
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Request body models
 # ---------------------------------------------------------------------------
 
@@ -87,11 +147,17 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
 
     @app.get("/api/pending")
     async def get_pending():
-        """Get all pending recommendations from DB."""
+        """Get all pending recommendations from DB, enriched with trade financials."""
         with session_scope() as session:
             repo = RecommendationRepository(session)
             pending = repo.get_pending()
-            return [rec.to_dict() for rec in pending]
+            results = []
+            for rec in pending:
+                d = rec.to_dict()
+                # Compute max loss/profit from legs for display
+                d.update(_compute_trade_financials(rec))
+                results.append(d)
+            return results
 
     @app.get("/api/status")
     async def get_status():

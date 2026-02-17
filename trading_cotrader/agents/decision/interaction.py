@@ -2,11 +2,13 @@
 Interaction Manager — Routes user intents to workflow engine actions.
 
 Handles: approve, reject, defer, status, list, halt, resume, override,
-         portfolios, positions, greeks, capital, pending, trades, risk.
+         portfolios, positions, greeks, capital, pending, trades, risk,
+         book, templates.
 """
 
 from datetime import datetime, date, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import TYPE_CHECKING
 import logging
 
@@ -67,6 +69,9 @@ class InteractionManager:
             # Execution commands
             'execute': self._execute,
             'orders': self._orders,
+            # Trade booking
+            'book': self._book,
+            'templates': self._templates,
         }
 
         handler = handlers.get(intent.action)
@@ -290,6 +295,12 @@ class InteractionManager:
                 "    resume             — Resume trading (requires rationale)\n"
                 "    override <breaker> — Override circuit breaker (requires rationale)\n"
                 "\n"
+                "  Trade Booking:\n"
+                "    templates                    — List available trade templates\n"
+                "    book <#>                     — Book template by index\n"
+                "    book <#> --portfolio <name>  — Book to specific portfolio\n"
+                "    book <filename.json>         — Book by filename\n"
+                "\n"
                 "  Execution:\n"
                 "    execute <trade_id>           — Preview WhatIf trade as live order (dry-run)\n"
                 "    execute <trade_id> --confirm — Place the live order on broker\n"
@@ -312,8 +323,199 @@ class InteractionManager:
             available_actions=['approve', 'reject', 'defer', 'status', 'list',
                              'halt', 'resume', 'override', 'help', 'quit',
                              'portfolios', 'positions', 'greeks', 'capital',
-                             'pending', 'trades', 'risk', 'execute', 'orders'],
+                             'pending', 'trades', 'risk', 'execute', 'orders',
+                             'book', 'templates'],
         )
+
+    # ==================================================================
+    # Trade booking handlers
+    # ==================================================================
+
+    _TEMPLATE_DIR = Path(__file__).resolve().parents[2] / 'config' / 'templates'
+
+    def _templates(self, intent: UserIntent = None) -> SystemResponse:
+        """List available trade templates."""
+        templates = sorted(self._TEMPLATE_DIR.glob('*.json'))
+        if not templates:
+            return SystemResponse(message="No templates found.")
+
+        lines = ["TRADE TEMPLATES", "\u2550" * 70]
+        lines.append(f"{'#':<4} {'File':<45} {'Underlying':<8} {'Strategy'}")
+        lines.append("\u2500" * 70)
+
+        import json
+        for i, t in enumerate(templates):
+            try:
+                data = json.loads(t.read_text())
+                underlying = data.get('underlying', '?')
+                strategy = data.get('strategy_type', '?')
+            except Exception:
+                underlying = '?'
+                strategy = '?'
+            lines.append(f"{i:<4} {t.stem:<45} {underlying:<8} {strategy}")
+
+        lines.append("\u2500" * 70)
+        lines.append(f"Book:  book <#>  or  book <#> --portfolio <name>")
+        lines.append(f"       book <filename.json> --portfolio <name>")
+
+        return SystemResponse(
+            message="\n".join(lines),
+            data={'template_count': len(templates)},
+        )
+
+    def _book(self, intent: UserIntent) -> SystemResponse:
+        """
+        Book a WhatIf trade from a template file.
+
+        Usage:
+            book <#>                          — book template by index (see 'templates')
+            book <#> --portfolio <name>       — book to specific portfolio
+            book <filename.json>              — book by filename
+            book <path/to/file.json>          — book by full path
+        """
+        if not intent.target:
+            return SystemResponse(
+                message="Usage: book <#>  or  book <filename.json> [--portfolio <name>]\n"
+                        "       Type 'templates' to see available templates.",
+            )
+
+        # Resolve the template file
+        target = intent.target
+        filepath = self._resolve_template(target)
+        if filepath is None:
+            return SystemResponse(
+                message=f"Template not found: {target}\n"
+                        f"Type 'templates' to see available templates.",
+            )
+
+        # Load and validate
+        import json
+        try:
+            trade_data = json.loads(filepath.read_text())
+        except Exception as e:
+            return SystemResponse(message=f"Failed to load {filepath.name}: {e}")
+
+        # Multi-strategy file support
+        if 'strategies' in trade_data:
+            return SystemResponse(
+                message=f"{filepath.name} is a multi-strategy file with "
+                        f"{len(trade_data['strategies'])} strategies. "
+                        f"Use the CLI for multi-strategy booking:\n"
+                        f"  python -m trading_cotrader.cli.book_trade --file {filepath} --list",
+            )
+
+        # Validate required fields
+        for field in ('underlying', 'strategy_type', 'legs'):
+            if field not in trade_data:
+                return SystemResponse(message=f"Template missing required field: {field}")
+
+        if not trade_data.get('legs'):
+            return SystemResponse(message="Template has no legs.")
+
+        # Override portfolio if specified
+        portfolio_override = intent.parameters.get('portfolio')
+        if portfolio_override:
+            trade_data['portfolio_name'] = portfolio_override
+
+        portfolio_name = trade_data.get('portfolio_name', '—')
+        underlying = trade_data['underlying']
+        strategy = trade_data['strategy_type']
+        num_legs = len(trade_data['legs'])
+
+        # Book using manual Greeks path (same as --no-broker)
+        from trading_cotrader.cli.book_trade import book_with_manual_greeks
+
+        result = book_with_manual_greeks(trade_data)
+
+        if not result.success:
+            return SystemResponse(
+                message=f"Booking FAILED: {result.error}",
+                data={'error': result.error},
+            )
+
+        # Format leg summary
+        leg_lines = []
+        if result.legs:
+            for leg in result.legs:
+                side = 'SELL' if leg.quantity < 0 else 'BUY '
+                greeks = leg.position_greeks
+                leg_lines.append(
+                    f"    {side} {abs(leg.quantity)}x {leg.streamer_symbol:<28} "
+                    f"@ ${leg.mid_price:.2f}  "
+                    f"d={greeks['delta']:+.1f} th={greeks['theta']:+.1f}"
+                )
+
+        total = result.total_greeks or {}
+
+        lines = [
+            "",
+            "  TRADE BOOKED",
+            "  " + "\u2550" * 55,
+            f"  Trade ID:    {result.trade_id[:12]}...",
+            f"  Template:    {filepath.stem}",
+            f"  Underlying:  {underlying}",
+            f"  Strategy:    {strategy}",
+            f"  Portfolio:   {portfolio_name}",
+            f"  Entry:       ${float(result.entry_price):,.2f}",
+            "",
+            "  Legs:",
+            *leg_lines,
+            "",
+            f"  Net Greeks:  delta={total.get('delta', 0):+.2f}  "
+            f"theta={total.get('theta', 0):+.2f}  "
+            f"gamma={total.get('gamma', 0):+.4f}  "
+            f"vega={total.get('vega', 0):+.2f}",
+            "",
+            "  " + "\u2500" * 55,
+            f"  View with: positions",
+        ]
+
+        return SystemResponse(
+            message="\n".join(lines),
+            data={
+                'trade_id': result.trade_id,
+                'underlying': underlying,
+                'strategy': strategy,
+                'portfolio': portfolio_name,
+                'entry_price': float(result.entry_price),
+            },
+        )
+
+    def _resolve_template(self, target: str) -> Path | None:
+        """Resolve a template target to a file path.
+
+        Accepts:
+          - Index number (from 'templates' listing)
+          - Filename with or without .json
+          - Absolute or relative file path
+        """
+        # Try as integer index
+        try:
+            idx = int(target)
+            templates = sorted(self._TEMPLATE_DIR.glob('*.json'))
+            if 0 <= idx < len(templates):
+                return templates[idx]
+            return None
+        except ValueError:
+            pass
+
+        # Try as direct path
+        p = Path(target)
+        if p.is_file():
+            return p
+
+        # Try as filename in templates dir
+        candidate = self._TEMPLATE_DIR / target
+        if candidate.is_file():
+            return candidate
+
+        # Try with .json extension
+        if not target.endswith('.json'):
+            candidate = self._TEMPLATE_DIR / (target + '.json')
+            if candidate.is_file():
+                return candidate
+
+        return None
 
     # ==================================================================
     # Report handlers
