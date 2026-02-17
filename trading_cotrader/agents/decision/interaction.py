@@ -36,6 +36,59 @@ def _fmt_dec(val, places: int = 2, prefix: str = '') -> str:
         return str(val)
 
 
+
+
+# Portfolio short aliases: short_name → config_key
+# Loaded once from YAML config; fallback to hardcoded if config unavailable.
+_PORTFOLIO_ALIASES: dict[str, str] = {}
+
+
+def _load_portfolio_aliases() -> dict[str, str]:
+    """Build short alias → config key mapping from portfolio config."""
+    if _PORTFOLIO_ALIASES:
+        return _PORTFOLIO_ALIASES
+
+    try:
+        from trading_cotrader.config.risk_config_loader import get_risk_config
+        rc = get_risk_config()
+        for key, pc in rc.portfolios.portfolios.items():
+            # Auto-generate short aliases:
+            #   tastytrade → tt, fidelity_ira → fira, fidelity_personal → fp
+            #   zerodha → zr, stallion → st
+            #   *_whatif → append 'w' (ttw, firaw, fpw, zrw, stw)
+            _PORTFOLIO_ALIASES[key] = key  # full name always works
+    except Exception:
+        pass
+
+    # Hardcoded shortcuts (stable, won't break if YAML changes)
+    shortcuts = {
+        'tt': 'tastytrade', 'fira': 'fidelity_ira', 'fp': 'fidelity_personal',
+        'zr': 'zerodha', 'st': 'stallion',
+        'ttw': 'tastytrade_whatif', 'firaw': 'fidelity_ira_whatif',
+        'fpw': 'fidelity_personal_whatif', 'zrw': 'zerodha_whatif', 'stw': 'stallion_whatif',
+    }
+    _PORTFOLIO_ALIASES.update(shortcuts)
+    return _PORTFOLIO_ALIASES
+
+
+def resolve_portfolio_name(input_name: str) -> str:
+    """Resolve a short alias, config key, or number to a portfolio config key."""
+    aliases = _load_portfolio_aliases()
+
+    # Direct match (full name or alias)
+    if input_name in aliases:
+        return aliases[input_name]
+
+    # Case-insensitive
+    lower = input_name.lower()
+    for alias, config_key in aliases.items():
+        if alias.lower() == lower:
+            return config_key
+
+    # Not found — return as-is (let downstream report the error)
+    return input_name
+
+
 class InteractionManager:
     """Routes user commands to the appropriate workflow engine actions."""
 
@@ -296,10 +349,10 @@ class InteractionManager:
                 "    override <breaker> — Override circuit breaker (requires rationale)\n"
                 "\n"
                 "  Trade Booking:\n"
-                "    templates                    — List available trade templates\n"
-                "    book <#>                     — Book template by index\n"
-                "    book <#> --portfolio <name>  — Book to specific portfolio\n"
-                "    book <filename.json>         — Book by filename\n"
+                "    templates                     — List available trade templates\n"
+                "    book <#>                      — Book template by index\n"
+                "    book <#> --portfolio <alias>  — Book to portfolio (tt/fira/fp/zr/st + w for whatif)\n"
+                "    book <filename.json>          — Book by filename\n"
                 "\n"
                 "  Execution:\n"
                 "    execute <trade_id>           — Preview WhatIf trade as live order (dry-run)\n"
@@ -355,8 +408,8 @@ class InteractionManager:
             lines.append(f"{i:<4} {t.stem:<45} {underlying:<8} {strategy}")
 
         lines.append("\u2500" * 70)
-        lines.append(f"Book:  book <#>  or  book <#> --portfolio <name>")
-        lines.append(f"       book <filename.json> --portfolio <name>")
+        lines.append(f"Book:  book <#> --portfolio <alias>")
+        lines.append(f"       Aliases: tt fira fp zr st | ttw firaw fpw zrw stw")
 
         return SystemResponse(
             message="\n".join(lines),
@@ -412,10 +465,12 @@ class InteractionManager:
         if not trade_data.get('legs'):
             return SystemResponse(message="Template has no legs.")
 
-        # Override portfolio if specified
+        # Override portfolio if specified (resolve short aliases)
         portfolio_override = intent.parameters.get('portfolio')
         if portfolio_override:
-            trade_data['portfolio_name'] = portfolio_override
+            trade_data['portfolio_name'] = resolve_portfolio_name(portfolio_override)
+        elif trade_data.get('portfolio_name'):
+            trade_data['portfolio_name'] = resolve_portfolio_name(trade_data['portfolio_name'])
 
         portfolio_name = trade_data.get('portfolio_name', '—')
         underlying = trade_data['underlying']
@@ -522,9 +577,33 @@ class InteractionManager:
     # ==================================================================
 
     def _portfolios(self, intent: UserIntent = None) -> SystemResponse:
-        """All portfolios: broker, capital, equity, cash, deployed %, Greeks."""
+        """All portfolios: short alias, broker, capital, equity, cash, deployed %, Greeks."""
         from trading_cotrader.core.database.session import session_scope
         from trading_cotrader.core.database.schema import PortfolioORM
+
+        # Build reverse map: display_name → short alias
+        aliases = _load_portfolio_aliases()
+        # Invert: config_key → shortest alias
+        key_to_alias: dict[str, str] = {}
+        for alias, config_key in aliases.items():
+            if alias == config_key:
+                continue  # skip full names, we want the short ones
+            if config_key not in key_to_alias or len(alias) < len(key_to_alias[config_key]):
+                key_to_alias[config_key] = alias
+
+        # Build display_name / account_number → short alias by loading config
+        name_to_alias: dict[str, str] = {}
+        try:
+            from trading_cotrader.config.risk_config_loader import get_risk_config
+            rc = get_risk_config()
+            for key, pc in rc.portfolios.portfolios.items():
+                short = key_to_alias.get(key, key)
+                name_to_alias[pc.display_name] = short
+                name_to_alias[key] = short
+                if pc.account_number:
+                    name_to_alias[pc.account_number] = short
+        except Exception:
+            pass
 
         with session_scope() as session:
             portfolios = (
@@ -537,7 +616,7 @@ class InteractionManager:
                 return SystemResponse(message="No portfolios found.")
 
             hdr = (
-                f"{'Name':<22} {'Broker':<12} {'Cur':<5} {'Type':<8} "
+                f"{'ID':<6} {'Name':<22} {'Broker':<12} {'Type':<8} "
                 f"{'Equity':>12} {'Cash':>12} {'Dply%':>6} "
                 f"{'Delta':>8} {'Theta':>8} {'P&L':>10}"
             )
@@ -550,7 +629,6 @@ class InteractionManager:
             for p in portfolios:
                 equity = p.total_equity or Decimal(0)
                 cash = p.cash_balance or Decimal(0)
-                initial = p.initial_capital or Decimal(0)
                 deployed_pct = (
                     float((equity - cash) / equity * 100) if equity else 0.0
                 )
@@ -559,10 +637,13 @@ class InteractionManager:
                 pnl = p.total_pnl or Decimal(0)
                 broker = (p.broker or '—')[:11]
                 ptype = (p.portfolio_type or '—')[:7]
+                short = (name_to_alias.get(p.name)
+                         or name_to_alias.get(p.account_id)
+                         or '—')
 
                 lines.append(
-                    f"{p.name[:21]:<22} {broker:<12} "
-                    f"{'USD':<5} {ptype:<8} "
+                    f"{short:<6} {p.name[:21]:<22} {broker:<12} "
+                    f"{ptype:<8} "
                     f"{_fmt_dec(equity, 0, '$'):>12} {_fmt_dec(cash, 0, '$'):>12} "
                     f"{deployed_pct:>5.0f}% "
                     f"{_fmt_dec(delta, 1, '+'):>8} {_fmt_dec(theta, 1, '+'):>8} "
@@ -576,12 +657,14 @@ class InteractionManager:
 
             lines.append(sep)
             lines.append(
-                f"{'TOTAL':<22} {'':<12} {'':<5} {'':<8} "
+                f"{'':6} {'TOTAL':<22} {'':<12} {'':<8} "
                 f"{_fmt_dec(tot_equity, 0, '$'):>12} {_fmt_dec(tot_cash, 0, '$'):>12} "
                 f"{'':>6} "
                 f"{_fmt_dec(tot_delta, 1, '+'):>8} {_fmt_dec(tot_theta, 1, '+'):>8} "
                 f"{_fmt_dec(tot_pnl, 0, '$'):>10}"
             )
+            lines.append("")
+            lines.append("Use ID in commands:  book 22 --portfolio ttw")
 
         return SystemResponse(
             message="\n".join(lines),
