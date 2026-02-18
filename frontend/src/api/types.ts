@@ -436,6 +436,161 @@ export interface CapitalPlanResponse {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Reports Types
+// ---------------------------------------------------------------------------
+
+export interface TradeJournalEntry {
+  id: string
+  portfolio_name: string
+  strategy_type: string | null
+  underlying_symbol: string
+  trade_type: string
+  trade_status: string
+  trade_source: string
+  is_open: boolean
+  legs_count: number
+  entry_price: number
+  exit_price: number
+  total_pnl: number
+  delta_pnl: number
+  theta_pnl: number
+  vega_pnl: number
+  max_risk: number
+  duration_days: number | null
+  created_at: string
+  opened_at: string | null
+  closed_at: string | null
+  notes: string | null
+  rolled_from_id: string | null
+  rolled_to_id: string | null
+}
+
+export interface PerformanceMetricsReport {
+  label: string
+  portfolio_id: string
+  total_trades: number
+  winning_trades: number
+  losing_trades: number
+  breakeven_trades: number
+  total_pnl: number
+  total_wins: number
+  total_losses: number
+  avg_win: number
+  avg_loss: number
+  biggest_win: number
+  biggest_loss: number
+  win_rate: number
+  profit_factor: number
+  expectancy: number
+  max_drawdown_pct: number
+  cagr_pct: number
+  sharpe_ratio: number
+  mar_ratio: number
+  initial_capital: number
+  current_equity: number
+  return_pct: number
+}
+
+export interface WeeklyPnLEntry {
+  week_start: string
+  week_end: string
+  pnl: number
+  trade_count: number
+  cumulative_pnl: number
+}
+
+export interface DecisionAuditEntry {
+  id: string
+  recommendation_id: string | null
+  decision_type: string
+  presented_at: string
+  responded_at: string | null
+  response: string | null
+  rationale: string | null
+  escalation_count: number
+  time_to_decision_seconds: number | null
+}
+
+export interface TradeEventEntry {
+  event_id: string
+  trade_id: string | null
+  event_type: string
+  timestamp: string
+  strategy_type: string | null
+  underlying_symbol: string
+  net_credit_debit: number
+  entry_delta: number
+  entry_theta: number
+  market_context: Record<string, unknown> | null
+  outcome: Record<string, unknown> | null
+  tags: string[] | null
+}
+
+export interface RecommendationReport {
+  id: string
+  recommendation_type: string
+  source: string
+  screener_name: string | null
+  underlying: string
+  strategy_type: string
+  confidence: number
+  rationale: string | null
+  risk_category: string
+  suggested_portfolio: string | null
+  status: string
+  created_at: string
+  reviewed_at: string | null
+  portfolio_name: string | null
+  trade_id_to_close: string | null
+  exit_action: string | null
+  exit_urgency: string | null
+  triggered_rules: string[] | null
+}
+
+// ---------------------------------------------------------------------------
+// Data Explorer Types
+// ---------------------------------------------------------------------------
+
+export interface ColumnMeta {
+  name: string
+  type: 'string' | 'numeric' | 'datetime' | 'boolean' | 'json'
+  nullable: boolean
+}
+
+export interface TableInfo {
+  name: string
+  row_count: number
+  columns: ColumnMeta[]
+  sample_rows?: Record<string, unknown>[]
+}
+
+export interface ExplorerFilterSpec {
+  column: string
+  operator: string
+  value: string
+  value2?: string
+}
+
+export interface ExplorerQuery {
+  table: string
+  columns?: string[]
+  filters?: ExplorerFilterSpec[]
+  sort_by?: string
+  sort_desc?: boolean
+  limit?: number
+  offset?: number
+}
+
+export interface ExplorerResult {
+  table: string
+  total: number
+  offset: number
+  limit: number
+  columns: ColumnMeta[]
+  rows: Record<string, unknown>[]
+}
+
 // WebSocket message types
 export type WSMessageType =
   | 'cell_update'

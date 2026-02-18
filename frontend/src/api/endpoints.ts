@@ -45,3 +45,29 @@ export const endpoints = {
   // WebSocket
   ws: '/ws',
 } as const
+
+// Reports
+const REPORTS = '/api/reports'
+
+export const reportEndpoints = {
+  tradeJournal: `${REPORTS}/trade-journal`,
+  performance: `${REPORTS}/performance`,
+  strategyBreakdown: `${REPORTS}/strategy-breakdown`,
+  sourceAttribution: `${REPORTS}/source-attribution`,
+  weeklyPnl: `${REPORTS}/weekly-pnl`,
+  decisions: `${REPORTS}/decisions`,
+  recommendations: `${REPORTS}/recommendations`,
+  tradeEvents: `${REPORTS}/trade-events`,
+  dailySnapshots: `${REPORTS}/daily-snapshots`,
+  greeksHistory: `${REPORTS}/greeks-history`,
+} as const
+
+// Data Explorer
+const EXPLORER = '/api/explorer'
+
+export const explorerEndpoints = {
+  tables: `${EXPLORER}/tables`,
+  table: (name: string) => `${EXPLORER}/tables/${name}`,
+  query: `${EXPLORER}/query`,
+  queryCsv: `${EXPLORER}/query/csv`,
+} as const

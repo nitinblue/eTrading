@@ -147,6 +147,20 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
     app.include_router(admin_router, prefix="/api/admin")
 
     # ------------------------------------------------------------------
+    # Reports API Router (pre-built report endpoints)
+    # ------------------------------------------------------------------
+    from trading_cotrader.web.api_reports import create_reports_router
+    reports_router = create_reports_router()
+    app.include_router(reports_router, prefix="/api/reports")
+
+    # ------------------------------------------------------------------
+    # Explorer API Router (structured query builder)
+    # ------------------------------------------------------------------
+    from trading_cotrader.web.api_explorer import create_explorer_router
+    explorer_router = create_explorer_router()
+    app.include_router(explorer_router, prefix="/api/explorer")
+
+    # ------------------------------------------------------------------
     # Serve React frontend (production build)
     # ------------------------------------------------------------------
     from fastapi.staticfiles import StaticFiles

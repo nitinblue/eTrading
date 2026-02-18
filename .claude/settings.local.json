@@ -39,7 +39,12 @@
       "Bash(curl:*)",
       "Bash(node -e:*)",
       "Bash(taskkill:*)",
-      "Bash(dir \"C:\\\\Users\\\\nitin\\\\PythonProjects\\\\eTrading\\\\frontend\")"
+      "Bash(dir \"C:\\\\Users\\\\nitin\\\\PythonProjects\\\\eTrading\\\\frontend\")",
+      "Bash(netstat:*)",
+      "Bash(tee:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite build)",
+      "Bash(findstr:*)"
     ]
   }
 }

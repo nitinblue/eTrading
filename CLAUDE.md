@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 17, 2026 (session 19)
+# Last Updated: February 17, 2026 (session 20)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -82,24 +82,21 @@ but most definitely System needs to be smart enough to continously improve the p
 ## [NITIN OWNS] SESSION MANDATE
 <!-- Current session only. Move prior to CLAUDE_ARCHIVE.md. -->
 
-### Feb 16, 2026 (Session 5)
-Objective:
-1. Build a continuous trading workflow engine that replaces the manual CLI-driven approach
-2. Workflow = state machine: macro → screener → recommendations → user decision → trade staging → monitoring → exit evaluation
-3. Different from harness: workflow maintains state, pauses for user, sends notifications, runs continuously
-4. Accountability: track capital deployment, trade plan compliance, time-to-decision, missed opportunities
-5. Start with WhatIf/paper mode, future: convert to real broker orders
-Done looks like: `python -m trading_cotrader.workflow.engine --start` runs a continuous loop, presents recommendations, waits for user, tracks everything.
-Not touching today: UI, real broker orders (paper mode only)
+### Feb 17, 2026 (Session 20)
+Build the UI: admin config screens, reports, and data explorer.
+- Admin screens for portfolio/risk/workflow/capital config (DONE)
+- Pre-built reports from DB: trade journal, performance, strategy breakdown, decisions (DONE)
+- Ad-hoc data explorer for all 19 DB tables (DONE)
 
 ---
 
 ## [NITIN OWNS] TODAY'S SURGICAL TASK
 <!-- OVERWRITE each session. 5 lines max. -->
 
-Document the workflow engine architecture. Create TRADING_PLAYBOOK.md (done).
-Create trade templates with entry conditions and P&L drivers (done).
-Next: implement the workflow engine core (state machine, scheduler, notification framework).
+Session 20: Reports & Data Explorer (DONE).
+- 10 report endpoints + 4 explorer endpoints (backend)
+- ReportsPage (8 tabs) + DataExplorerPage (query builder) (frontend)
+- All 157 tests pass, frontend builds cleanly.
 
 ---
 
@@ -235,6 +232,16 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 - Strategy rules: expandable inline edit in table rows with entry filters
 - `curl http://localhost:8080/api/admin/portfolios` returns YAML config as JSON
 
+**Reports & Data Explorer (Session 20 continued):**
+- Reports API: `GET /api/reports/trade-journal`, `/performance`, `/strategy-breakdown`, `/source-attribution`, `/weekly-pnl`, `/decisions`, `/recommendations`, `/trade-events`, `/daily-snapshots`, `/greeks-history`
+- Reports use `PerformanceMetricsService` for portfolio/strategy/source metrics (win rate, Sharpe, drawdown, expectancy, profit factor, CAGR)
+- All report endpoints support filters (portfolio, status, date range, source, strategy) + pagination (limit/offset)
+- Explorer API: `GET /api/explorer/tables` (19 tables with metadata + row counts), `GET /api/explorer/tables/{name}` (metadata + 5 samples), `POST /api/explorer/query` (structured queries), `POST /api/explorer/query/csv` (CSV export)
+- Explorer uses table/column whitelist from ORM introspection — NO raw SQL, max 1000 rows per query
+- 10 operators: eq, neq, gt, gte, lt, lte, contains, starts_with, in, between — validated against column type
+- Reports page: 8 tabbed views (Trade Journal, Performance, Strategy, Source, Decisions, Weekly P&L, Recommendations, Events) with AG Grid + CSV export
+- Data Explorer page: left panel table list + right panel query builder (filter rows, sort, limit) + AG Grid results with dynamic columns
+
 **Broker & Server:**
 - Authenticate TastyTrade, sync portfolio, pull live Greeks
 - Web approval dashboard: `python -m trading_cotrader.runners.run_workflow --web --port 8080`
@@ -256,8 +263,8 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 - Liquidity check on entry screeners not yet wired (exit-side only)
 - OI + daily volume from broker not integrated (mock placeholders)
 - IV rank uses realized vol proxy — needs broker IV
-- UI is prototypes only (`ui/`)
 - Performance metrics return zeros (no closed trades)
+- Frontend screens not yet built: Dashboard, Recommendations, Workflow, Risk, Performance, Capital, Agents, Trading
 
 ---
 
@@ -299,7 +306,9 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 | **Web Dashboard** | `web/approval_api.py` (FastAPI app factory, embedded in workflow engine), `ui/approval-dashboard.html` (legacy dark theme) |
 | **v2 API** | `web/api_v2.py` (comprehensive REST API for React frontend, mounted at `/api/v2`) |
 | **Admin API** | `web/api_admin.py` (YAML config CRUD, mounted at `/api/admin`) |
-| **React Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid), `frontend/src/pages/PortfolioPage.tsx`, `frontend/src/pages/settings/` (4 config screens), `frontend/src/api/types.ts` (TS interfaces), `frontend/src/hooks/` (TanStack Query), `frontend/src/hooks/useAdminApi.ts` (admin CRUD hooks) |
+| **Reports API** | `web/api_reports.py` (10 pre-built report endpoints at `/api/reports`, uses PerformanceMetricsService) |
+| **Explorer API** | `web/api_explorer.py` (structured query builder at `/api/explorer`, table/column whitelist, 19 tables) |
+| **React Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid), `frontend/src/pages/PortfolioPage.tsx`, `frontend/src/pages/ReportsPage.tsx` (8 tabs), `frontend/src/pages/DataExplorerPage.tsx` (query builder), `frontend/src/pages/settings/` (4 config screens), `frontend/src/api/types.ts` (TS interfaces), `frontend/src/hooks/` (TanStack Query), `frontend/src/hooks/useReports.ts`, `frontend/src/hooks/useExplorer.ts` |
 | **Tests** | `tests/` (157 pytest), `harness/` (17 integration steps) |
 | **Templates** | `config/templates/` (27 templates: 1 0DTE, 4 weekly, 16 monthly, 5 LEAPS, 1 custom) |
 

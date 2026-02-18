@@ -79,7 +79,7 @@ class ScreenerAgent:
                 from trading_cotrader.services.watchlist_service import WatchlistService
                 ws = WatchlistService(session, broker=self.broker)
                 try:
-                    ws.create_watchlist(watchlist_name, symbols, source='custom')
+                    ws.create_custom(watchlist_name, symbols)
                 except Exception:
                     pass  # already exists
 
