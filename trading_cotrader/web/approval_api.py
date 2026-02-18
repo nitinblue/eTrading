@@ -140,6 +140,13 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
     app.include_router(v2_router, prefix="/api/v2")
 
     # ------------------------------------------------------------------
+    # Admin API Router (config management)
+    # ------------------------------------------------------------------
+    from trading_cotrader.web.api_admin import create_admin_router
+    admin_router = create_admin_router()
+    app.include_router(admin_router, prefix="/api/admin")
+
+    # ------------------------------------------------------------------
     # Serve React frontend (production build)
     # ------------------------------------------------------------------
     from fastapi.staticfiles import StaticFiles

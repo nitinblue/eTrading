@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import {
   LayoutDashboard,
@@ -14,10 +14,19 @@ import {
   ArrowLeftRight,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
 } from 'lucide-react'
 import { useState } from 'react'
 
-const navItems = [
+interface NavItem {
+  to: string
+  icon: React.ElementType
+  label: string
+  phase: number
+  children?: { to: string; label: string }[]
+}
+
+const navItems: NavItem[] = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', phase: 2 },
   { to: '/portfolio', icon: Briefcase, label: 'Portfolio', phase: 1 },
   { to: '/recommendations', icon: ListChecks, label: 'Recommendations', phase: 2 },
@@ -26,13 +35,28 @@ const navItems = [
   { to: '/performance', icon: BarChart3, label: 'Performance', phase: 3 },
   { to: '/capital', icon: DollarSign, label: 'Capital', phase: 2 },
   { to: '/agents', icon: Bot, label: 'Agents', phase: 3 },
-  { to: '/config', icon: Settings, label: 'Config', phase: 3 },
+  {
+    to: '/settings',
+    icon: Settings,
+    label: 'Config',
+    phase: 1,
+    children: [
+      { to: '/settings/portfolios', label: 'Portfolios' },
+      { to: '/settings/risk', label: 'Risk' },
+      { to: '/settings/workflow', label: 'Workflow' },
+      { to: '/settings/capital', label: 'Capital' },
+    ],
+  },
   { to: '/data', icon: Database, label: 'Data Explorer', phase: 4 },
   { to: '/trading', icon: ArrowLeftRight, label: 'Trading', phase: 4 },
 ]
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(true)
+  const [configOpen, setConfigOpen] = useState(false)
+  const location = useLocation()
+
+  const isSettingsActive = location.pathname.startsWith('/settings')
 
   return (
     <aside
@@ -50,8 +74,56 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-2 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label, phase }) => {
-          const disabled = phase > 1 && to !== '/portfolio'
+        {navItems.map(({ to, icon: Icon, label, phase, children }) => {
+          const disabled = phase > 1 && to !== '/portfolio' && to !== '/settings'
+          const hasChildren = !!children
+
+          if (hasChildren) {
+            return (
+              <div key={to}>
+                <button
+                  onClick={() => {
+                    if (collapsed) setCollapsed(false)
+                    setConfigOpen(!configOpen)
+                  }}
+                  className={clsx(
+                    'flex items-center gap-3 px-3 py-2 mx-1 rounded text-xs transition-colors w-full text-left',
+                    isSettingsActive
+                      ? 'bg-bg-active text-accent-blue'
+                      : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                  )}
+                >
+                  <Icon size={16} className="shrink-0" />
+                  {!collapsed && (
+                    <>
+                      <span className="truncate flex-1">{label}</span>
+                      <ChevronDown
+                        size={12}
+                        className={clsx('transition-transform', configOpen && 'rotate-180')}
+                      />
+                    </>
+                  )}
+                </button>
+                {!collapsed && configOpen && children.map((child) => (
+                  <NavLink
+                    key={child.to}
+                    to={child.to}
+                    className={({ isActive }) =>
+                      clsx(
+                        'flex items-center gap-3 pl-9 pr-3 py-1.5 mx-1 rounded text-xs transition-colors',
+                        isActive
+                          ? 'bg-bg-active text-accent-blue'
+                          : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                      )
+                    }
+                  >
+                    <span className="truncate">{child.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            )
+          }
+
           return (
             <NavLink
               key={to}

@@ -225,6 +225,16 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 - Prod: `cd frontend && pnpm build` → backend serves `frontend/dist/` at `/`
 - v2 API: `GET /api/v2/portfolios`, `/positions`, `/trades`, `/workflow/status`, `/recommendations`, `/risk`, `/capital`, `/decisions`, `/performance`
 
+**Admin & Config Screens (Session 20):**
+- Admin API: `GET/PUT /api/admin/portfolios`, `/risk`, `/strategies`, `/workflow`, `/capital-plan`, `POST /reload`
+- YAML remains source of truth — API reads/writes YAML + reloads singletons
+- 4 settings pages: Portfolios (left-right master-detail), Risk (VaR/Greeks/concentration/margin/exit profiles/liquidity), Workflow (circuit breakers/constraints/schedule/execution/strategy rules), Capital (live status/idle alerts/escalation/target returns/staggered ramp)
+- Sidebar: Config nav with expandable sub-items (Portfolios, Risk, Workflow, Capital)
+- Common components: SaveBar (sticky save/cancel), FormSection (collapsible), Toast (success/error)
+- Portfolio edit: strategies checkboxes (allowed + active), risk limits, preferred underlyings (tag input), exit profile dropdown
+- Strategy rules: expandable inline edit in table rows with entry filters
+- `curl http://localhost:8080/api/admin/portfolios` returns YAML config as JSON
+
 **Broker & Server:**
 - Authenticate TastyTrade, sync portfolio, pull live Greeks
 - Web approval dashboard: `python -m trading_cotrader.runners.run_workflow --web --port 8080`
@@ -288,7 +298,8 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 | **Broker** | `adapters/tastytrade_adapter.py`, `services/position_sync.py`, `services/portfolio_sync.py`, `cli/init_portfolios.py`, `cli/sync_fidelity.py`, `cli/load_stallion.py` |
 | **Web Dashboard** | `web/approval_api.py` (FastAPI app factory, embedded in workflow engine), `ui/approval-dashboard.html` (legacy dark theme) |
 | **v2 API** | `web/api_v2.py` (comprehensive REST API for React frontend, mounted at `/api/v2`) |
-| **React Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid), `frontend/src/pages/PortfolioPage.tsx`, `frontend/src/api/types.ts` (TS interfaces), `frontend/src/hooks/` (TanStack Query) |
+| **Admin API** | `web/api_admin.py` (YAML config CRUD, mounted at `/api/admin`) |
+| **React Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid), `frontend/src/pages/PortfolioPage.tsx`, `frontend/src/pages/settings/` (4 config screens), `frontend/src/api/types.ts` (TS interfaces), `frontend/src/hooks/` (TanStack Query), `frontend/src/hooks/useAdminApi.ts` (admin CRUD hooks) |
 | **Tests** | `tests/` (157 pytest), `harness/` (17 integration steps) |
 | **Templates** | `config/templates/` (27 templates: 1 0DTE, 4 weekly, 16 monthly, 5 LEAPS, 1 custom) |
 
