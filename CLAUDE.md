@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 16, 2026 (session 18)
+# Last Updated: February 17, 2026 (session 19)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -213,6 +213,18 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 - Harness: `python -m trading_cotrader.harness.runner --skip-sync` — 14/16 pass (2 skip without broker), 17 steps
 - Unit tests: `pytest trading_cotrader/tests/ -v` — 157 tests, all pass
 
+**React Frontend (Session 19 — Phase 1):**
+- `frontend/` — Vite + React 18 + TypeScript + Tailwind CSS + AG Grid + TanStack Query
+- Portfolio page: all 10 portfolios in AG Grid, Greeks bars, P&L coloring, deployed %, VaR
+- Position drill-down: click portfolio → see open trades with legs, Greeks, DTE, source
+- Trade detail modal: legs table, P&L attribution (delta/gamma/theta/vega/unexplained), Greeks entry→current, timeline
+- WhatIf trades visually distinct (blue tint, WHATIF badge)
+- Status bar: market hours, workflow state, WS connection, pending recs count
+- Top bar: workflow state badge, VIX with color coding, macro regime
+- Dev: `cd frontend && pnpm dev` (Vite at :5173, proxies to :8080)
+- Prod: `cd frontend && pnpm build` → backend serves `frontend/dist/` at `/`
+- v2 API: `GET /api/v2/portfolios`, `/positions`, `/trades`, `/workflow/status`, `/recommendations`, `/risk`, `/capital`, `/decisions`, `/performance`
+
 **Broker & Server:**
 - Authenticate TastyTrade, sync portfolio, pull live Greeks
 - Web approval dashboard: `python -m trading_cotrader.runners.run_workflow --web --port 8080`
@@ -274,8 +286,10 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 | **Pricing** | `analytics/pricing/` (BS, P&L), `analytics/greeks/engine.py`, `services/pricing/` |
 | **DB/ORM** | `core/database/schema.py` (19 tables incl. workflow_state, decision_log), `core/database/session.py`, `repositories/` |
 | **Broker** | `adapters/tastytrade_adapter.py`, `services/position_sync.py`, `services/portfolio_sync.py`, `cli/init_portfolios.py`, `cli/sync_fidelity.py`, `cli/load_stallion.py` |
-| **Web Dashboard** | `web/approval_api.py` (FastAPI app factory, embedded in workflow engine), `ui/approval-dashboard.html` (self-contained dark theme) |
-| **Tests** | `tests/` (116 pytest), `harness/` (17 integration steps) |
+| **Web Dashboard** | `web/approval_api.py` (FastAPI app factory, embedded in workflow engine), `ui/approval-dashboard.html` (legacy dark theme) |
+| **v2 API** | `web/api_v2.py` (comprehensive REST API for React frontend, mounted at `/api/v2`) |
+| **React Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid), `frontend/src/pages/PortfolioPage.tsx`, `frontend/src/api/types.ts` (TS interfaces), `frontend/src/hooks/` (TanStack Query) |
+| **Tests** | `tests/` (157 pytest), `harness/` (17 integration steps) |
 | **Templates** | `config/templates/` (27 templates: 1 0DTE, 4 weekly, 16 monthly, 5 LEAPS, 1 custom) |
 
 ---
@@ -324,7 +338,7 @@ Next: implement the workflow engine core (state machine, scheduler, notification
 python -m trading_cotrader.scripts.setup_database
 python -m trading_cotrader.harness.runner --skip-sync    # 17 steps, no broker
 python -m trading_cotrader.harness.runner --mock
-pytest trading_cotrader/tests/ -v                        # 116 unit tests
+pytest trading_cotrader/tests/ -v                        # 157 unit tests
 
 # Workflow engine (NEW)
 python -m trading_cotrader.runners.run_workflow --once --no-broker --mock    # single cycle test
@@ -357,6 +371,11 @@ python -m trading_cotrader.cli.load_stallion --dry-run                         #
 
 # Web dashboard (embedded in workflow)
 # python -m trading_cotrader.runners.run_workflow --web --port 8080 --no-broker --mock
+
+# React frontend (NEW — Session 19)
+cd frontend && pnpm install                              # install frontend deps (first time)
+cd frontend && pnpm dev                                  # dev server at localhost:5173
+cd frontend && pnpm build                                # production build → frontend/dist/
 
 # Live order execution (within workflow CLI):
 #   execute <trade_id>           # dry-run preview

@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border-primary;
+  }
+
+  body {
+    @apply bg-bg-primary text-text-primary;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0a0a0f;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2a2a3a;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a3a4a;
+  }
+}
+
+@layer components {
+  /* AG Grid Bloomberg-dense overrides */
+  .ag-theme-alpine-dark {
+    --ag-background-color: #12121a;
+    --ag-header-background-color: #0a0a0f;
+    --ag-odd-row-background-color: #12121a;
+    --ag-row-hover-color: #1a1a26;
+    --ag-selected-row-background-color: #1e2a3a;
+    --ag-border-color: #1e1e2e;
+    --ag-header-foreground-color: #8888a0;
+    --ag-foreground-color: #e4e4ef;
+    --ag-row-border-color: #1e1e2e;
+    --ag-font-size: 12px;
+    --ag-font-family: 'JetBrains Mono', monospace;
+    --ag-grid-size: 3px;
+    --ag-row-height: 28px;
+    --ag-header-height: 32px;
+    --ag-cell-horizontal-padding: 8px;
+  }
+
+  .ag-theme-alpine-dark .ag-header-cell {
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* Dense card style */
+  .card {
+    @apply bg-bg-secondary border border-border-secondary rounded-lg;
+  }
+  .card-header {
+    @apply px-3 py-2 border-b border-border-secondary;
+  }
+  .card-body {
+    @apply px-3 py-2;
+  }
+}
+
+@layer utilities {
+  .font-mono-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}

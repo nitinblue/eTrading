@@ -26,7 +26,20 @@
       "Bash(grep:*)",
       "Bash(pip show:*)",
       "Bash(pip install:*)",
-      "Bash(PYTHONIOENCODING=utf-8 pytest:*)"
+      "Bash(PYTHONIOENCODING=utf-8 pytest:*)",
+      "Bash(pnpm --version:*)",
+      "Bash(npm:*)",
+      "Bash(node --version:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(npx esbuild:*)",
+      "Bash(pnpm config set:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm add:*)",
+      "Bash(curl:*)",
+      "Bash(node -e:*)",
+      "Bash(taskkill:*)",
+      "Bash(dir \"C:\\\\Users\\\\nitin\\\\PythonProjects\\\\eTrading\\\\frontend\")"
     ]
   }
 }

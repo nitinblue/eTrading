@@ -133,11 +133,31 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
     )
 
     # ------------------------------------------------------------------
-    # Dashboard HTML
+    # v2 API Router (React frontend)
+    # ------------------------------------------------------------------
+    from trading_cotrader.web.api_v2 import create_v2_router
+    v2_router = create_v2_router(engine)
+    app.include_router(v2_router, prefix="/api/v2")
+
+    # ------------------------------------------------------------------
+    # Serve React frontend (production build)
+    # ------------------------------------------------------------------
+    from fastapi.staticfiles import StaticFiles
+    frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+    if frontend_dist.exists():
+        app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="static")
+
+    # ------------------------------------------------------------------
+    # Dashboard HTML — serve React app if built, else legacy HTML
     # ------------------------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse)
     async def serve_dashboard():
+        # Try React build first
+        react_index = Path(__file__).parent.parent.parent / "frontend" / "dist" / "index.html"
+        if react_index.exists():
+            return HTMLResponse(react_index.read_text(encoding="utf-8"))
+        # Fallback to legacy approval dashboard
         html_path = Path(__file__).parent.parent / "ui" / "approval-dashboard.html"
         return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
