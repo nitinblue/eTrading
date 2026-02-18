@@ -849,6 +849,11 @@ class RecommendationORM(Base):
     exit_action = Column(String(20))          # ActionType value
     exit_urgency = Column(String(20))         # immediate, today, this_week
     triggered_rules = Column(JSON)            # List of rule names
+
+    # Scenario-based fields (populated by scenario screeners)
+    scenario_template_name = Column(String(100))  # e.g. "correction_premium_sell"
+    scenario_type = Column(String(50))             # "correction", "earnings", "black_swan", "arbitrage"
+    trigger_conditions_met = Column(JSON)           # Dict of matched conditions
     new_legs = Column(JSON)                   # For ROLL: legs of the replacement trade
 
 
@@ -927,3 +932,66 @@ class DecisionLogORM(Base):
     rationale = Column(Text)
     escalation_count = Column(Integer, default=0)
     time_to_decision_seconds = Column(Integer)
+
+
+# ============================================================================
+# Agent Visibility Tables
+# ============================================================================
+
+class AgentRunORM(Base):
+    """
+    Every agent execution persisted for dashboard visibility.
+
+    One row per agent.run() call — captures timing, status, data,
+    messages, metrics, and objectives.
+    """
+    __tablename__ = 'agent_runs'
+
+    __table_args__ = (
+        Index('idx_agent_runs_name', 'agent_name'),
+        Index('idx_agent_runs_started', 'started_at'),
+        Index('idx_agent_runs_cycle', 'cycle_id'),
+    )
+
+    id = Column(String(36), primary_key=True)
+    agent_name = Column(String(50), nullable=False)
+    cycle_id = Column(Integer)
+    workflow_state = Column(String(50))
+    status = Column(String(20), nullable=False)  # AgentStatus value
+    started_at = Column(DateTime, nullable=False)
+    finished_at = Column(DateTime)
+    duration_ms = Column(Integer)
+    data_json = Column(JSON)        # AgentResult.data
+    messages = Column(JSON)         # AgentResult.messages
+    metrics_json = Column(JSON)     # AgentResult.metrics
+    objectives = Column(JSON)       # AgentResult.objectives
+    requires_human = Column(Boolean, default=False)
+    human_prompt = Column(Text)
+    error_message = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AgentObjectiveORM(Base):
+    """
+    Daily objectives and grades — one row per agent per day.
+
+    Set at morning boot, graded at EOD evaluation.
+    """
+    __tablename__ = 'agent_objectives'
+
+    __table_args__ = (
+        Index('idx_agent_obj_name_date', 'agent_name', 'objective_date'),
+    )
+
+    id = Column(String(36), primary_key=True)
+    agent_name = Column(String(50), nullable=False)
+    objective_date = Column(Date, nullable=False)
+    objective_text = Column(Text)
+    target_metric = Column(String(50))
+    target_value = Column(Integer)
+    actual_value = Column(Integer)
+    grade = Column(String(5))  # A, B, C, F, N/A
+    gap_analysis = Column(Text)
+    set_at = Column(DateTime)
+    evaluated_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

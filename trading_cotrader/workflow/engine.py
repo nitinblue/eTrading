@@ -169,8 +169,7 @@ class WorkflowEngine:
         self.context['cycle_count'] = self.context.get('cycle_count', 0) + 1
 
         # Calendar check
-        cal_result = self.calendar_agent.run(self.context)
-        self._log_agent(cal_result)
+        cal_result = self._run_agent(self.calendar_agent, self.context)
 
         if not self.context.get('is_trading_day', True):
             logger.info("Not a trading day. Going idle.")
@@ -178,16 +177,13 @@ class WorkflowEngine:
             return
 
         # Market data
-        md_result = self.market_data.run(self.context)
-        self._log_agent(md_result)
+        md_result = self._run_agent(self.market_data, self.context)
 
         # Portfolio state
-        ps_result = self.portfolio_state.run(self.context)
-        self._log_agent(ps_result)
+        ps_result = self._run_agent(self.portfolio_state, self.context)
 
         # Safety check
-        safety = self.guardian.run(self.context)
-        self._log_agent(safety)
+        safety = self._run_agent(self.guardian, self.context)
 
         if safety.status == AgentStatus.BLOCKED:
             logger.warning(f"Guardian blocked boot: {safety.messages}")
@@ -195,12 +191,10 @@ class WorkflowEngine:
             return
 
         # Capital utilization check at boot
-        cap_result = self.capital_utilization.run(self.context)
-        self._log_agent(cap_result)
+        cap_result = self._run_agent(self.capital_utilization, self.context)
 
         # Set session objectives for the day
-        obj_result = self.session_objectives.set_objectives(self.context)
-        self._log_agent(obj_result)
+        obj_result = self._run_agent(self.session_objectives, self.context, method='set_objectives')
 
         # Notify if capital alerts exist
         alerts = self.context.get('capital_alerts', [])
@@ -211,8 +205,7 @@ class WorkflowEngine:
 
     def on_enter_macro_check(self, event):
         """Evaluate macro conditions."""
-        result = self.macro.run(self.context)
-        self._log_agent(result)
+        result = self._run_agent(self.macro, self.context)
 
         should_screen = self.context.get('macro_assessment', {}).get('should_screen', True)
         if not should_screen:
@@ -223,11 +216,9 @@ class WorkflowEngine:
 
     def on_enter_screening(self, event):
         """Run screeners and calculate risk."""
-        result = self.screener.run(self.context)
-        self._log_agent(result)
+        result = self._run_agent(self.screener, self.context)
 
-        risk_result = self.risk.run(self.context)
-        self._log_agent(risk_result)
+        risk_result = self._run_agent(self.risk, self.context)
 
         recs = self.context.get('pending_recommendations', [])
         if recs:
@@ -269,12 +260,10 @@ class WorkflowEngine:
         logger.info("=== TRADE MANAGEMENT ===")
 
         # Refresh portfolio state before evaluation
-        ps_result = self.portfolio_state.run(self.context)
-        self._log_agent(ps_result)
+        ps_result = self._run_agent(self.portfolio_state, self.context)
 
         # Run evaluation across all portfolios
-        result = self.evaluator.run(self.context)
-        self._log_agent(result)
+        result = self._run_agent(self.evaluator, self.context)
 
         signals = self.context.get('exit_signals', [])
         if signals:
@@ -304,8 +293,7 @@ class WorkflowEngine:
             ok, reason = self.guardian.check_trading_constraints(action, self.context)
             if ok:
                 self.context['action'] = action
-                result = self.executor.run(self.context)
-                self._log_agent(result)
+                result = self._run_agent(self.executor, self.context)
                 if result.status == AgentStatus.COMPLETED:
                     executed += 1
             else:
@@ -316,7 +304,7 @@ class WorkflowEngine:
         logger.info(f"Executed {executed}/{len(approved)} approved actions")
 
         # Refresh portfolio state after execution
-        self.portfolio_state.run(self.context)
+        self._run_agent(self.portfolio_state, self.context)
         self.monitor()
 
     def on_enter_eod_evaluation(self, event):
@@ -324,10 +312,10 @@ class WorkflowEngine:
         logger.info("=== EOD EVALUATION ===")
 
         # Final portfolio state refresh
-        self.portfolio_state.run(self.context)
+        self._run_agent(self.portfolio_state, self.context)
 
         # Run evaluator one more time
-        self.evaluator.run(self.context)
+        self._run_agent(self.evaluator, self.context)
 
         # Generate report
         self.report()
@@ -337,10 +325,10 @@ class WorkflowEngine:
         logger.info("=== REPORTING ===")
 
         # Accountability metrics first (reporter needs them)
-        self.accountability.run(self.context)
+        self._run_agent(self.accountability, self.context)
 
         # Final capital utilization snapshot
-        self.capital_utilization.run(self.context)
+        self._run_agent(self.capital_utilization, self.context)
 
         # Capture daily snapshots for all portfolios (feeds analytics + ML)
         snapshot_results = self._capture_snapshots()
@@ -350,15 +338,13 @@ class WorkflowEngine:
         self._accumulate_ml_data()
 
         # Session performance evaluation (objectives vs actuals)
-        perf_result = self.session_objectives.evaluate_performance(self.context)
-        self._log_agent(perf_result)
+        perf_result = self._run_agent(self.session_objectives, self.context, method='evaluate_performance')
 
         # QA assessment
-        qa_result = self.qa_agent.run(self.context)
-        self._log_agent(qa_result)
+        qa_result = self._run_agent(self.qa_agent, self.context)
 
         # Generate report (now includes capital + session + QA sections)
-        self.reporter.run(self.context)
+        self._run_agent(self.reporter, self.context)
         self.notifier.send_daily_summary(self.context)
         self.go_idle()
 
@@ -419,12 +405,11 @@ class WorkflowEngine:
             return
 
         # Refresh
-        self.market_data.run(self.context)
-        self.portfolio_state.run(self.context)
+        self._run_agent(self.market_data, self.context)
+        self._run_agent(self.portfolio_state, self.context)
 
         # Capital utilization check
-        cap_result = self.capital_utilization.run(self.context)
-        self._log_agent(cap_result)
+        cap_result = self._run_agent(self.capital_utilization, self.context)
 
         # Notify if capital alerts (respects nag frequency via severity escalation)
         alerts = self.context.get('capital_alerts', [])
@@ -432,7 +417,7 @@ class WorkflowEngine:
             self.notifier.notify_idle_capital(alerts)
 
         # Safety check
-        safety = self.guardian.run(self.context)
+        safety = self._run_agent(self.guardian, self.context)
         if safety.status == AgentStatus.BLOCKED:
             self.halt()
             return
@@ -567,8 +552,64 @@ class WorkflowEngine:
         except Exception as e:
             logger.warning(f"ML pipeline update failed (non-blocking): {e}")
 
+    def _run_agent(self, agent, context: dict, method: str = 'run') -> 'AgentResult':
+        """
+        Run an agent method with timing, persist result to AgentRunORM.
+
+        Returns the AgentResult. DB persistence is fire-and-forget —
+        failures never block the workflow.
+        """
+        started_at = datetime.utcnow()
+        try:
+            fn = getattr(agent, method)
+            result = fn(context)
+        except Exception as e:
+            from trading_cotrader.agents.protocol import AgentResult, AgentStatus as AS
+            result = AgentResult(
+                agent_name=getattr(agent, 'name', str(agent)),
+                status=AS.ERROR,
+                messages=[f"Agent crashed: {e}"],
+            )
+
+        finished_at = datetime.utcnow()
+        duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+
+        # Log to console
+        for msg in result.messages:
+            level = logging.WARNING if result.status == AgentStatus.ERROR else logging.INFO
+            logger.log(level, f"[{result.agent_name}] {msg}")
+
+        # Persist to DB (fire-and-forget)
+        try:
+            from trading_cotrader.core.database.session import session_scope
+            from trading_cotrader.core.database.schema import AgentRunORM
+
+            with session_scope() as session:
+                run = AgentRunORM(
+                    id=str(uuid.uuid4()),
+                    agent_name=result.agent_name,
+                    cycle_id=self.context.get('cycle_count', 0),
+                    workflow_state=self.state,
+                    status=result.status.value if hasattr(result.status, 'value') else str(result.status),
+                    started_at=started_at,
+                    finished_at=finished_at,
+                    duration_ms=duration_ms,
+                    data_json=result.data or {},
+                    messages=result.messages or [],
+                    metrics_json=result.metrics or {},
+                    objectives=result.objectives or [],
+                    requires_human=result.requires_human,
+                    human_prompt=result.human_prompt,
+                    error_message=result.messages[0] if result.status == AgentStatus.ERROR and result.messages else None,
+                )
+                session.add(run)
+        except Exception as e:
+            logger.debug(f"Failed to persist agent run for {result.agent_name}: {e}")
+
+        return result
+
     def _log_agent(self, result):
-        """Log agent result."""
+        """Log agent result (legacy — used for results already obtained)."""
         for msg in result.messages:
             level = logging.WARNING if result.status == AgentStatus.ERROR else logging.INFO
             logger.log(level, f"[{result.agent_name}] {msg}")

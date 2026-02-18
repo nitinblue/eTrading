@@ -21,6 +21,8 @@ _CADENCE_TO_SCREENERS = {
     'weekly': ['vix', 'iv_rank'],
     'monthly': ['vix', 'iv_rank'],
     'leaps': ['leaps'],
+    'opportunistic': ['correction', 'arbitrage'],
+    'event_driven': ['earnings', 'black_swan'],
 }
 
 

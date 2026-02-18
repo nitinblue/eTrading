@@ -42,6 +42,17 @@ export const endpoints = {
   execute: (tradeId: string) => `${V2}/execute/${tradeId}`,
   orders: `${V2}/orders`,
 
+  // Agents
+  agents: `${V2}/agents`,
+  agentsSummary: `${V2}/agents/summary`,
+  agentsLatestRuns: `${V2}/agents/runs/latest`,
+  agentsContext: `${V2}/agents/context`,
+  agentsTimeline: `${V2}/agents/timeline`,
+  agentsMlStatus: `${V2}/agents/ml-status`,
+  agent: (name: string) => `${V2}/agents/${name}`,
+  agentRuns: (name: string) => `${V2}/agents/${name}/runs`,
+  agentObjectives: (name: string) => `${V2}/agents/${name}/objectives`,
+
   // WebSocket
   ws: '/ws',
 } as const

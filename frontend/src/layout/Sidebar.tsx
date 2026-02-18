@@ -35,7 +35,7 @@ const navItems: NavItem[] = [
   { to: '/risk', icon: ShieldAlert, label: 'Risk', phase: 2 },
   { to: '/performance', icon: BarChart3, label: 'Performance', phase: 3 },
   { to: '/capital', icon: DollarSign, label: 'Capital', phase: 2 },
-  { to: '/agents', icon: Bot, label: 'Agents', phase: 3 },
+  { to: '/agents', icon: Bot, label: 'Agents', phase: 1 },
   {
     to: '/settings',
     icon: Settings,

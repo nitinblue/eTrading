@@ -147,6 +147,11 @@ class Recommendation:
     # If rejected
     rejection_reason: str = ""
 
+    # Scenario-based fields (populated by scenario screeners)
+    scenario_template_name: Optional[str] = None      # e.g. "correction_premium_sell"
+    scenario_type: Optional[str] = None                # "correction", "earnings", "black_swan", "arbitrage"
+    trigger_conditions_met: Dict[str, Any] = field(default_factory=dict)
+
     def accept(self, notes: str = "", trade_id: str = "", portfolio_name: str = ""):
         """Accept this recommendation."""
         self.status = RecommendationStatus.ACCEPTED
@@ -189,6 +194,9 @@ class Recommendation:
             'exit_urgency': self.exit_urgency,
             'triggered_rules': self.triggered_rules,
             'new_legs': [l.to_dict() for l in self.new_legs],
+            'scenario_template_name': self.scenario_template_name,
+            'scenario_type': self.scenario_type,
+            'trigger_conditions_met': self.trigger_conditions_met,
         }
 
 

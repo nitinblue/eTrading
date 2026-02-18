@@ -59,6 +59,16 @@ class MarketDataAgent:
 
             context['snapshots'] = snapshots
             context['vix'] = vix
+
+            # Populate MarketDataContainer if available
+            container_manager = context.get('container_manager')
+            if container_manager and hasattr(container_manager, 'market_data'):
+                for sym, snap in snapshots.items():
+                    container_manager.market_data.update_from_snapshot(snap)
+                messages.append(
+                    f"Updated MarketDataContainer: {container_manager.market_data.count} symbols"
+                )
+
             messages.append(f"Fetched {len(snapshots)}/{len(symbols)} snapshots, VIX={vix:.1f}")
 
             return AgentResult(

@@ -161,6 +161,13 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
     app.include_router(explorer_router, prefix="/api/explorer")
 
     # ------------------------------------------------------------------
+    # Agents API Router (agent dashboard visibility)
+    # ------------------------------------------------------------------
+    from trading_cotrader.web.api_agents import create_agents_router
+    agents_router = create_agents_router(engine)
+    app.include_router(agents_router, prefix="/api/v2")
+
+    # ------------------------------------------------------------------
     # Serve React frontend (production build)
     # ------------------------------------------------------------------
     from fastapi.staticfiles import StaticFiles

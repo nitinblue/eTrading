@@ -66,11 +66,21 @@ class TechnicalSnapshot:
     directional_regime: Optional[str] = None  # "U" / "F" / "D"
     volatility_regime: Optional[str] = None   # "LOW" / "NORMAL" / "HIGH"
 
+    # Bollinger Bands
+    bollinger_upper: Optional[Decimal] = None
+    bollinger_middle: Optional[Decimal] = None  # = SMA 20
+    bollinger_lower: Optional[Decimal] = None
+    bollinger_width: Optional[float] = None     # (upper - lower) / middle
+
+    # VWAP
+    vwap: Optional[Decimal] = None
+
     # Position relative to history
     pct_from_52w_high: Optional[float] = None  # negative = below high
     high_52w: Optional[Decimal] = None
     low_52w: Optional[Decimal] = None
-    nearest_support: Optional[Decimal] = None  # SMA 200 or recent swing low
+    nearest_support: Optional[Decimal] = None   # SMA 200 or recent swing low
+    nearest_resistance: Optional[Decimal] = None  # SMA 200 if below, else 52w high
 
     def to_dict(self) -> Dict:
         return {
@@ -84,10 +94,18 @@ class TechnicalSnapshot:
             'atr_percent': self.atr_percent,
             'iv_rank': self.iv_rank,
             'iv_percentile': self.iv_percentile,
+            'bollinger_upper': float(self.bollinger_upper) if self.bollinger_upper else None,
+            'bollinger_middle': float(self.bollinger_middle) if self.bollinger_middle else None,
+            'bollinger_lower': float(self.bollinger_lower) if self.bollinger_lower else None,
+            'bollinger_width': self.bollinger_width,
+            'vwap': float(self.vwap) if self.vwap else None,
             'directional_regime': self.directional_regime,
             'volatility_regime': self.volatility_regime,
             'pct_from_52w_high': self.pct_from_52w_high,
+            'high_52w': float(self.high_52w) if self.high_52w else None,
+            'low_52w': float(self.low_52w) if self.low_52w else None,
             'nearest_support': float(self.nearest_support) if self.nearest_support else None,
+            'nearest_resistance': float(self.nearest_resistance) if self.nearest_resistance else None,
         }
 
 
@@ -239,6 +257,35 @@ class TechnicalAnalysisService:
         else:
             snap.nearest_support = snap.low_52w
 
+        # Nearest resistance: SMA 200 if price is below it, else 52w high
+        if snap.sma_200 and float(snap.sma_200) > float(snap.current_price):
+            snap.nearest_resistance = snap.sma_200
+        else:
+            snap.nearest_resistance = snap.high_52w
+
+        # Bollinger Bands: SMA(20) +/- 2*StdDev(20)
+        close_series = pd.Series(close)
+        bb_sma = close_series.rolling(window=20).mean()
+        bb_std = close_series.rolling(window=20).std()
+        if not np.isnan(bb_sma.iloc[-1]) and not np.isnan(bb_std.iloc[-1]):
+            bb_mid = bb_sma.iloc[-1]
+            bb_up = bb_mid + 2 * bb_std.iloc[-1]
+            bb_lo = bb_mid - 2 * bb_std.iloc[-1]
+            snap.bollinger_middle = Decimal(str(round(bb_mid, 2)))
+            snap.bollinger_upper = Decimal(str(round(bb_up, 2)))
+            snap.bollinger_lower = Decimal(str(round(bb_lo, 2)))
+            if bb_mid > 0:
+                snap.bollinger_width = round((bb_up - bb_lo) / bb_mid, 6)
+
+        # VWAP: cumulative (price * volume) / cumulative volume over last trading day
+        volume = df["Volume"].to_numpy(dtype=np.float64).reshape(-1)
+        typical_price = (high + low + close) / 3.0
+        cum_tp_vol = np.cumsum(typical_price * volume)
+        cum_vol = np.cumsum(volume)
+        if cum_vol[-1] > 0:
+            vwap_val = cum_tp_vol[-1] / cum_vol[-1]
+            snap.vwap = Decimal(str(round(vwap_val, 2)))
+
         # IV rank/percentile via realized vol proxy
         snap.iv_rank, snap.iv_percentile = self._compute_iv_proxy(close)
 
@@ -381,6 +428,8 @@ class TechnicalAnalysisService:
         }
         price = mock_prices.get(symbol, 100)
 
+        bb_mid = round(price * 0.995, 2)
+        bb_std = round(price * 0.02, 2)
         return TechnicalSnapshot(
             symbol=symbol,
             current_price=Decimal(str(price)),
@@ -392,10 +441,16 @@ class TechnicalAnalysisService:
             atr_percent=0.015,
             iv_rank=45.0,
             iv_percentile=50.0,
+            bollinger_upper=Decimal(str(round(bb_mid + 2 * bb_std, 2))),
+            bollinger_middle=Decimal(str(bb_mid)),
+            bollinger_lower=Decimal(str(round(bb_mid - 2 * bb_std, 2))),
+            bollinger_width=round(4 * bb_std / bb_mid, 6) if bb_mid > 0 else None,
+            vwap=Decimal(str(round(price * 0.998, 2))),
             directional_regime="F",
             volatility_regime="NORMAL",
             pct_from_52w_high=-3.5,
             high_52w=Decimal(str(round(price * 1.035, 2))),
             low_52w=Decimal(str(round(price * 0.82, 2))),
             nearest_support=Decimal(str(round(price * 0.92, 2))),
+            nearest_resistance=Decimal(str(round(price * 1.035, 2))),
         )

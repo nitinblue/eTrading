@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 17, 2026 (session 20)
+# Last Updated: February 18, 2026 (session 21)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -82,25 +82,45 @@ but most definitely System needs to be smart enough to continously improve the p
 ## [NITIN OWNS] SESSION MANDATE
 <!-- Current session only. Move prior to CLAUDE_ARCHIVE.md. -->
 
-### Feb 17, 2026 (Session 20)
-Build the UI: admin config screens, reports, and data explorer.
-- Admin screens for portfolio/risk/workflow/capital config (DONE)
-- Pre-built reports from DB: trade journal, performance, strategy breakdown, decisions (DONE)
-- Ad-hoc data explorer for all 19 DB tables (DONE)
+### Feb 18, 2026 (Session 21)
+Agent Dashboard & Visibility (Phase 1 of 4-phase Agent Management plan).
+- Make all 16 agents visible: status, objectives, grades, run history (DONE)
+- Persist every agent.run() call to DB with timing (DONE)
+- Frontend agent dashboard with cards, timeline, detail pages (DONE)
+- ML/RL status panel (DONE)
+- Placeholder tabs for Quant Research + Knowledge Base (DONE)
 
 ---
 
 ## [NITIN OWNS] TODAY'S SURGICAL TASK
 <!-- OVERWRITE each session. 5 lines max. -->
 
-Session 20: Reports & Data Explorer (DONE).
-- 10 report endpoints + 4 explorer endpoints (backend)
-- ReportsPage (8 tabs) + DataExplorerPage (query builder) (frontend)
+Session 21: Agent Dashboard & Visibility (DONE).
+- 2 new DB tables (agent_runs, agent_objectives), 21 total
+- 10 agent API endpoints, 16-agent registry
+- AgentsPage (4 tabs) + AgentDetailPage (grade chart, run history)
 - All 157 tests pass, frontend builds cleanly.
 
 ---
 
 ## [CLAUDE OWNS] WHAT USER CAN DO TODAY
+
+**Agent Dashboard & Visibility (NEW — Session 21):**
+- Agent API: `GET /api/v2/agents` (16 agents with status, grade, run count, capabilities)
+- Agent detail: `GET /api/v2/agents/{name}` (recent runs, objectives, stats)
+- Paginated run history: `GET /api/v2/agents/{name}/runs?limit=50`
+- Historical objectives: `GET /api/v2/agents/{name}/objectives?days=30`
+- Dashboard stats: `GET /api/v2/agents/summary` (error count, avg duration, grade distribution)
+- Cycle timeline: `GET /api/v2/agents/timeline?cycles=3` (Gantt-like view)
+- ML status: `GET /api/v2/agents/ml-status` (snapshots, events, readiness)
+- Engine context: `GET /api/v2/agents/context` (current state, truncated)
+- Every `agent.run()` call persisted to `agent_runs` table with timing (fire-and-forget)
+- Session objectives persisted per-agent per-day in `agent_objectives` table
+- Static registry for all 16 agents: category, role, responsibilities, capabilities (implemented + planned)
+- Frontend: `/agents` → 16 agent cards with status dots, grades, capability badges
+- Frontend: `/agents/{name}` → detail page with grade history chart (Recharts), expandable run history, JSON viewer
+- Frontend: 4 tabs — Active Agents (functional), Quant Research (placeholder), Knowledge Base (placeholder), ML/RL Status (functional)
+- 2 new DB tables: `agent_runs`, `agent_objectives` (21 tables total)
 
 **Live Order Execution (NEW — Session 18):**
 - `execute <trade_id>` — dry-run preview of a WhatIf trade: legs, mid-price, margin impact, fees, Greeks
@@ -264,7 +284,13 @@ Session 20: Reports & Data Explorer (DONE).
 - OI + daily volume from broker not integrated (mock placeholders)
 - IV rank uses realized vol proxy — needs broker IV
 - Performance metrics return zeros (no closed trades)
-- Frontend screens not yet built: Dashboard, Recommendations, Workflow, Risk, Performance, Capital, Agents, Trading
+- Volatility curve / term structure analysis for calendar/double calendar strike selection — NOT STARTED
+- High-IV premium selling screener (market drop + VIX spike → recommend selling) — NOT STARTED
+- Equity curve, drawdown chart, benchmark vs SPY/QQQ — NOT STARTED
+- Agent Learning Framework (Phase 2) — structured learnings, knowledge base — NOT STARTED
+- Quant Research Agent (Phase 3) — autonomous research, LLM integration, hypothesis engine — NOT STARTED
+- Trade Reasoning + RL Feedback (Phase 4) — structured reasoning chains, RL loop — NOT STARTED
+- Frontend screens not yet built: Dashboard, Recommendations, Workflow, Risk, Performance, Capital, Trading
 
 ---
 
@@ -301,14 +327,15 @@ Session 20: Reports & Data Explorer (DONE).
 | **Performance** | `services/performance_metrics_service.py` (win rate, CAGR, Sharpe, drawdown, source breakdown) |
 | **Events/ML** | `services/event_logger.py`, `core/models/events.py`, `ai_cotrader/` (feature extraction, RL — needs data) |
 | **Pricing** | `analytics/pricing/` (BS, P&L), `analytics/greeks/engine.py`, `services/pricing/` |
-| **DB/ORM** | `core/database/schema.py` (19 tables incl. workflow_state, decision_log), `core/database/session.py`, `repositories/` |
+| **DB/ORM** | `core/database/schema.py` (21 tables incl. workflow_state, decision_log, agent_runs, agent_objectives), `core/database/session.py`, `repositories/` |
 | **Broker** | `adapters/tastytrade_adapter.py`, `services/position_sync.py`, `services/portfolio_sync.py`, `cli/init_portfolios.py`, `cli/sync_fidelity.py`, `cli/load_stallion.py` |
 | **Web Dashboard** | `web/approval_api.py` (FastAPI app factory, embedded in workflow engine), `ui/approval-dashboard.html` (legacy dark theme) |
 | **v2 API** | `web/api_v2.py` (comprehensive REST API for React frontend, mounted at `/api/v2`) |
 | **Admin API** | `web/api_admin.py` (YAML config CRUD, mounted at `/api/admin`) |
 | **Reports API** | `web/api_reports.py` (10 pre-built report endpoints at `/api/reports`, uses PerformanceMetricsService) |
-| **Explorer API** | `web/api_explorer.py` (structured query builder at `/api/explorer`, table/column whitelist, 19 tables) |
-| **React Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid), `frontend/src/pages/PortfolioPage.tsx`, `frontend/src/pages/ReportsPage.tsx` (8 tabs), `frontend/src/pages/DataExplorerPage.tsx` (query builder), `frontend/src/pages/settings/` (4 config screens), `frontend/src/api/types.ts` (TS interfaces), `frontend/src/hooks/` (TanStack Query), `frontend/src/hooks/useReports.ts`, `frontend/src/hooks/useExplorer.ts` |
+| **Explorer API** | `web/api_explorer.py` (structured query builder at `/api/explorer`, table/column whitelist, 21 tables) |
+| **Agents API** | `web/api_agents.py` (10 endpoints at `/api/v2/agents`, 16-agent registry with capabilities) |
+| **React Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid), `frontend/src/pages/PortfolioPage.tsx`, `frontend/src/pages/ReportsPage.tsx` (8 tabs), `frontend/src/pages/DataExplorerPage.tsx` (query builder), `frontend/src/pages/AgentsPage.tsx` (4 tabs: agents, research, knowledge, ML), `frontend/src/pages/AgentDetailPage.tsx` (drill-down), `frontend/src/pages/settings/` (4 config screens), `frontend/src/components/agents/` (AgentCard, AgentRunTimeline, ObjectiveGradeChart), `frontend/src/hooks/useAgents.ts` |
 | **Tests** | `tests/` (157 pytest), `harness/` (17 integration steps) |
 | **Templates** | `config/templates/` (27 templates: 1 0DTE, 4 weekly, 16 monthly, 5 LEAPS, 1 custom) |
 

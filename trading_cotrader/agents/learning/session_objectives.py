@@ -385,19 +385,23 @@ class SessionObjectivesAgent:
         return f"{agent}: target={target}, actual={actual}. Investigate and correct."
 
     def _persist_performance(self, results: list, corrective_items: list) -> None:
-        """Persist session performance to decision_log for historical analysis."""
+        """Persist session performance to decision_log + per-agent AgentObjectiveORM rows."""
         try:
             from trading_cotrader.core.database.session import session_scope
-            from trading_cotrader.core.database.schema import DecisionLogORM
+            from trading_cotrader.core.database.schema import DecisionLogORM, AgentObjectiveORM
             import uuid
 
+            now = datetime.utcnow()
+            today = date.today()
+
             with session_scope() as session:
+                # Legacy decision_log entry (backward compat)
                 log = DecisionLogORM(
                     id=str(uuid.uuid4()),
                     recommendation_id=None,
                     decision_type='session_review',
-                    presented_at=datetime.utcnow(),
-                    responded_at=datetime.utcnow(),
+                    presented_at=now,
+                    responded_at=now,
                     response='evaluated',
                     rationale=(
                         f"Grades: {', '.join(r['grade'] for r in results)}. "
@@ -406,6 +410,31 @@ class SessionObjectivesAgent:
                     time_to_decision_seconds=0,
                 )
                 session.add(log)
+
+                # Per-agent objective rows
+                corrective_map = {}
+                for i, item in enumerate(corrective_items):
+                    # Try to match corrective items to agents
+                    for r in results:
+                        if r['agent_name'] in item.lower():
+                            corrective_map[r['agent_name']] = item
+                            break
+
+                for r in results:
+                    obj = AgentObjectiveORM(
+                        id=str(uuid.uuid4()),
+                        agent_name=r['agent_name'],
+                        objective_date=today,
+                        objective_text=r.get('objective', ''),
+                        target_metric=r.get('target_metric', ''),
+                        target_value=r.get('target_value'),
+                        actual_value=r.get('actual_value'),
+                        grade=r.get('grade', 'N/A'),
+                        gap_analysis=corrective_map.get(r['agent_name']),
+                        set_at=now,
+                        evaluated_at=now,
+                    )
+                    session.add(obj)
 
         except Exception as e:
             logger.error(f"Failed to persist session performance: {e}")

@@ -32,6 +32,10 @@ from trading_cotrader.services.screeners.screener_base import ScreenerBase
 from trading_cotrader.services.screeners.vix_regime_screener import VixRegimeScreener
 from trading_cotrader.services.screeners.iv_rank_screener import IvRankScreener
 from trading_cotrader.services.screeners.leaps_entry_screener import LeapsEntryScreener
+from trading_cotrader.services.screeners.correction_screener import CorrectionScreener
+from trading_cotrader.services.screeners.earnings_screener import EarningsScreener
+from trading_cotrader.services.screeners.black_swan_screener import BlackSwanScreener
+from trading_cotrader.services.screeners.arbitrage_screener import ArbitrageScreener
 from trading_cotrader.services.macro_context_service import (
     MacroContextService, MacroOverride, MacroAssessment
 )
@@ -43,6 +47,10 @@ _SCREENER_REGISTRY = {
     'vix': VixRegimeScreener,
     'iv_rank': IvRankScreener,
     'leaps': LeapsEntryScreener,
+    'correction': CorrectionScreener,
+    'earnings': EarningsScreener,
+    'black_swan': BlackSwanScreener,
+    'arbitrage': ArbitrageScreener,
 }
 
 

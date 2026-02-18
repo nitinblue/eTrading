@@ -46,6 +46,9 @@ class RecommendationRepository(BaseRepository[Recommendation, RecommendationORM]
                 exit_urgency=rec.exit_urgency,
                 triggered_rules=rec.triggered_rules if rec.triggered_rules else None,
                 new_legs=[l.to_dict() for l in rec.new_legs] if rec.new_legs else None,
+                scenario_template_name=rec.scenario_template_name,
+                scenario_type=rec.scenario_type,
+                trigger_conditions_met=rec.trigger_conditions_met if rec.trigger_conditions_met else None,
             )
             created = self.create(orm)
             return self.to_domain(created) if created else None
@@ -214,4 +217,7 @@ class RecommendationRepository(BaseRepository[Recommendation, RecommendationORM]
             exit_urgency=getattr(orm, 'exit_urgency', None),
             triggered_rules=getattr(orm, 'triggered_rules', None) or [],
             new_legs=new_legs,
+            scenario_template_name=getattr(orm, 'scenario_template_name', None),
+            scenario_type=getattr(orm, 'scenario_type', None),
+            trigger_conditions_met=getattr(orm, 'trigger_conditions_met', None) or {},
         )

@@ -591,6 +591,118 @@ export interface ExplorerResult {
   rows: Record<string, unknown>[]
 }
 
+// ---------------------------------------------------------------------------
+// Agent Types
+// ---------------------------------------------------------------------------
+
+export interface AgentInfo {
+  name: string
+  display_name: string
+  category: 'safety' | 'perception' | 'analysis' | 'execution' | 'learning'
+  role: string
+  description: string
+  responsibilities: string[]
+  runs_during: string[]
+  capabilities_implemented: string[]
+  capabilities_planned: string[]
+  status: string
+  last_run_at: string | null
+  last_duration_ms: number | null
+  last_error: string | null
+  run_count: number
+  today_grade: string | null
+  today_objective: string | null
+}
+
+export interface AgentRun {
+  id: string
+  cycle_id: number | null
+  workflow_state: string | null
+  status: string
+  started_at: string
+  finished_at: string | null
+  duration_ms: number | null
+  messages: string[]
+  data: Record<string, unknown>
+  metrics: Record<string, unknown>
+  objectives: string[]
+  requires_human: boolean
+  human_prompt: string | null
+  error_message: string | null
+}
+
+export interface AgentObjective {
+  id: string
+  date: string
+  objective: string | null
+  target_metric: string | null
+  target_value: number | null
+  actual_value: number | null
+  grade: string | null
+  gap_analysis: string | null
+  set_at: string | null
+  evaluated_at: string | null
+}
+
+export interface AgentDetail extends Omit<AgentInfo, 'status' | 'last_run_at' | 'last_duration_ms' | 'last_error' | 'run_count' | 'today_grade' | 'today_objective'> {
+  stats: {
+    total_runs: number
+    avg_duration_ms: number
+    error_count: number
+  }
+  recent_runs: AgentRun[]
+  objectives: AgentObjective[]
+}
+
+export interface AgentSummary {
+  total_agents: number
+  today_runs: number
+  today_errors: number
+  avg_duration_ms: number
+  grade_distribution: Record<string, number>
+  cycle_count: number
+  current_state: string
+}
+
+export interface AgentRunsResponse {
+  total: number
+  offset: number
+  limit: number
+  runs: AgentRun[]
+}
+
+export interface AgentObjectivesResponse {
+  agent_name: string
+  days: number
+  objectives: AgentObjective[]
+}
+
+export interface MLStatus {
+  snapshots: number
+  events: number
+  events_with_outcomes: number
+  closed_trades: number
+  supervised_learning_ready: boolean
+  supervised_trades_needed: number
+  rl_ready: boolean
+  rl_trades_needed: number
+  features_defined: number
+  feature_groups: {
+    market: number
+    position: number
+    portfolio: number
+  }
+}
+
+export interface AgentTimelineCycle {
+  agent_name: string
+  status: string
+  workflow_state: string | null
+  started_at: string
+  duration_ms: number | null
+  error_message: string | null
+}
+
 // WebSocket message types
 export type WSMessageType =
   | 'cell_update'

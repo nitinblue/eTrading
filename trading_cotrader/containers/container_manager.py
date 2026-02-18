@@ -19,6 +19,7 @@ from .position_container import PositionContainer
 from .risk_factor_container import RiskFactorContainer
 from .trade_container import TradeContainer
 from .portfolio_bundle import PortfolioBundle
+from .market_data_container import MarketDataContainer
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class EventType(Enum):
     RISK_FACTOR_UPDATE = "risk_factor_update"
     FULL_REFRESH = "full_refresh"
     CELL_UPDATE = "cell_update"
+    MARKET_DATA_UPDATE = "market_data_update"
 
 
 @dataclass
@@ -96,6 +98,9 @@ class ContainerManager:
         # Default bundle name (first real portfolio initialized)
         self._default_bundle: Optional[str] = None
 
+        # Cross-portfolio market data container (shared across all portfolios)
+        self._market_data: MarketDataContainer = MarketDataContainer()
+
     # -----------------------------------------------------------------
     # Bundle initialization
     # -----------------------------------------------------------------
@@ -155,6 +160,15 @@ class ContainerManager:
     def get_bundle_names(self) -> List[str]:
         """Get all bundle config names."""
         return list(self._bundles.keys())
+
+    # -----------------------------------------------------------------
+    # Cross-portfolio market data
+    # -----------------------------------------------------------------
+
+    @property
+    def market_data(self) -> MarketDataContainer:
+        """Cross-portfolio market data container (technical indicators)."""
+        return self._market_data
 
     # -----------------------------------------------------------------
     # Backward compatibility: default bundle properties

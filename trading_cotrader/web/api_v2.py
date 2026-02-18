@@ -621,4 +621,32 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                 })
             return result
 
+    # ------------------------------------------------------------------
+    # Market Data (technical indicators from MarketDataContainer)
+    # ------------------------------------------------------------------
+
+    @router.get("/market-data")
+    async def get_market_data():
+        """All tracked underlyings with technical indicators."""
+        if engine and hasattr(engine, 'container_manager'):
+            cm = engine.container_manager
+            if cm and hasattr(cm, 'market_data'):
+                return {
+                    'symbols': cm.market_data.symbols,
+                    'count': cm.market_data.count,
+                    'data': cm.market_data.to_grid_rows(),
+                }
+        return {'symbols': [], 'count': 0, 'data': []}
+
+    @router.get("/market-data/{symbol}")
+    async def get_market_data_symbol(symbol: str):
+        """Technical indicators for a single underlying."""
+        if engine and hasattr(engine, 'container_manager'):
+            cm = engine.container_manager
+            if cm and hasattr(cm, 'market_data'):
+                entry = cm.market_data.get(symbol.upper())
+                if entry:
+                    return entry.to_dict()
+        raise HTTPException(status_code=404, detail=f"No market data for {symbol}")
+
     return router

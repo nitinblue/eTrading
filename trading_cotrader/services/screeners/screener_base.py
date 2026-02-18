@@ -220,7 +220,7 @@ class ScreenerBase(ABC):
                 month = 1
                 year += 1
             fridays = [
-                d for d in cal.Calendar().itermonthdates(year, month)
+                d for d in calendar.Calendar().itermonthdates(year, month)
                 if d.weekday() == 4 and d.month == month
             ]
             third_friday = fridays[2] if len(fridays) >= 3 else fridays[-1]
