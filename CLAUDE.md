@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 18, 2026 (session 21)
+# Last Updated: February 18, 2026 (session 22)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -75,12 +75,22 @@ but most definitely System needs to be smart enough to continously improve the p
 - Deploy 250K across 4 risk-tiered portfolios (Core $200K, Medium $20K, High $10K, Model $25K) — **IN PROGRESS**
 - Income generation primary, not alpha chasing — **NOT STARTED**
 - 20% undefined / 80% defined risk book — **IN PROGRESS**
-- Event data feeds AI/ML for RL — **NOT STARTED** (needs 500+ trades)
+- Event data feeds AI/ML for RL — **IN PROGRESS** (research auto-book pipeline will generate 1000+ simulated trades/month, eliminating the wait for real data)
 
 ---
 
 ## [NITIN OWNS] SESSION MANDATE
 <!-- Current session only. Move prior to CLAUDE_ARCHIVE.md. -->
+
+### Feb 18, 2026 (Session 22)
+Scenario-Based Recommendation Templates + Market Data Container.
+- 9 scenario templates in YAML (4 active, 5 future: orderblock, vol contraction, breakout, breakdown, consolidation) (DONE)
+- ScenarioScreener base + 4 concrete screeners (correction, earnings, black_swan, arbitrage) (DONE)
+- MarketDataContainer with change tracking, wired into ContainerManager (DONE)
+- Bollinger Bands + VWAP + nearest resistance added to TechnicalAnalysisService (DONE)
+- EarningsCalendarService via yfinance (DONE)
+- Market data API endpoints at /api/v2/market-data (DONE)
+- Scenario fields on Recommendation model + ORM (DONE)
 
 ### Feb 18, 2026 (Session 21)
 Agent Dashboard & Visibility (Phase 1 of 4-phase Agent Management plan).
@@ -95,15 +105,32 @@ Agent Dashboard & Visibility (Phase 1 of 4-phase Agent Management plan).
 ## [NITIN OWNS] TODAY'S SURGICAL TASK
 <!-- OVERWRITE each session. 5 lines max. -->
 
-Session 21: Agent Dashboard & Visibility (DONE).
-- 2 new DB tables (agent_runs, agent_objectives), 21 total
-- 10 agent API endpoints, 16-agent registry
-- AgentsPage (4 tabs) + AgentDetailPage (grade chart, run history)
-- All 157 tests pass, frontend builds cleanly.
+Session 22: Scenario Templates + Market Data Container (DONE).
+- 9 scenario templates YAML (4 active + 5 future), ScenarioScreener base class
+- 4 new screeners: correction, earnings, black_swan, arbitrage
+- MarketDataContainer + Bollinger/VWAP/resistance on TechnicalSnapshot
+- EarningsCalendarService, market-data API, 3 new ORM columns on RecommendationORM
+- 157/157 tests pass, frontend builds cleanly.
 
 ---
 
 ## [CLAUDE OWNS] WHAT USER CAN DO TODAY
+
+**Scenario-Based Screeners + Market Data (NEW — Session 22):**
+- 9 scenario templates in `config/scenario_templates.yaml` — 4 active (correction, earnings, black_swan, arbitrage), 5 future (orderblock, vol_contraction, breakout, breakdown, consolidation)
+- `python -m trading_cotrader.cli.run_screener --screener correction --symbols SPY,QQQ --no-broker` — correction screener (triggers on 8-15% drop + VIX 22-45)
+- `python -m trading_cotrader.cli.run_screener --screener earnings --symbols AAPL,NVDA --no-broker` — earnings IV crush screener (yfinance calendar)
+- `python -m trading_cotrader.cli.run_screener --screener black_swan --symbols SPY --no-broker` — black swan hedge (VIX>30 + 12%+ drop)
+- `python -m trading_cotrader.cli.run_screener --screener arbitrage --symbols SPY,QQQ --no-broker` — vol arbitrage calendar spreads (IV rank + Bollinger)
+- Workflow engine runs `opportunistic` screeners (correction, arbitrage) and `event_driven` screeners (earnings, black_swan) every MONITORING cycle
+- Each scenario recommendation carries `scenario_template_name`, `scenario_type`, `trigger_conditions_met` — full audit trail
+- Dynamic leg construction from YAML-defined delta targets and wing widths
+- `GET /api/v2/market-data` — all tracked underlyings with Bollinger/VWAP/MAs/RSI/regimes
+- `GET /api/v2/market-data/{symbol}` — single underlying technical indicators
+- `MarketDataContainer` persists indicators across workflow cycles (populated by MarketDataAgent)
+- `TechnicalSnapshot` now includes: `bollinger_upper/middle/lower/width`, `vwap`, `nearest_resistance`
+- `EarningsCalendarService` fetches earnings dates via yfinance with 24h cache
+- Future templates (enabled=false) ready for implementation: orderblock, vol contraction, breakout, breakdown, consolidation
 
 **Agent Dashboard & Visibility (NEW — Session 21):**
 - Agent API: `GET /api/v2/agents` (16 agents with status, grade, run count, capabilities)
@@ -275,7 +302,8 @@ Session 21: Agent Dashboard & Visibility (DONE).
 - Data is now flowing; need 100+ closed trades for supervised learning, 500+ for RL
 
 **Blocked / Not Yet Working:**
-- AI/ML model training not wired (need data first — 100+ closed trades)
+- **AUTO-BOOK RESEARCH PIPELINE** — Scenario screeners → auto-accept into research WhatIf portfolios → daily MTM → auto-exit → ML training data. This is the #1 priority for generating ML training data without waiting for real trades. See NEXT MAJOR INITIATIVE below.
+- AI/ML model training not wired (need data first — being addressed by auto-book pipeline)
 - AI/ML recommendations not integrated into workflow (need trained models)
 - Live order execution for non-TastyTrade brokers (Fidelity/Zerodha/Stallion)
 - Trade plan compliance tracking (template comparison, deviation flagging)
@@ -283,14 +311,162 @@ Session 21: Agent Dashboard & Visibility (DONE).
 - Liquidity check on entry screeners not yet wired (exit-side only)
 - OI + daily volume from broker not integrated (mock placeholders)
 - IV rank uses realized vol proxy — needs broker IV
-- Performance metrics return zeros (no closed trades)
-- Volatility curve / term structure analysis for calendar/double calendar strike selection — NOT STARTED
-- High-IV premium selling screener (market drop + VIX spike → recommend selling) — NOT STARTED
-- Equity curve, drawdown chart, benchmark vs SPY/QQQ — NOT STARTED
-- Agent Learning Framework (Phase 2) — structured learnings, knowledge base — NOT STARTED
-- Quant Research Agent (Phase 3) — autonomous research, LLM integration, hypothesis engine — NOT STARTED
-- Trade Reasoning + RL Feedback (Phase 4) — structured reasoning chains, RL loop — NOT STARTED
+- Performance metrics return zeros (no closed trades yet — research portfolios will fix this)
+- Volatility curve / term structure analysis for calendar/double calendar strike selection
+- Equity curve, drawdown chart, benchmark vs SPY/QQQ
+- Enable future scenario templates: orderblock, vol_contraction, breakout, breakdown, consolidation (need additional trigger conditions: support/resistance detection, volume ratio, Bollinger width max)
+- **Quant Agent at Level 0** — generates data but doesn't learn. Needs: parameter optimization (s25), hypothesis generation (s27), template health monitoring (s26), knowledge base (s27). See 5-level evolution plan below.
+- Agent Learning Framework (Phase 2) — structured learnings, knowledge base (planned s27)
+- Trade Reasoning + RL Feedback (Phase 4) — structured reasoning chains, RL loop (planned s28+)
 - Frontend screens not yet built: Dashboard, Recommendations, Workflow, Risk, Performance, Capital, Trading
+- **Real capital deployment on hold** — Nitin postponing investment until research portfolios demonstrate agent readiness
+
+---
+
+## [CLAUDE OWNS] NEXT MAJOR INITIATIVE: Autonomous Research → ML Training Data
+
+### The Problem
+ML pipeline needs 100+ closed trades for supervised learning, 500+ for RL. Real trading generates maybe 2-5 trades/week. At that rate, useful ML is 6-12 months away. Meanwhile the Quant agent sits idle.
+
+### The Insight (Nitin, Session 22)
+**Don't wait for real data. Generate it.** Every scenario template defines a complete trade hypothesis. The system should:
+1. Run ALL scenario screeners every cycle (not just on user's cadence)
+2. AUTO-ACCEPT every recommendation into dedicated research WhatIf portfolios
+3. Track these trades daily — mark-to-market, evaluate exits, close at rules
+4. Feed every lifecycle event to ML pipeline
+5. In weeks, not months, have thousands of simulated trade outcomes
+
+### Architecture: 3-Layer Research Engine
+
+**Layer 1: Aggressive Auto-Book (QuantResearchAgent)**
+```
+Every MONITORING cycle:
+  → Run ALL 9 scenario screeners against expanded watchlist (50+ symbols)
+  → Auto-accept ALL recommendations into research portfolios (no human gate)
+  → One research portfolio PER scenario type (correction_research, earnings_research, etc.)
+  → Tag every trade: source=quant_research, scenario_type, trigger_conditions
+  → No capital limits on research portfolios (virtual — tracking P&L only)
+```
+
+**Layer 2: Daily Lifecycle Management (QuantLifecycleAgent)**
+```
+Every MONITORING cycle:
+  → Run PortfolioEvaluationService on ALL research portfolios
+  → Auto-accept EXIT/ROLL recommendations (no human gate)
+  → Mark-to-market via TechnicalAnalysisService (price from yfinance)
+  → Track: entry price, current price, max favorable, max adverse, days held
+  → Compute theoretical Greeks from Black-Scholes (already have analytics/pricing/)
+  → Close trades at template-defined exit rules (profit target, stop loss, DTE)
+```
+
+**Layer 3: ML Feature Extraction + Model Training**
+```
+After every trade close:
+  → Extract features: scenario_type, trigger_conditions, entry_iv_rank, entry_rsi,
+    days_held, max_favorable_pct, max_adverse_pct, pnl_pct, vix_at_entry, vix_at_exit,
+    regime_at_entry, regime_at_exit, bollinger_position, earnings_proximity
+  → Write to ml_training_data table (already have ai_cotrader/data_pipeline.py)
+  → Weekly: retrain simple models (logistic regression on win/loss, random forest on P&L)
+  → Monthly: evaluate model predictions vs actual outcomes
+  → Continuously: adjust scenario trigger thresholds based on what works
+
+Model outputs feed back into:
+  → Confidence scoring: ML-adjusted confidence on new recommendations
+  → Template tuning: "correction screener with RSI<35 wins 72% vs 54% for RSI<40"
+  → Portfolio allocation: "earnings scenarios have 0.8 Sharpe, allocate more capital"
+```
+
+### Research Portfolios (new, virtual, no capital)
+| Portfolio | Scenario | Watchlist |
+|-----------|----------|-----------|
+| `research_correction` | correction_premium_sell | SPY,QQQ,AAPL,NVDA,MSFT,AMZN,GOOGL,META,TSLA,AMD |
+| `research_earnings` | earnings_iv_crush | Dynamic (earnings calendar) |
+| `research_black_swan` | black_swan_hedge | SPY,QQQ,IWM |
+| `research_arbitrage` | vol_arbitrage_calendar | SPY,QQQ,SPX,IWM |
+| `research_orderblock` | orderblock (future) | Top 20 liquid names |
+| `research_breakout` | breakout (future) | Top 20 liquid names |
+| `research_consolidation` | consolidation (future) | SPY,QQQ,IWM |
+
+### Quant Agent Evolution — 5 Levels (Honest Assessment)
+
+**Current state: Level 0 — Data Generator.** The system generates data but doesn't truly learn. Six specific weaknesses identified:
+
+| # | Weakness | What's Missing |
+|---|----------|---------------|
+| 1 | No hypothesis generation | Templates are human-authored. System never asks "what if RSI<30 works better than RSI<40?" |
+| 2 | No parameter optimization | Fixed YAML params. Never tests delta=0.25 vs 0.30, never adjusts thresholds based on outcomes |
+| 3 | No backtesting framework | Can't test "would this template have worked in 2022 bear market?" |
+| 4 | No structured knowledge accumulation | Insights from session objectives vanish. No persistent "what we learned" repository |
+| 5 | No causal reasoning | Correlates outcomes with features but can't explain WHY a trade worked |
+| 6 | Open feedback loop | ML scores don't flow back to template selection or parameter adjustment |
+
+**Target evolution:**
+
+| Level | Name | What It Does | Session |
+|-------|------|-------------|---------|
+| 0 | Data Generator | Books WhatIf trades, tracks outcomes | s23-24 |
+| 1 | Template Executor | Runs templates as-is, measures win rate per template | s23-24 |
+| 2 | Parameter Optimizer | Tests parameter variants (delta, DTE, wing width), identifies best combos | s25 |
+| 3 | Hypothesis Generator | Proposes new trigger conditions, creates experimental templates | s27 |
+| 4 | Adaptive Strategy Manager | Adjusts portfolio allocation based on regime-conditional performance | s28 |
+| 5 | LLM-Augmented Reasoning | Uses language model to explain trade outcomes, synthesize insights | Future |
+
+**Nitin's strategic decision (Session 22):** Real capital deployment postponed until agents demonstrate consistent research portfolio performance. "I will not get into market fully — postponing investment plan before my agents are ready."
+
+### Implementation Plan (Sessions 23-27+)
+
+**Session 23: Auto-Book Pipeline + Parameter Variants**
+- Create research portfolio configs in risk_config.yaml (portfolio_type=research, no capital limits)
+- Build `QuantResearchAgent` — runs all enabled scenario screeners, auto-accepts into research portfolios
+- Wire into workflow engine: runs every MONITORING cycle after regular screeners
+- **Parameter variants**: For each template, book 2-3 variants (e.g. correction with short_delta=0.25/0.30/0.35) — tagged with `variant_id` for A/B comparison
+- CLI: `python -m trading_cotrader.cli.run_research --once --no-broker` for manual trigger
+- Verify: 1 cycle generates 10-50 WhatIf trades across research portfolios
+
+**Session 24: Research Lifecycle + MTM**
+- Build `QuantLifecycleAgent` — evaluates research portfolios, auto-closes at exit rules
+- Daily MTM: use yfinance close prices to mark research positions
+- Track: entry_price, current_price, max_favorable, max_adverse, theoretical_greeks
+- Compute P&L attribution (delta, theta, vega, gamma, unexplained) using existing analytics
+- Verify: trades open, get marked daily, close at profit/stop/DTE rules
+
+**Session 25: ML Feature Pipeline + First Models + Feature Importance**
+- Extend `MLDataPipeline` to extract features from closed research trades
+- Feature set: 20+ features per trade (scenario, trigger conditions, market state, outcome)
+- Train first models: logistic regression (win/loss), random forest (P&L prediction)
+- **Feature importance analysis**: Which trigger conditions matter most? Which are noise?
+- Model evaluation: accuracy, precision, recall, Sharpe of model-filtered trades
+- Persist model artifacts + evaluation metrics to DB
+- API: `GET /api/v2/agents/ml-models` (model list, performance, feature importance)
+
+**Session 26: Feedback Loop + Template Health Monitor + Quant Dashboard**
+- ML-adjusted confidence: new recommendations get model prediction overlay
+- **Template health monitor**: Per-template scorecard — win rate, avg P&L, max drawdown, Sharpe, sample size. Auto-disable templates that underperform after N trades (configurable threshold)
+- Template tuning: QuantAgent suggests parameter changes based on research outcomes
+- Frontend: Research tab showing all research portfolios, trade outcomes, model performance
+- Equity curves per scenario type, win rates, average P&L, Sharpe ratios
+- A/B comparison: "correction with RSI<35 vs RSI<40" side-by-side
+
+**Session 27: Hypothesis Engine (Level 3)**
+- **Clustering analysis**: Group closed trades by outcome, find what separates winners from losers
+- **Autonomous template proposal**: "Trades with RSI<30 AND VIX>25 AND bollinger_width>0.05 won 78% — create new template?"
+- **Experiment framework**: QuantAgent creates experimental templates, runs them in dedicated research portfolio, evaluates after N trades
+- **Knowledge Base agent**: Persists structured learnings — "SPY correction trades work best with 45 DTE, not 30" — queryable by other agents
+- Human-in-loop: experimental templates require approval before graduating to active
+
+**Session 28+: Adaptive Strategy + LLM Integration (Future)**
+- Regime-conditional allocation: "In HIGH vol, weight corrections 3x, reduce calendars"
+- Cross-scenario correlation: "Don't run both correction and black_swan — they overlap"
+- LLM integration: Use Claude API to explain trade outcomes in natural language
+- Autonomous TRADING_PLAYBOOK.md updates based on accumulated evidence
+
+### Key Design Decisions
+1. Research portfolios are **virtual** — no real capital, no broker interaction, yfinance-only pricing
+2. Research trades use **same domain model** as real trades (Trade, Leg, etc.) — ML features identical
+3. Auto-accept bypasses InteractionManager — QuantAgent writes directly to DB
+4. Exit rules come from **exit_rule_profiles** in risk_config.yaml (same as real portfolios)
+5. Research data feeds the SAME MLDataPipeline that real trades will eventually feed
+6. When ML models prove reliable on research data, they graduate to scoring real recommendations
 
 ---
 
@@ -316,10 +492,12 @@ Session 21: Agent Dashboard & Visibility (DONE).
 | **Workflow Config** | `config/workflow_rules.yaml` (incl. `execution_defaults`), `config/workflow_config_loader.py` (`ExecutionConfig`) |
 | **Broker Adapters** | `adapters/base.py` (BrokerAdapterBase ABC, ManualBrokerAdapter, ReadOnlyAdapter), `adapters/factory.py` (BrokerAdapterFactory), `adapters/tastytrade_adapter.py` (TastyTrade SDK — all `tastytrade` imports confined here) |
 | **Broker Config** | `config/brokers.yaml` (4 brokers), `config/broker_config_loader.py` (BrokerRegistry) |
-| **Containers** | `containers/portfolio_bundle.py` (per-portfolio bundle), `containers/container_manager.py` (Dict[str, PortfolioBundle]), `containers/portfolio_container.py`, `containers/position_container.py` |
+| **Containers** | `containers/portfolio_bundle.py` (per-portfolio bundle), `containers/container_manager.py` (Dict[str, PortfolioBundle]), `containers/market_data_container.py` (cross-portfolio technical indicators), `containers/portfolio_container.py`, `containers/position_container.py` |
 | **Portfolios** | `config/risk_config.yaml` (10 portfolios), `config/risk_config_loader.py`, `services/portfolio_manager.py` |
 | **Trade Booking** | `services/trade_booking_service.py`, `cli/book_trade.py`, `core/models/domain.py` (TradeStatus, TradeSource) |
-| **Screeners** | `services/screeners/` (vix, iv_rank, leaps), `services/recommendation_service.py`, `services/technical_analysis_service.py` |
+| **Screeners** | `services/screeners/` (vix, iv_rank, leaps, correction, earnings, black_swan, arbitrage), `services/screeners/scenario_screener.py` (base), `services/recommendation_service.py`, `services/technical_analysis_service.py` |
+| **Scenario Templates** | `config/scenario_templates.yaml` (9 templates), `config/scenario_template_loader.py` (ScenarioTemplate/Trigger/Strategy) |
+| **Earnings Calendar** | `services/earnings_calendar_service.py` (yfinance, 24h cache) |
 | **Macro Gate** | `services/macro_context_service.py`, `config/daily_macro.yaml` |
 | **Portfolio Eval** | `services/portfolio_evaluation_service.py`, `services/position_mgmt/rules_engine.py`, `services/liquidity_service.py` |
 | **Recommendations** | `core/models/recommendation.py` (RecommendationType), `repositories/recommendation.py`, `cli/accept_recommendation.py`, `cli/evaluate_portfolio.py` |
@@ -399,6 +577,10 @@ python -m trading_cotrader.cli.book_trade --file trading_cotrader/config/trade_t
 # Screeners
 python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY,QQQ --no-broker
 python -m trading_cotrader.cli.run_screener --screener all --symbols SPY,QQQ --no-broker
+python -m trading_cotrader.cli.run_screener --screener correction --symbols SPY,QQQ --no-broker
+python -m trading_cotrader.cli.run_screener --screener earnings --symbols AAPL,NVDA --no-broker
+python -m trading_cotrader.cli.run_screener --screener black_swan --symbols SPY --no-broker
+python -m trading_cotrader.cli.run_screener --screener arbitrage --symbols SPY,QQQ --no-broker
 python -m trading_cotrader.cli.run_screener --screener vix --symbols SPY --macro-outlook uncertain --expected-vol extreme --no-broker
 
 # Recommendations
