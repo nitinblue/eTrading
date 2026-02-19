@@ -184,6 +184,10 @@ class PortfolioConfig:
     def is_real(self) -> bool:
         return self.portfolio_type == "real"
 
+    @property
+    def is_research(self) -> bool:
+        return self.portfolio_type == "research"
+
     def get_active_strategies(self) -> List[str]:
         """Get active strategies, falling back to allowed_strategies if not set."""
         return self.active_strategies if self.active_strategies else self.allowed_strategies
@@ -209,6 +213,10 @@ class PortfoliosConfig:
     def get_whatif_portfolios(self) -> List[PortfolioConfig]:
         """Get only whatif portfolios."""
         return [p for p in self.portfolios.values() if p.is_whatif]
+
+    def get_research_portfolios(self) -> List[PortfolioConfig]:
+        """Get only research portfolios."""
+        return [p for p in self.portfolios.values() if p.is_research]
 
     def get_by_broker(self, broker_name: str) -> List[PortfolioConfig]:
         """Get all portfolios for a given broker."""
@@ -562,8 +570,9 @@ class RiskConfigLoader:
             config.portfolios = PortfoliosConfig(portfolios=portfolios_dict)
             real_count = len(config.portfolios.get_real_portfolios())
             whatif_count = len(config.portfolios.get_whatif_portfolios())
+            research_count = len(config.portfolios.get_research_portfolios())
             logger.info(f"Loaded {len(portfolios_dict)} portfolio configs "
-                        f"({real_count} real, {whatif_count} whatif)")
+                        f"({real_count} real, {whatif_count} whatif, {research_count} research)")
 
         # Performance
         if 'performance' in raw:

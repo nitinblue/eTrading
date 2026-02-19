@@ -49,6 +49,7 @@ class PortfolioType(Enum):
     PAPER = "paper"            # Paper trading (broker sandbox)
     WHAT_IF = "what_if"        # Pure simulation
     BACKTEST = "backtest"      # Historical backtest
+    RESEARCH = "research"      # Virtual — auto-booked for ML training
 
 
 class TradeType(Enum):
@@ -137,6 +138,12 @@ class TradeSource(Enum):
     AI_RECOMMENDATION = "ai_recommendation"  # AI/ML model recommendation
     RESEARCH = "research"                  # Research-based trade
     HEDGE = "hedge"                        # Hedging recommendation
+    QUANT_RESEARCH = "quant_research"      # Auto-booked by QuantResearchAgent
+    RESEARCH_TEMPLATE = "research_template"  # Generic research template pipeline
+    SCENARIO_CORRECTION = "scenario_correction"
+    SCENARIO_EARNINGS = "scenario_earnings"
+    SCENARIO_BLACK_SWAN = "scenario_black_swan"
+    SCENARIO_ARBITRAGE = "scenario_arbitrage"
 
 
 # ============================================================================
@@ -1106,8 +1113,36 @@ class Portfolio:
             **kwargs
         )
     
+    @classmethod
+    def create_research(
+        cls,
+        name: str,
+        description: str = "",
+        risk_limits: Dict = None,
+        **kwargs
+    ) -> 'Portfolio':
+        """Create a virtual research portfolio for ML training data."""
+        portfolio = cls(
+            name=name,
+            portfolio_type=PortfolioType.RESEARCH,
+            initial_capital=Decimal('0'),
+            cash_balance=Decimal('0'),
+            buying_power=Decimal('0'),
+            total_equity=Decimal('0'),
+            description=description,
+            **kwargs
+        )
+        if risk_limits:
+            if 'max_delta' in risk_limits:
+                portfolio.max_portfolio_delta = Decimal(str(risk_limits['max_delta']))
+            if 'max_position_pct' in risk_limits:
+                portfolio.max_position_size_pct = Decimal(str(risk_limits['max_position_pct']))
+            if 'max_trade_risk_pct' in risk_limits:
+                portfolio.max_single_trade_risk_pct = Decimal(str(risk_limits['max_trade_risk_pct']))
+        return portfolio
+
     # === RISK METHODS ===
-    
+
     def available_risk_capital(self) -> Decimal:
         """How much more risk can we take?"""
         max_risk = self.total_equity * self.max_total_risk_pct / 100

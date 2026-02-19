@@ -16,18 +16,25 @@ export const endpoints = {
 
   // Recommendations
   recommendations: `${V2}/recommendations`,
-  approveRec: (id: string) => `${V2}/recommendations/${id}/approve`,
-  rejectRec: (id: string) => `${V2}/recommendations/${id}/reject`,
-  deferRec: (id: string) => `${V2}/recommendations/${id}/defer`,
+  approveRec: (id: string) => `/api/approve/${id}`,
+  rejectRec: (id: string) => `/api/reject/${id}`,
+  deferRec: (id: string) => `/api/defer/${id}`,
 
   // Workflow
   workflowStatus: `${V2}/workflow/status`,
   workflowAgents: `${V2}/workflow/agents`,
   workflowTimeline: `${V2}/workflow/timeline`,
+  haltWorkflow: '/api/halt',
+  resumeWorkflow: '/api/resume',
 
   // Risk
   risk: `${V2}/risk`,
   riskVar: `${V2}/risk/var`,
+  riskFactors: `${V2}/risk/factors`,
+  riskFactor: (underlying: string) => `${V2}/risk/factors/${underlying}`,
+
+  // Broker Positions (synced from broker)
+  brokerPositions: `${V2}/broker-positions`,
 
   // Capital
   capital: `${V2}/capital`,

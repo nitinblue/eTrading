@@ -44,7 +44,8 @@
       "Bash(tee:*)",
       "Bash(npx tsc:*)",
       "Bash(npx vite build)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(find:*)"
     ]
   }
 }

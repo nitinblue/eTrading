@@ -28,13 +28,13 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard', phase: 2 },
+  { to: '/', icon: LayoutDashboard, label: 'Dashboard', phase: 1 },
   { to: '/portfolio', icon: Briefcase, label: 'Portfolio', phase: 1 },
-  { to: '/recommendations', icon: ListChecks, label: 'Recommendations', phase: 2 },
-  { to: '/workflow', icon: Activity, label: 'Workflow', phase: 3 },
-  { to: '/risk', icon: ShieldAlert, label: 'Risk', phase: 2 },
-  { to: '/performance', icon: BarChart3, label: 'Performance', phase: 3 },
-  { to: '/capital', icon: DollarSign, label: 'Capital', phase: 2 },
+  { to: '/recommendations', icon: ListChecks, label: 'Recommendations', phase: 1 },
+  { to: '/workflow', icon: Activity, label: 'Workflow', phase: 1 },
+  { to: '/risk', icon: ShieldAlert, label: 'Risk', phase: 1 },
+  { to: '/performance', icon: BarChart3, label: 'Performance', phase: 1 },
+  { to: '/capital', icon: DollarSign, label: 'Capital', phase: 1 },
   { to: '/agents', icon: Bot, label: 'Agents', phase: 1 },
   {
     to: '/settings',

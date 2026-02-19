@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 18, 2026 (session 22)
+# Last Updated: February 18, 2026 (session 24)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -82,6 +82,33 @@ but most definitely System needs to be smart enough to continously improve the p
 ## [NITIN OWNS] SESSION MANDATE
 <!-- Current session only. Move prior to CLAUDE_ARCHIVE.md. -->
 
+### Feb 18, 2026 (Session 24)
+Generic Research Template System — replace hardcoded screeners with config-driven templates.
+- Created `config/research_templates.yaml`: 7 templates (4 migrated from scenario_templates + 3 new user-defined) (DONE)
+- Created `services/research/condition_evaluator.py`: generic condition engine with 7 operators, reference comparisons, multipliers, AND/OR logic (DONE)
+- Created `services/research/template_loader.py`: typed dataclass loader for research templates (DONE)
+- Rewrote `agents/analysis/quant_research.py`: template-driven evaluation replacing screener-based flow (DONE)
+- Added equity trade support: `instrument: equity` generates single-leg equity recommendations (DONE)
+- Added `research_custom` portfolio for user-defined templates (DONE)
+- Added `TradeSource.RESEARCH_TEMPLATE` enum value (DONE)
+- Deprecated `config/scenario_templates.yaml` (migrated to research_templates.yaml) (DONE)
+- Simplified `workflow_rules.yaml`: `research.templates_enabled: true` replaces per-screener config (DONE)
+- Extended TechnicalSnapshot: `sma_50`, `volume`, `avg_volume_20` (DONE)
+- 270/270 tests pass (89 new: 44 condition_evaluator + 46 research_templates + rewritten quant_research)
+
+### Feb 18, 2026 (Session 23)
+Auto-Book Research Pipeline + Parameter Variants (Phase 1 of Quant Agent Evolution).
+- QuantResearchAgent built: runs all enabled scenario screeners, auto-accepts into research portfolios (DONE)
+- 4 research portfolios in risk_config.yaml: research_correction, research_earnings, research_black_swan, research_arbitrage (DONE)
+- Research config in workflow_rules.yaml: per-screener symbols, target_portfolio, parameter variants (DONE)
+- Parameter variants: A/B testing (e.g. correction with short_delta=0.25/0.30/0.35) tagged with variant_id (DONE)
+- Wired into workflow engine: runs every MONITORING cycle after regular screeners (DONE)
+- New domain model additions: PortfolioType.RESEARCH, TradeSource.QUANT_RESEARCH + 4 scenario sources (DONE)
+- Portfolio.create_research() factory method for virtual research portfolios (DONE)
+- DB migration: setup_database.py migrate_schema() for incremental column/table additions (DONE)
+- Agent registry updated: quant_research in AGENT_REGISTRY (DONE)
+- 181/181 tests pass (24 new quant_research tests)
+
 ### Feb 18, 2026 (Session 22)
 Scenario-Based Recommendation Templates + Market Data Container.
 - 9 scenario templates in YAML (4 active, 5 future: orderblock, vol contraction, breakout, breakdown, consolidation) (DONE)
@@ -105,18 +132,43 @@ Agent Dashboard & Visibility (Phase 1 of 4-phase Agent Management plan).
 ## [NITIN OWNS] TODAY'S SURGICAL TASK
 <!-- OVERWRITE each session. 5 lines max. -->
 
-Session 22: Scenario Templates + Market Data Container (DONE).
-- 9 scenario templates YAML (4 active + 5 future), ScenarioScreener base class
-- 4 new screeners: correction, earnings, black_swan, arbitrage
-- MarketDataContainer + Bollinger/VWAP/resistance on TechnicalSnapshot
-- EarningsCalendarService, market-data API, 3 new ORM columns on RecommendationORM
-- 157/157 tests pass, frontend builds cleanly.
+Session 24: Generic Research Template System (DONE).
+- Replaced hardcoded screener classes with config-driven research_templates.yaml (7 templates)
+- ConditionEvaluator: generic engine with 7 operators, reference comparisons, multipliers
+- QuantResearchAgent rewritten: evaluates templates via ConditionEvaluator, not screener classes
+- Equity trade support: single-leg equity recommendations alongside options
+- 5 research portfolios (added research_custom for user-defined templates)
+- scenario_templates.yaml deprecated → research_templates.yaml
+- 270/270 tests pass (89 new).
 
 ---
 
 ## [CLAUDE OWNS] WHAT USER CAN DO TODAY
 
-**Scenario-Based Screeners + Market Data (NEW — Session 22):**
+**Generic Research Template System (NEW — Session 24):**
+- `config/research_templates.yaml`: 7 research templates — 4 migrated (correction, earnings, black_swan, arbitrage) + 3 user-defined (ma_crossover_rsi, bollinger_bounce, high_iv_iron_condor)
+- **ConditionEvaluator** (`services/research/condition_evaluator.py`): generic engine with 7 operators (gt, gte, lt, lte, eq, between, in), reference comparisons (price > sma_20), multipliers (volume >= 1.5x avg_volume_20), AND/OR logic
+- **ResearchTemplate loader** (`services/research/template_loader.py`): typed dataclass loading from YAML, parameter variants, trade strategy config
+- **QuantResearchAgent rewritten**: evaluates templates via ConditionEvaluator instead of hardcoded screener classes
+- **Equity trade support**: `instrument: equity` produces single-leg equity recommendations (long/short)
+- **Option leg construction**: 7 strategy types — vertical_spread, strangle, iron_condor, iron_butterfly, single, calendar_spread, double_calendar
+- 5 research portfolios: `research_correction`, `research_earnings`, `research_black_swan`, `research_arbitrage`, `research_custom` (for user-defined templates)
+- Templates define: universe, entry_conditions (AND), exit_conditions (OR), trade_strategy, parameter variants, target_portfolio, cadence, auto_approve
+- Indicators resolved from 3 sources: TechnicalSnapshot (price, RSI, Bollinger, etc.), global context (VIX, days_to_earnings), trade context (pnl_pct, days_held)
+- `scenario_templates.yaml` deprecated — active templates migrated to `research_templates.yaml`
+- `workflow_rules.yaml` simplified: `research.templates_enabled: true` replaces per-screener config
+- TechnicalSnapshot extended: `sma_50`, `volume`, `avg_volume_20`
+- 270 tests (89 new: 44 condition_evaluator + 46 research_templates)
+
+**Auto-Book Research Pipeline (Session 23):**
+- `QuantResearchAgent` runs every MONITORING cycle: evaluates all enabled research templates with parameter variants
+- Auto-accepts ALL recommendations into research portfolios (no human gate) — generates ML training data
+- New enum values: `PortfolioType.RESEARCH`, `TradeSource.QUANT_RESEARCH`, `TradeSource.RESEARCH_TEMPLATE`, `TradeSource.SCENARIO_CORRECTION/EARNINGS/BLACK_SWAN/ARBITRAGE`
+- `Portfolio.create_research()` factory: virtual portfolios with zero capital
+- DB migration: `setup_database.py` now runs `migrate_schema()` to detect and add missing tables/columns automatically
+- Agent registry: `quant_research` visible in `/api/v2/agents` with category=analysis, runs_during=monitoring
+
+**Scenario-Based Screeners + Market Data (Session 22):**
 - 9 scenario templates in `config/scenario_templates.yaml` — 4 active (correction, earnings, black_swan, arbitrage), 5 future (orderblock, vol_contraction, breakout, breakdown, consolidation)
 - `python -m trading_cotrader.cli.run_screener --screener correction --symbols SPY,QQQ --no-broker` — correction screener (triggers on 8-15% drop + VIX 22-45)
 - `python -m trading_cotrader.cli.run_screener --screener earnings --symbols AAPL,NVDA --no-broker` — earnings IV crush screener (yfinance calendar)
@@ -255,7 +307,7 @@ Session 22: Scenario Templates + Market Data Container (DONE).
 
 **Testing:**
 - Harness: `python -m trading_cotrader.harness.runner --skip-sync` — 14/16 pass (2 skip without broker), 17 steps
-- Unit tests: `pytest trading_cotrader/tests/ -v` — 157 tests, all pass
+- Unit tests: `pytest trading_cotrader/tests/ -v` — 181 tests, all pass
 
 **React Frontend (Session 19 — Phase 1):**
 - `frontend/` — Vite + React 18 + TypeScript + Tailwind CSS + AG Grid + TanStack Query
@@ -302,7 +354,7 @@ Session 22: Scenario Templates + Market Data Container (DONE).
 - Data is now flowing; need 100+ closed trades for supervised learning, 500+ for RL
 
 **Blocked / Not Yet Working:**
-- **AUTO-BOOK RESEARCH PIPELINE** — Scenario screeners → auto-accept into research WhatIf portfolios → daily MTM → auto-exit → ML training data. This is the #1 priority for generating ML training data without waiting for real trades. See NEXT MAJOR INITIATIVE below.
+- **RESEARCH PIPELINE (Layers 1-1.5 DONE, Layers 2-3 pending)** — QuantResearchAgent auto-books via generic research templates (s23-24). Still needed: QuantLifecycleAgent for daily MTM + auto-exit (s25), ML feature pipeline + first models (s26).
 - AI/ML model training not wired (need data first — being addressed by auto-book pipeline)
 - AI/ML recommendations not integrated into workflow (need trained models)
 - Live order execution for non-TastyTrade brokers (Fidelity/Zerodha/Stallion)
@@ -485,7 +537,7 @@ Model outputs feed back into:
 | **Agents** | `agents/protocol.py` (Agent/AgentResult), `agents/messages.py` (UserIntent/SystemResponse) |
 | **Safety** | `agents/safety/guardian.py` (circuit breakers + trading constraints), `config/workflow_rules.yaml` (all thresholds) |
 | **Perception** | `agents/perception/market_data.py`, `agents/perception/portfolio_state.py`, `agents/perception/calendar.py` |
-| **Analysis** | `agents/analysis/macro.py`, `agents/analysis/screener.py`, `agents/analysis/evaluator.py`, `agents/analysis/risk.py`, `agents/analysis/capital.py` (idle capital monitoring) |
+| **Analysis** | `agents/analysis/macro.py`, `agents/analysis/screener.py`, `agents/analysis/evaluator.py`, `agents/analysis/risk.py`, `agents/analysis/capital.py` (idle capital monitoring), `agents/analysis/quant_research.py` (auto-book research pipeline) |
 | **Execution** | `agents/execution/executor.py`, `agents/execution/broker_router.py` (per-broker routing), `agents/execution/notifier.py`, `agents/execution/reporter.py` |
 | **Decision** | `agents/decision/interaction.py` (InteractionManager — routes user commands) |
 | **Learning** | `agents/learning/accountability.py` (decision tracking), `agents/learning/session_objectives.py` (agent self-assessment), `agents/learning/qa_agent.py` (daily QA assessment) |
@@ -496,7 +548,8 @@ Model outputs feed back into:
 | **Portfolios** | `config/risk_config.yaml` (10 portfolios), `config/risk_config_loader.py`, `services/portfolio_manager.py` |
 | **Trade Booking** | `services/trade_booking_service.py`, `cli/book_trade.py`, `core/models/domain.py` (TradeStatus, TradeSource) |
 | **Screeners** | `services/screeners/` (vix, iv_rank, leaps, correction, earnings, black_swan, arbitrage), `services/screeners/scenario_screener.py` (base), `services/recommendation_service.py`, `services/technical_analysis_service.py` |
-| **Scenario Templates** | `config/scenario_templates.yaml` (9 templates), `config/scenario_template_loader.py` (ScenarioTemplate/Trigger/Strategy) |
+| **Research Templates** | `config/research_templates.yaml` (7 templates), `services/research/template_loader.py` (ResearchTemplate/ParameterVariant), `services/research/condition_evaluator.py` (Condition/ConditionEvaluator) |
+| **Scenario Templates** | `config/scenario_templates.yaml` (DEPRECATED — migrated to research_templates.yaml) |
 | **Earnings Calendar** | `services/earnings_calendar_service.py` (yfinance, 24h cache) |
 | **Macro Gate** | `services/macro_context_service.py`, `config/daily_macro.yaml` |
 | **Portfolio Eval** | `services/portfolio_evaluation_service.py`, `services/position_mgmt/rules_engine.py`, `services/liquidity_service.py` |
@@ -514,7 +567,7 @@ Model outputs feed back into:
 | **Explorer API** | `web/api_explorer.py` (structured query builder at `/api/explorer`, table/column whitelist, 21 tables) |
 | **Agents API** | `web/api_agents.py` (10 endpoints at `/api/v2/agents`, 16-agent registry with capabilities) |
 | **React Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid), `frontend/src/pages/PortfolioPage.tsx`, `frontend/src/pages/ReportsPage.tsx` (8 tabs), `frontend/src/pages/DataExplorerPage.tsx` (query builder), `frontend/src/pages/AgentsPage.tsx` (4 tabs: agents, research, knowledge, ML), `frontend/src/pages/AgentDetailPage.tsx` (drill-down), `frontend/src/pages/settings/` (4 config screens), `frontend/src/components/agents/` (AgentCard, AgentRunTimeline, ObjectiveGradeChart), `frontend/src/hooks/useAgents.ts` |
-| **Tests** | `tests/` (157 pytest), `harness/` (17 integration steps) |
+| **Tests** | `tests/` (270 pytest), `harness/` (17 integration steps) |
 | **Templates** | `config/templates/` (27 templates: 1 0DTE, 4 weekly, 16 monthly, 5 LEAPS, 1 custom) |
 
 ---
@@ -563,7 +616,7 @@ Model outputs feed back into:
 python -m trading_cotrader.scripts.setup_database
 python -m trading_cotrader.harness.runner --skip-sync    # 17 steps, no broker
 python -m trading_cotrader.harness.runner --mock
-pytest trading_cotrader/tests/ -v                        # 157 unit tests
+pytest trading_cotrader/tests/ -v                        # 270 unit tests
 
 # Workflow engine (NEW)
 python -m trading_cotrader.runners.run_workflow --once --no-broker --mock    # single cycle test

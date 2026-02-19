@@ -328,6 +328,207 @@ portfolios:
       min_cash_reserve_pct: 5
       max_concentration_pct: 15
 
+  # -------------------------------------------------------------------------
+  # RESEARCH PORTFOLIOS — Virtual, no capital, auto-booked by QuantResearchAgent
+  # -------------------------------------------------------------------------
+
+  research_correction:
+    display_name: "Research: Correction"
+    description: "Auto-booked correction scenario trades for ML training data."
+    broker_firm: tastytrade
+    account_number: "research_correction_001"
+    portfolio_type: research
+    currency: USD
+    initial_capital: 0
+    target_annual_return_pct: 0
+    exit_rule_profile: balanced
+    tags: ["research", "virtual", "scenario", "correction"]
+
+    allowed_strategies:
+      - vertical_spread
+      - iron_condor
+      - strangle
+
+    active_strategies:
+      - vertical_spread
+      - iron_condor
+      - strangle
+
+    risk_limits:
+      max_portfolio_delta: 9999
+      max_positions: 200
+      max_single_position_pct: 100
+      max_single_trade_risk_pct: 100
+      max_total_risk_pct: 999
+      min_cash_reserve_pct: 0
+      max_concentration_pct: 100
+
+    preferred_underlyings:
+      - SPY
+      - QQQ
+      - AAPL
+      - NVDA
+      - MSFT
+      - AMZN
+      - GOOGL
+      - META
+      - TSLA
+      - AMD
+
+  research_earnings:
+    display_name: "Research: Earnings"
+    description: "Auto-booked earnings IV crush trades for ML training data."
+    broker_firm: tastytrade
+    account_number: "research_earnings_001"
+    portfolio_type: research
+    currency: USD
+    initial_capital: 0
+    target_annual_return_pct: 0
+    exit_rule_profile: balanced
+    tags: ["research", "virtual", "scenario", "earnings"]
+
+    allowed_strategies:
+      - iron_condor
+      - strangle
+      - iron_butterfly
+      - vertical_spread
+
+    active_strategies:
+      - iron_condor
+      - strangle
+      - iron_butterfly
+      - vertical_spread
+
+    risk_limits:
+      max_portfolio_delta: 9999
+      max_positions: 200
+      max_single_position_pct: 100
+      max_single_trade_risk_pct: 100
+      max_total_risk_pct: 999
+      min_cash_reserve_pct: 0
+      max_concentration_pct: 100
+
+    preferred_underlyings: []
+
+  research_black_swan:
+    display_name: "Research: Black Swan"
+    description: "Auto-booked black swan hedge trades for ML training data."
+    broker_firm: tastytrade
+    account_number: "research_black_swan_001"
+    portfolio_type: research
+    currency: USD
+    initial_capital: 0
+    target_annual_return_pct: 0
+    exit_rule_profile: aggressive
+    tags: ["research", "virtual", "scenario", "black_swan"]
+
+    allowed_strategies:
+      - single
+      - vertical_spread
+
+    active_strategies:
+      - single
+      - vertical_spread
+
+    risk_limits:
+      max_portfolio_delta: 9999
+      max_positions: 200
+      max_single_position_pct: 100
+      max_single_trade_risk_pct: 100
+      max_total_risk_pct: 999
+      min_cash_reserve_pct: 0
+      max_concentration_pct: 100
+
+    preferred_underlyings:
+      - SPY
+      - QQQ
+      - IWM
+
+  research_arbitrage:
+    display_name: "Research: Arbitrage"
+    description: "Auto-booked vol arbitrage calendar spread trades for ML training data."
+    broker_firm: tastytrade
+    account_number: "research_arbitrage_001"
+    portfolio_type: research
+    currency: USD
+    initial_capital: 0
+    target_annual_return_pct: 0
+    exit_rule_profile: balanced
+    tags: ["research", "virtual", "scenario", "arbitrage"]
+
+    allowed_strategies:
+      - calendar_spread
+      - calendar_double_spread
+
+    active_strategies:
+      - calendar_spread
+      - calendar_double_spread
+
+    risk_limits:
+      max_portfolio_delta: 9999
+      max_positions: 200
+      max_single_position_pct: 100
+      max_single_trade_risk_pct: 100
+      max_total_risk_pct: 999
+      min_cash_reserve_pct: 0
+      max_concentration_pct: 100
+
+    preferred_underlyings:
+      - SPY
+      - QQQ
+      - IWM
+
+  research_custom:
+    display_name: "Research: Custom Templates"
+    description: "Auto-booked user-defined research template trades for ML training data."
+    broker_firm: tastytrade
+    account_number: "research_custom_001"
+    portfolio_type: research
+    currency: USD
+    initial_capital: 0
+    target_annual_return_pct: 0
+    exit_rule_profile: balanced
+    tags: ["research", "virtual", "custom"]
+
+    allowed_strategies:
+      - single
+      - vertical_spread
+      - iron_condor
+      - iron_butterfly
+      - strangle
+      - straddle
+      - calendar_spread
+      - calendar_double_spread
+      - covered_call
+      - protective_put
+
+    active_strategies:
+      - single
+      - vertical_spread
+      - iron_condor
+      - iron_butterfly
+      - strangle
+      - calendar_spread
+
+    risk_limits:
+      max_portfolio_delta: 9999
+      max_positions: 200
+      max_single_position_pct: 100
+      max_single_trade_risk_pct: 100
+      max_total_risk_pct: 999
+      min_cash_reserve_pct: 0
+      max_concentration_pct: 100
+
+    preferred_underlyings:
+      - SPY
+      - QQQ
+      - AAPL
+      - MSFT
+      - NVDA
+      - AMD
+      - TSLA
+      - META
+
 
 # =============================================================================
 # PORTFOLIO RISK (global defaults)

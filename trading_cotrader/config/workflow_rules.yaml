@@ -102,3 +102,16 @@ qa:
   min_coverage_pct: 70.0
   report_frequency: daily    # daily | weekly
   fail_on_regression: false  # halt if tests fail
+
+# =============================================================================
+# QUANT RESEARCH — Auto-book pipeline for ML training data
+# =============================================================================
+# Templates are defined in config/research_templates.yaml.
+# Universe, entry/exit conditions, strategies, and variants are all in the template.
+# QuantResearchAgent evaluates templates every MONITORING cycle.
+
+research:
+  enabled: true
+  # All template config now lives in config/research_templates.yaml
+  # This flag controls whether the QuantResearchAgent runs at all
+  templates_enabled: true

@@ -49,6 +49,7 @@ class TechnicalSnapshot:
     # Moving averages
     ema_20: Optional[Decimal] = None
     ema_50: Optional[Decimal] = None
+    sma_50: Optional[Decimal] = None
     sma_200: Optional[Decimal] = None
 
     # Oscillators
@@ -75,6 +76,10 @@ class TechnicalSnapshot:
     # VWAP
     vwap: Optional[Decimal] = None
 
+    # Volume
+    volume: Optional[int] = None               # Last day volume
+    avg_volume_20: Optional[int] = None        # 20-day average volume
+
     # Position relative to history
     pct_from_52w_high: Optional[float] = None  # negative = below high
     high_52w: Optional[Decimal] = None
@@ -88,6 +93,7 @@ class TechnicalSnapshot:
             'current_price': float(self.current_price),
             'ema_20': float(self.ema_20) if self.ema_20 else None,
             'ema_50': float(self.ema_50) if self.ema_50 else None,
+            'sma_50': float(self.sma_50) if self.sma_50 else None,
             'sma_200': float(self.sma_200) if self.sma_200 else None,
             'rsi_14': self.rsi_14,
             'atr_14': float(self.atr_14) if self.atr_14 else None,
@@ -106,6 +112,8 @@ class TechnicalSnapshot:
             'low_52w': float(self.low_52w) if self.low_52w else None,
             'nearest_support': float(self.nearest_support) if self.nearest_support else None,
             'nearest_resistance': float(self.nearest_resistance) if self.nearest_resistance else None,
+            'volume': self.volume,
+            'avg_volume_20': self.avg_volume_20,
         }
 
 
@@ -201,6 +209,7 @@ class TechnicalAnalysisService:
             import talib
             ema_20 = talib.EMA(close, timeperiod=20)
             ema_50 = talib.EMA(close, timeperiod=50)
+            sma_50 = talib.SMA(close, timeperiod=50)
             sma_200 = talib.SMA(close, timeperiod=200)
             rsi = talib.RSI(close, timeperiod=14)
             atr = talib.ATR(high, low, close, timeperiod=14)
@@ -209,6 +218,7 @@ class TechnicalAnalysisService:
         else:
             ema_20 = self._ema_pd(close, 20)
             ema_50 = self._ema_pd(close, 50)
+            sma_50 = self._sma_pd(close, 50)
             sma_200 = self._sma_pd(close, 200)
             rsi = self._rsi_pd(close, 14)
             atr = self._atr_pd(high, low, close, 14)
@@ -220,6 +230,8 @@ class TechnicalAnalysisService:
             snap.ema_20 = Decimal(str(round(ema_20[-1], 2)))
         if not np.isnan(ema_50[-1]):
             snap.ema_50 = Decimal(str(round(ema_50[-1], 2)))
+        if len(sma_50) > 0 and not np.isnan(sma_50[-1]):
+            snap.sma_50 = Decimal(str(round(sma_50[-1], 2)))
         if len(sma_200) > 0 and not np.isnan(sma_200[-1]):
             snap.sma_200 = Decimal(str(round(sma_200[-1], 2)))
 
@@ -277,8 +289,16 @@ class TechnicalAnalysisService:
             if bb_mid > 0:
                 snap.bollinger_width = round((bb_up - bb_lo) / bb_mid, 6)
 
-        # VWAP: cumulative (price * volume) / cumulative volume over last trading day
+        # Volume
         volume = df["Volume"].to_numpy(dtype=np.float64).reshape(-1)
+        if len(volume) > 0 and not np.isnan(volume[-1]):
+            snap.volume = int(volume[-1])
+        if len(volume) >= 20:
+            avg_vol_20 = float(np.mean(volume[-20:]))
+            if not np.isnan(avg_vol_20):
+                snap.avg_volume_20 = int(avg_vol_20)
+
+        # VWAP: cumulative (price * volume) / cumulative volume over last trading day
         typical_price = (high + low + close) / 3.0
         cum_tp_vol = np.cumsum(typical_price * volume)
         cum_vol = np.cumsum(volume)
@@ -435,6 +455,7 @@ class TechnicalAnalysisService:
             current_price=Decimal(str(price)),
             ema_20=Decimal(str(round(price * 0.99, 2))),
             ema_50=Decimal(str(round(price * 0.97, 2))),
+            sma_50=Decimal(str(round(price * 0.96, 2))),
             sma_200=Decimal(str(round(price * 0.92, 2))),
             rsi_14=52.0,
             atr_14=Decimal(str(round(price * 0.015, 2))),
@@ -453,4 +474,6 @@ class TechnicalAnalysisService:
             low_52w=Decimal(str(round(price * 0.82, 2))),
             nearest_support=Decimal(str(round(price * 0.92, 2))),
             nearest_resistance=Decimal(str(round(price * 1.035, 2))),
+            volume=5000000,
+            avg_volume_20=4500000,
         )

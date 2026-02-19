@@ -16,6 +16,7 @@ from sqlalchemy import func
 from trading_cotrader.core.database.session import session_scope
 from trading_cotrader.core.database.schema import (
     PortfolioORM,
+    PositionORM,
     TradeORM,
     LegORM,
     StrategyORM,
@@ -185,6 +186,26 @@ def _serialize_portfolio(p: PortfolioORM, open_count: int = 0) -> dict:
         'deployed_pct': round(deployed_pct, 1),
         'open_trade_count': open_count,
     }
+
+
+def _load_positions_from_db(portfolio: Optional[str] = None) -> dict:
+    """Load broker positions from DB when containers not initialized."""
+    from trading_cotrader.containers.position_container import PositionContainer
+
+    try:
+        with session_scope() as session:
+            q = session.query(PositionORM)
+            if portfolio:
+                p = session.query(PortfolioORM).filter(PortfolioORM.name == portfolio).first()
+                if p:
+                    q = q.filter(PositionORM.portfolio_id == p.id)
+            positions = q.all()
+            temp = PositionContainer()
+            temp.load_from_orm_list(positions)
+            return {'positions': temp.to_grid_rows(), 'count': temp.count}
+    except Exception as e:
+        logger.warning(f"Failed to load positions from DB: {e}")
+        return {'positions': [], 'count': 0}
 
 
 def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
@@ -620,6 +641,85 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                     'win_rate': round(win_rate, 1),
                 })
             return result
+
+    # ------------------------------------------------------------------
+    # Risk Factors (per-underlying risk aggregation from containers)
+    # ------------------------------------------------------------------
+
+    @router.get("/risk/factors")
+    async def get_risk_factors(
+        portfolio: Optional[str] = Query(None, description="Filter by portfolio name"),
+    ):
+        """Per-underlying risk factor aggregation for delta-neutral monitoring."""
+        if engine and engine.container_manager:
+            cm = engine.container_manager
+            if portfolio:
+                bundle = cm.get_bundle(portfolio)
+                if bundle and bundle.risk_factors.is_initialized:
+                    return {'factors': bundle.risk_factors.to_grid_rows()}
+                return {'factors': []}
+            # All risk factors from all bundles
+            all_factors = []
+            for bundle in cm.get_all_bundles():
+                if bundle.risk_factors.is_initialized:
+                    all_factors.extend(bundle.risk_factors.to_grid_rows())
+            if all_factors:
+                return {'factors': all_factors}
+            # Fallback to default bundle
+            if cm.risk_factors.is_initialized:
+                return {'factors': cm.risk_factors.to_grid_rows()}
+        return {'factors': []}
+
+    @router.get("/risk/factors/{underlying}")
+    async def get_risk_factor(underlying: str):
+        """Risk factor detail for a single underlying."""
+        if engine and engine.container_manager:
+            cm = engine.container_manager
+            # Search across all bundles
+            for bundle in cm.get_all_bundles():
+                rf = bundle.risk_factors.get(underlying.upper())
+                if rf:
+                    return rf.to_dict()
+            # Fallback to default
+            rf = cm.risk_factors.get(underlying.upper())
+            if rf:
+                return rf.to_dict()
+        raise HTTPException(status_code=404, detail=f"No risk factor for {underlying}")
+
+    # ------------------------------------------------------------------
+    # Broker Positions (synced from broker, container-backed)
+    # ------------------------------------------------------------------
+
+    @router.get("/broker-positions")
+    async def get_broker_positions(
+        portfolio: Optional[str] = Query(None, description="Filter by portfolio name"),
+    ):
+        """Broker-synced positions from PositionContainer."""
+        if engine and engine.container_manager:
+            cm = engine.container_manager
+            if portfolio:
+                bundle = cm.get_bundle(portfolio)
+                if bundle and bundle.positions.is_initialized:
+                    return {
+                        'positions': bundle.positions.to_grid_rows(),
+                        'count': bundle.positions.count,
+                    }
+            else:
+                # All positions from all bundles
+                all_positions = []
+                for bundle in cm.get_all_bundles():
+                    if bundle.positions.is_initialized:
+                        all_positions.extend(bundle.positions.to_grid_rows())
+                if all_positions:
+                    return {'positions': all_positions, 'count': len(all_positions)}
+                # Fallback to default bundle
+                if cm.positions.is_initialized:
+                    return {
+                        'positions': cm.positions.to_grid_rows(),
+                        'count': cm.positions.count,
+                    }
+        # Fallback: load from DB directly when containers aren't initialized
+        return _load_positions_from_db(portfolio)
 
     # ------------------------------------------------------------------
     # Market Data (technical indicators from MarketDataContainer)

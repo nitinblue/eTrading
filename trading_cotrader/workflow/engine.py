@@ -46,6 +46,7 @@ from trading_cotrader.agents.learning.accountability import AccountabilityAgent
 from trading_cotrader.agents.learning.session_objectives import SessionObjectivesAgent
 from trading_cotrader.agents.learning.qa_agent import QAAgent
 from trading_cotrader.agents.analysis.capital import CapitalUtilizationAgent
+from trading_cotrader.agents.analysis.quant_research import QuantResearchAgent
 from trading_cotrader.agents.decision.interaction import InteractionManager
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,7 @@ class WorkflowEngine:
         self.capital_utilization = CapitalUtilizationAgent(self.config)
         self.session_objectives = SessionObjectivesAgent()
         self.qa_agent = QAAgent(self.config)
+        self.quant_research = QuantResearchAgent(self.config)
         self.interaction = InteractionManager(self)
 
         # State machine — states are string values from WorkflowStates
@@ -158,6 +160,15 @@ class WorkflowEngine:
                 entry['dest'] = dst.value
             prepared.append(entry)
         return prepared
+
+    # -----------------------------------------------------------------
+    # Container access (for API endpoints)
+    # -----------------------------------------------------------------
+
+    @property
+    def container_manager(self):
+        """Expose container_manager from context for API endpoints."""
+        return self.context.get('container_manager')
 
     # -----------------------------------------------------------------
     # State callbacks (called by transitions library on state entry)
@@ -422,6 +433,9 @@ class WorkflowEngine:
             self.halt()
             return
 
+        # Quant research pipeline (auto-book into research portfolios)
+        self._run_agent(self.quant_research, self.context)
+
         # Trade management (rolls, adjustments, exits)
         self.manage_trades()
 
@@ -429,6 +443,15 @@ class WorkflowEngine:
         """Run a single complete cycle for testing."""
         logger.info("=== RUNNING SINGLE CYCLE ===")
         self.boot()
+
+        # In --once mode, auto-advance past human pause states
+        # so monitoring cycle (incl. QuantResearchAgent) fires.
+        if self.state == WorkflowStates.RECOMMENDATION_REVIEW.value:
+            logger.info("Auto-advancing past recommendation_review for single cycle")
+            self.execute()  # transitions to execution → monitoring
+
+        if self.state == WorkflowStates.MONITORING.value:
+            self.run_monitoring_cycle()
 
     # -----------------------------------------------------------------
     # Persistence

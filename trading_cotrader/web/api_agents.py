@@ -197,6 +197,16 @@ AGENT_REGISTRY: dict[str, dict] = {
         'capabilities_implemented': ['Per-portfolio idle', 'Staggered ramp', 'Severity escalation'],
         'capabilities_planned': ['Optimal allocation', 'Rebalancing suggestions'],
     },
+    'quant_research': {
+        'display_name': 'Quant Research',
+        'category': 'analysis',
+        'role': 'Research pipeline executor',
+        'description': 'Runs user-configured scenario screeners, auto-books into research portfolios for ML training data.',
+        'responsibilities': ['Scenario screening', 'Auto-booking', 'Parameter variants', 'Research trade tracking'],
+        'runs_during': ['monitoring'],
+        'capabilities_implemented': ['4 scenario screeners', 'Parameter variant A/B', 'Auto-accept', 'Research portfolios'],
+        'capabilities_planned': ['Template health monitor', 'Win rate tracking', 'Auto-disable underperformers'],
+    },
 }
 
 

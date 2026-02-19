@@ -2,6 +2,7 @@ import { ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import { StatusBar } from './StatusBar'
+import { ChatPanel } from '../components/chat/ChatPanel'
 
 interface AppShellProps {
   children: ReactNode
@@ -20,6 +21,7 @@ export function AppShell({ children }: AppShellProps) {
           <StatusBar />
         </div>
       </div>
+      <ChatPanel />
     </div>
   )
 }

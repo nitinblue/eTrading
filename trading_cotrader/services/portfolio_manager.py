@@ -115,6 +115,15 @@ class PortfolioManager:
                     account_id=pc.account_number,
                     tags=pc.tags,
                 )
+            elif pc.is_research:
+                portfolio = dm.Portfolio.create_research(
+                    name=pc.display_name,
+                    description=pc.description,
+                    risk_limits=risk_limits,
+                    broker=pc.broker_firm,
+                    account_id=pc.account_number,
+                    tags=pc.tags,
+                )
             else:
                 portfolio = dm.Portfolio.create_real(
                     name=pc.display_name,

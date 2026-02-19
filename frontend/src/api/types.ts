@@ -703,6 +703,53 @@ export interface AgentTimelineCycle {
   error_message: string | null
 }
 
+// ---------------------------------------------------------------------------
+// Risk Factor & Broker Position Types
+// ---------------------------------------------------------------------------
+
+export interface RiskFactor {
+  id: string
+  underlying: string
+  spot: number
+  spot_chg: number
+  delta: number
+  gamma: number
+  theta: number
+  vega: number
+  'delta_$': number
+  positions: number
+  long: number
+  short: number
+  pnl: number
+  limit_used: number
+  status: 'OK' | 'WARNING' | 'BREACH'
+}
+
+export interface BrokerPosition {
+  id: string
+  symbol: string
+  underlying: string
+  type: string
+  strike: number | null
+  expiry: string | null
+  dte: number | null
+  qty: number
+  entry: number
+  mark: number
+  bid: number
+  ask: number
+  delta: number
+  gamma: number
+  theta: number
+  vega: number
+  iv: number | null
+  pnl: number
+  pnl_pct: number
+  pnl_delta: number
+  pnl_theta: number
+  pnl_vega: number
+}
+
 // WebSocket message types
 export type WSMessageType =
   | 'cell_update'

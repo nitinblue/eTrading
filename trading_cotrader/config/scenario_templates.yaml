@@ -1,3 +1,7 @@
+# DEPRECATED: Active templates migrated to config/research_templates.yaml (session 24).
+# This file is retained for reference. New templates should be added to research_templates.yaml.
+# The 4 active scenarios (correction, earnings, black_swan, arbitrage) are now ResearchTemplates
+# with generic condition evaluation instead of hardcoded screener classes.
 scenario_templates:
 
   correction_premium_sell:

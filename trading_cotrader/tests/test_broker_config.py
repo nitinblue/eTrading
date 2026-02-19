@@ -412,7 +412,7 @@ class TestPortfolioManagerMultiBroker:
         assert pm.get_currency('fidelity_ira') == 'USD'
 
     def test_portfolio_initialization_multi_broker(self, session):
-        """10 portfolios created from real config."""
+        """15 portfolios created from real config (5 real + 5 whatif + 5 research)."""
         from trading_cotrader.config.risk_config_loader import RiskConfigLoader
         loader = RiskConfigLoader()
         risk_config = loader.load()
@@ -420,13 +420,15 @@ class TestPortfolioManagerMultiBroker:
 
         pm = PortfolioManager(session, config=risk_config.portfolios, broker_registry=registry)
         portfolios = pm.initialize_portfolios()
-        assert len(portfolios) == 10
+        assert len(portfolios) == 15
 
-        # Verify real vs whatif
+        # Verify real vs whatif vs research
         real_count = sum(1 for p in portfolios if p.portfolio_type.value == 'real')
         whatif_count = sum(1 for p in portfolios if p.portfolio_type.value == 'what_if')
+        research_count = sum(1 for p in portfolios if p.portfolio_type.value == 'research')
         assert real_count == 5
         assert whatif_count == 5
+        assert research_count == 5
 
     def test_portfolio_lookup_by_name(self, session):
         """Lookup portfolio by config name after initialization."""
@@ -457,7 +459,7 @@ class TestPortfolioManagerMultiBroker:
         pm = PortfolioManager(session, config=risk_config.portfolios, broker_registry=registry)
         first = pm.initialize_portfolios()
         second = pm.initialize_portfolios()
-        assert len(first) == len(second) == 10
+        assert len(first) == len(second) == 15
 
 
 class TestBrokerAdapterFactory:
