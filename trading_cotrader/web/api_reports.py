@@ -219,14 +219,22 @@ def create_reports_router() -> APIRouter:
 
     @router.get("/strategy-breakdown")
     async def strategy_breakdown(
-        portfolio: str = Query(..., description="Portfolio name (required)"),
+        portfolio: str = Query(..., description="Portfolio name or 'all'"),
     ):
-        """Per-strategy performance metrics for a portfolio."""
+        """Per-strategy performance metrics for a portfolio (or all)."""
         with session_scope() as session:
+            svc = PerformanceMetricsService(session)
+            if portfolio == 'all':
+                # Aggregate across all real portfolios
+                merged: dict = {}
+                for p in session.query(PortfolioORM).filter(PortfolioORM.portfolio_type == 'real').all():
+                    bd = svc.calculate_strategy_breakdown(p.id, label=p.name)
+                    for k, v in bd.strategies.items():
+                        merged[k] = _metrics_to_dict(v)
+                return {'portfolio': 'all', 'strategies': merged}
             p = session.query(PortfolioORM).filter(PortfolioORM.name == portfolio).first()
             if not p:
                 raise HTTPException(404, f"Portfolio '{portfolio}' not found")
-            svc = PerformanceMetricsService(session)
             breakdown = svc.calculate_strategy_breakdown(p.id, label=p.name)
             return {
                 'portfolio': p.name,
@@ -242,14 +250,21 @@ def create_reports_router() -> APIRouter:
 
     @router.get("/source-attribution")
     async def source_attribution(
-        portfolio: str = Query(..., description="Portfolio name (required)"),
+        portfolio: str = Query(..., description="Portfolio name or 'all'"),
     ):
         """Per-source performance metrics (screener vs manual vs AI)."""
         with session_scope() as session:
+            svc = PerformanceMetricsService(session)
+            if portfolio == 'all':
+                merged: dict = {}
+                for p in session.query(PortfolioORM).filter(PortfolioORM.portfolio_type == 'real').all():
+                    by_source = svc.calculate_source_breakdown(p.id, label=p.name)
+                    for k, v in by_source.items():
+                        merged[k] = _metrics_to_dict(v)
+                return {'portfolio': 'all', 'sources': merged}
             p = session.query(PortfolioORM).filter(PortfolioORM.name == portfolio).first()
             if not p:
                 raise HTTPException(404, f"Portfolio '{portfolio}' not found")
-            svc = PerformanceMetricsService(session)
             by_source = svc.calculate_source_breakdown(p.id, label=p.name)
             return {
                 'portfolio': p.name,
@@ -265,15 +280,32 @@ def create_reports_router() -> APIRouter:
 
     @router.get("/weekly-pnl")
     async def weekly_pnl(
-        portfolio: str = Query(..., description="Portfolio name (required)"),
+        portfolio: str = Query(..., description="Portfolio name or 'all'"),
         weeks: int = Query(12, ge=1, le=52),
     ):
-        """Weekly P&L buckets for a portfolio."""
+        """Weekly P&L buckets for a portfolio (or all aggregated)."""
         with session_scope() as session:
+            svc = PerformanceMetricsService(session)
+            if portfolio == 'all':
+                # Aggregate weekly P&L across all real portfolios
+                all_weeks: dict = {}  # week_start → summed pnl
+                for p in session.query(PortfolioORM).filter(PortfolioORM.portfolio_type == 'real').all():
+                    weekly = svc.calculate_weekly_performance(p.id, weeks=weeks)
+                    for w in weekly:
+                        d = _weekly_to_dict(w)
+                        key = d.get('week_start', '')
+                        if key in all_weeks:
+                            all_weeks[key]['pnl'] += d.get('pnl', 0)
+                            all_weeks[key]['trades'] += d.get('trades', 0)
+                        else:
+                            all_weeks[key] = dict(d)
+                return {
+                    'portfolio': 'all',
+                    'weeks': sorted(all_weeks.values(), key=lambda x: x.get('week_start', '')),
+                }
             p = session.query(PortfolioORM).filter(PortfolioORM.name == portfolio).first()
             if not p:
                 raise HTTPException(404, f"Portfolio '{portfolio}' not found")
-            svc = PerformanceMetricsService(session)
             weekly = svc.calculate_weekly_performance(p.id, weeks=weeks)
             return {
                 'portfolio': p.name,

@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 18, 2026 (session 24)
+# Last Updated: February 18, 2026 (session 25)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -82,6 +82,25 @@ but most definitely System needs to be smart enough to continously improve the p
 ## [NITIN OWNS] SESSION MANDATE
 <!-- Current session only. Move prior to CLAUDE_ARCHIVE.md. -->
 
+### Feb 18, 2026 (Session 25)
+Full Frontend Integration — 5 new pages + chat panel + critical broker/container plumbing fix.
+- Dashboard page: KPI strip, weekly P&L chart, capital donut, pending recs, workflow summary (DONE)
+- Recommendations page: AG Grid + approve/reject/defer modal with backend wiring (DONE)
+- Workflow page: state machine pipeline, halt/resume controls, agent timeline table (DONE)
+- Performance page: metrics KPIs, weekly P&L composed chart, strategy + source breakdown grids (DONE)
+- Capital page: severity cards, deployed vs idle stacked chart, idle alerts table (DONE)
+- Chat panel: collapsible right drawer, keyword intent parser (10 intents), quick-action chips (DONE)
+- Fixed endpoint paths: approve/reject/defer now hit `/api/approve/{id}` (was wrong v2 paths) (DONE)
+- All sidebar nav items enabled (phase 1). Dashboard is new `/` landing page (DONE)
+- **CRITICAL FIX: ContainerManager + Broker Sync in WorkflowEngine** (DONE)
+  - ContainerManager was NEVER initialized in WorkflowEngine — API endpoints returned empty for positions/risk/market data
+  - Broker position sync (PortfolioSyncService) was NEVER called from workflow — only harness had it
+  - Now: ContainerManager created at startup with bundles from risk_config.yaml, loaded from DB
+  - Now: `_sync_broker_positions()` runs during boot + every monitoring cycle for API-capable brokers
+  - Now: `_refresh_containers()` loads positions/risk/trades into containers after every sync
+  - Skips gracefully with `--no-broker` (Manual/ReadOnly adapters are filtered out)
+- 270/270 backend tests pass. TypeScript clean. Production build succeeds.
+
 ### Feb 18, 2026 (Session 24)
 Generic Research Template System — replace hardcoded screeners with config-driven templates.
 - Created `config/research_templates.yaml`: 7 templates (4 migrated from scenario_templates + 3 new user-defined) (DONE)
@@ -132,20 +151,31 @@ Agent Dashboard & Visibility (Phase 1 of 4-phase Agent Management plan).
 ## [NITIN OWNS] TODAY'S SURGICAL TASK
 <!-- OVERWRITE each session. 5 lines max. -->
 
-Session 24: Generic Research Template System (DONE).
-- Replaced hardcoded screener classes with config-driven research_templates.yaml (7 templates)
-- ConditionEvaluator: generic engine with 7 operators, reference comparisons, multipliers
-- QuantResearchAgent rewritten: evaluates templates via ConditionEvaluator, not screener classes
-- Equity trade support: single-leg equity recommendations alongside options
-- 5 research portfolios (added research_custom for user-defined templates)
-- scenario_templates.yaml deprecated → research_templates.yaml
-- 270/270 tests pass (89 new).
+Session 25: Full Frontend Integration + Broker/Container Plumbing Fix (DONE).
+- 5 new pages: Dashboard, Recommendations, Workflow, Performance, Capital — all wired to backend APIs
+- Chat panel: collapsible right drawer with NL intent parser (10 intents), fetches live data
+- **Critical fix**: ContainerManager + broker sync wired into WorkflowEngine (was completely missing)
+- Boot + monitoring now: sync broker positions → read DB state → load containers → serve via API
+- All sidebar nav items enabled. Dashboard is new `/` landing. 14 new frontend files, 5 modified backend.
+- 270/270 backend tests pass. TypeScript clean. `pnpm build` succeeds.
 
 ---
 
 ## [CLAUDE OWNS] WHAT USER CAN DO TODAY
 
-**Generic Research Template System (NEW — Session 24):**
+**Full Frontend — All Pages Live (NEW — Session 25):**
+- **Dashboard** (`/`): KPI strip (equity, daily P&L, theta/day, net delta, open trades, pending recs, VIX), weekly P&L area chart (Recharts), capital deployment donut, pending recs mini-table, workflow summary card
+- **Recommendations** (`/recommendations`): AG Grid with all recs, status filter bar (pending/accepted/rejected/all), row-click opens detail modal with legs table + metrics + approve/reject/defer actions. Backend wired: `POST /api/approve/{id}`, `/api/reject/{id}`, `/api/defer/{id}`
+- **Workflow** (`/workflow`): 10-state pipeline visualization (active state pulses), HALT button (red, with confirmation), RESUME button (needs rationale), cycle stats cards, agent timeline table (last 3 cycles). Backend wired: `POST /api/halt`, `POST /api/resume`
+- **Performance** (`/performance`): Portfolio selector tabs, KPI cards (win rate, Sharpe, profit factor), weekly P&L composed chart (green/red bars + cumulative line), strategy breakdown + source attribution AG Grids. Graceful empty state when no closed trades.
+- **Capital** (`/capital`): KPI strip (total/deployed/idle), per-portfolio severity cards with utilization bars, deployed vs idle stacked bar chart, idle capital alerts table sorted by severity
+- **Risk** (`/risk`): Risk factors by underlying AG Grid, broker positions grid with drill-down (session 24.5)
+- **Chat Panel**: Collapsible right drawer (toggle button bottom-right), keyword-based NL intent parser (10 intents: agent status, greeks, portfolio summary, capital, pending recs, workflow status, performance, halt/resume hints, help). Quick-action chips. Fetches live data from API. Navigate-on-response.
+- **Endpoint fix**: approve/reject/defer now correctly hit `/api/approve/{id}` (was wrong `/api/v2/recommendations/{id}/approve`). Added `haltWorkflow`/`resumeWorkflow` to endpoints.
+- All 10 sidebar items enabled (was 4 active + 6 disabled). Dashboard is new `/` landing page (was redirect to `/portfolio`).
+- 14 new frontend files, 4 modified. Production build: 1.77MB JS + 219KB CSS.
+
+**Generic Research Template System (Session 24):**
 - `config/research_templates.yaml`: 7 research templates — 4 migrated (correction, earnings, black_swan, arbitrage) + 3 user-defined (ma_crossover_rsi, bollinger_bounce, high_iv_iron_condor)
 - **ConditionEvaluator** (`services/research/condition_evaluator.py`): generic engine with 7 operators (gt, gte, lt, lte, eq, between, in), reference comparisons (price > sma_20), multipliers (volume >= 1.5x avg_volume_20), AND/OR logic
 - **ResearchTemplate loader** (`services/research/template_loader.py`): typed dataclass loading from YAML, parameter variants, trade strategy config
@@ -307,7 +337,7 @@ Session 24: Generic Research Template System (DONE).
 
 **Testing:**
 - Harness: `python -m trading_cotrader.harness.runner --skip-sync` — 14/16 pass (2 skip without broker), 17 steps
-- Unit tests: `pytest trading_cotrader/tests/ -v` — 181 tests, all pass
+- Unit tests: `pytest trading_cotrader/tests/ -v` — 270 tests, all pass
 
 **React Frontend (Session 19 — Phase 1):**
 - `frontend/` — Vite + React 18 + TypeScript + Tailwind CSS + AG Grid + TanStack Query
@@ -354,7 +384,7 @@ Session 24: Generic Research Template System (DONE).
 - Data is now flowing; need 100+ closed trades for supervised learning, 500+ for RL
 
 **Blocked / Not Yet Working:**
-- **RESEARCH PIPELINE (Layers 1-1.5 DONE, Layers 2-3 pending)** — QuantResearchAgent auto-books via generic research templates (s23-24). Still needed: QuantLifecycleAgent for daily MTM + auto-exit (s25), ML feature pipeline + first models (s26).
+- **RESEARCH PIPELINE (Layers 1-1.5 DONE, Layers 2-3 pending)** — QuantResearchAgent auto-books via generic research templates (s23-24). Still needed: QuantLifecycleAgent for daily MTM + auto-exit (next session), ML feature pipeline + first models.
 - AI/ML model training not wired (need data first — being addressed by auto-book pipeline)
 - AI/ML recommendations not integrated into workflow (need trained models)
 - Live order execution for non-TastyTrade brokers (Fidelity/Zerodha/Stallion)
@@ -367,11 +397,13 @@ Session 24: Generic Research Template System (DONE).
 - Volatility curve / term structure analysis for calendar/double calendar strike selection
 - Equity curve, drawdown chart, benchmark vs SPY/QQQ
 - Enable future scenario templates: orderblock, vol_contraction, breakout, breakdown, consolidation (need additional trigger conditions: support/resistance detection, volume ratio, Bollinger width max)
-- **Quant Agent at Level 0** — generates data but doesn't learn. Needs: parameter optimization (s25), hypothesis generation (s27), template health monitoring (s26), knowledge base (s27). See 5-level evolution plan below.
-- Agent Learning Framework (Phase 2) — structured learnings, knowledge base (planned s27)
-- Trade Reasoning + RL Feedback (Phase 4) — structured reasoning chains, RL loop (planned s28+)
-- Frontend screens not yet built: Dashboard, Recommendations, Workflow, Risk, Performance, Capital, Trading
+- **Quant Agent at Level 0** — generates data but doesn't learn. Needs: parameter optimization, hypothesis generation, template health monitoring, knowledge base. See 5-level evolution plan below.
+- Agent Learning Framework (Phase 2) — structured learnings, knowledge base
+- Trade Reasoning + RL Feedback (Phase 4) — structured reasoning chains, RL loop
+- Frontend: Trading page placeholder only. Chat LLM integration (currently keyword-only).
 - **Real capital deployment on hold** — Nitin postponing investment until research portfolios demonstrate agent readiness
+
+**LESSON LEARNED (s25):** Harness and workflow engine had divergent data paths. Harness explicitly called PortfolioSyncService + built ContainerManager. Workflow engine had NEITHER — PortfolioStateAgent only read stale DB data, ContainerManager was never created. API endpoints silently returned empty. **Rule: every feature that works in harness MUST be verified working in workflow engine + API.** Fixed s25: broker sync + container init now in engine.py.
 
 ---
 
@@ -533,7 +565,7 @@ Model outputs feed back into:
 
 | Area | Key files |
 |------|-----------|
-| **Workflow Engine** | `workflow/engine.py` (orchestrator), `workflow/states.py` (state machine), `workflow/scheduler.py` (APScheduler), `runners/run_workflow.py` (CLI) |
+| **Workflow Engine** | `workflow/engine.py` (orchestrator + ContainerManager init + broker sync + container refresh), `workflow/states.py` (state machine), `workflow/scheduler.py` (APScheduler), `runners/run_workflow.py` (CLI) |
 | **Agents** | `agents/protocol.py` (Agent/AgentResult), `agents/messages.py` (UserIntent/SystemResponse) |
 | **Safety** | `agents/safety/guardian.py` (circuit breakers + trading constraints), `config/workflow_rules.yaml` (all thresholds) |
 | **Perception** | `agents/perception/market_data.py`, `agents/perception/portfolio_state.py`, `agents/perception/calendar.py` |
@@ -559,14 +591,14 @@ Model outputs feed back into:
 | **Events/ML** | `services/event_logger.py`, `core/models/events.py`, `ai_cotrader/` (feature extraction, RL — needs data) |
 | **Pricing** | `analytics/pricing/` (BS, P&L), `analytics/greeks/engine.py`, `services/pricing/` |
 | **DB/ORM** | `core/database/schema.py` (21 tables incl. workflow_state, decision_log, agent_runs, agent_objectives), `core/database/session.py`, `repositories/` |
-| **Broker** | `adapters/tastytrade_adapter.py`, `services/position_sync.py`, `services/portfolio_sync.py`, `cli/init_portfolios.py`, `cli/sync_fidelity.py`, `cli/load_stallion.py` |
+| **Broker Sync** | `services/portfolio_sync.py` (PortfolioSyncService — wired into engine boot+monitoring), `services/position_sync.py`, `adapters/tastytrade_adapter.py`, `cli/init_portfolios.py`, `cli/sync_fidelity.py`, `cli/load_stallion.py` |
 | **Web Dashboard** | `web/approval_api.py` (FastAPI app factory, embedded in workflow engine), `ui/approval-dashboard.html` (legacy dark theme) |
 | **v2 API** | `web/api_v2.py` (comprehensive REST API for React frontend, mounted at `/api/v2`) |
 | **Admin API** | `web/api_admin.py` (YAML config CRUD, mounted at `/api/admin`) |
 | **Reports API** | `web/api_reports.py` (10 pre-built report endpoints at `/api/reports`, uses PerformanceMetricsService) |
 | **Explorer API** | `web/api_explorer.py` (structured query builder at `/api/explorer`, table/column whitelist, 21 tables) |
 | **Agents API** | `web/api_agents.py` (10 endpoints at `/api/v2/agents`, 16-agent registry with capabilities) |
-| **React Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid), `frontend/src/pages/PortfolioPage.tsx`, `frontend/src/pages/ReportsPage.tsx` (8 tabs), `frontend/src/pages/DataExplorerPage.tsx` (query builder), `frontend/src/pages/AgentsPage.tsx` (4 tabs: agents, research, knowledge, ML), `frontend/src/pages/AgentDetailPage.tsx` (drill-down), `frontend/src/pages/settings/` (4 config screens), `frontend/src/components/agents/` (AgentCard, AgentRunTimeline, ObjectiveGradeChart), `frontend/src/hooks/useAgents.ts` |
+| **React Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid + Recharts), `frontend/src/pages/DashboardPage.tsx` (KPI strip + charts), `frontend/src/pages/RecommendationsPage.tsx` (approve/reject/defer), `frontend/src/pages/WorkflowPage.tsx` (state machine + controls), `frontend/src/pages/PerformancePage.tsx` (metrics + charts), `frontend/src/pages/CapitalPage.tsx` (deployment monitoring), `frontend/src/pages/RiskPage.tsx` (risk factors + positions), `frontend/src/pages/PortfolioPage.tsx`, `frontend/src/pages/ReportsPage.tsx` (8 tabs), `frontend/src/pages/DataExplorerPage.tsx` (query builder), `frontend/src/pages/AgentsPage.tsx` (4 tabs), `frontend/src/pages/AgentDetailPage.tsx`, `frontend/src/pages/settings/` (4 config screens), `frontend/src/components/chat/ChatPanel.tsx` (collapsible NL chat), `frontend/src/components/chat/intentParser.ts` (10 intents), `frontend/src/components/modals/RecommendationModal.tsx`, `frontend/src/hooks/useRecommendations.ts`, `frontend/src/hooks/useWorkflow.ts`, `frontend/src/hooks/usePerformance.ts`, `frontend/src/hooks/useCapital.ts`, `frontend/src/hooks/useChat.ts` |
 | **Tests** | `tests/` (270 pytest), `harness/` (17 integration steps) |
 | **Templates** | `config/templates/` (27 templates: 1 0DTE, 4 weekly, 16 monthly, 5 LEAPS, 1 custom) |
 

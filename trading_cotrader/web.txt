@@ -40,3 +40,33 @@
 
 
   Then open http://localhost:8080 — both you and your wife can approve/reject from any browser.
+
+
+## watchlist
+
+   Here are the TastyTrade watchlists you need to create:                                                                                                       
+  
+  Watchlist 1: "CoTrader Core" (Main universe — covers all templates)                                                                                          
+                                                                                                                                                                 SPY, QQQ, AAPL, NVDA, MSFT, AMZN, GOOGL, META, TSLA, AMD                                                                                                     
+  Used by: correction_premium_sell, ma_crossover_rsi, bollinger_bounce, high_iv_iron_condor                                                                    
+
+  Watchlist 2: "CoTrader Index" (Index/ETF only — for vol arbitrage + hedging)
+
+  SPY, QQQ, SPX, IWM
+  Used by: vol_arbitrage_calendar, black_swan_hedge
+
+  Watchlist 3: "CoTrader Earnings" (Dynamic — update weekly based on earnings calendar)
+
+  (Rotates based on upcoming earnings — check yfinance earnings calendar)
+  Typical names: AAPL, NVDA, MSFT, AMZN, GOOGL, META, TSLA, AMD, NFLX, CRM, COST, JPM, BAC
+  Used by: earnings_iv_crush
+
+  Or simpler — 1 combined watchlist "CoTrader All":
+
+  SPY, QQQ, SPX, IWM, AAPL, NVDA, MSFT, AMZN, GOOGL, META, TSLA, AMD
+
+  This covers all 7 research templates. The earnings template dynamically pulls from yfinance calendar, but having these names in your watchlist ensures       
+  TastyTrade has the data ready.
+
+  Why it matters: When the workflow engine runs with a live broker, the MarketDataAgent and PortfolioStateAgent need positions/watchlist data from TastyTrade. 
+  Having these watchlists ensures DXLink streaming can subscribe to quotes and Greeks for all research universe symbols.

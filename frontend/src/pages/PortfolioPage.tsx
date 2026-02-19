@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
 import { usePortfolios } from '../hooks/usePortfolios'
 import { usePositions } from '../hooks/usePositions'
+import { useBrokerPositions } from '../hooks/useBrokerPositions'
 import { PortfolioGrid } from '../components/grids/PortfolioGrid'
 import { PositionGrid } from '../components/grids/PositionGrid'
+import { BrokerPositionGrid } from '../components/grids/BrokerPositionGrid'
 import { PortfolioCard } from '../components/cards/PortfolioCard'
 import { PnLDisplay } from '../components/common/PnLDisplay'
 import { GreeksBar } from '../components/common/GreeksBar'
@@ -18,6 +20,9 @@ export function PortfolioPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('all')
 
   const { data: positions, isLoading: loadingPositions } = usePositions(
+    selectedPortfolio || undefined,
+  )
+  const { data: brokerPositions, isLoading: loadingBrokerPositions } = useBrokerPositions(
     selectedPortfolio || undefined,
   )
 
@@ -161,11 +166,11 @@ export function PortfolioPage() {
         </div>
       )}
 
-      {/* Positions grid */}
+      {/* System Trades (booked via workflow) */}
       <div className="card">
         <div className="card-header">
           <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-            {selectedPortfolio ? `${selectedPortfolio} Positions` : 'All Open Positions'}
+            {selectedPortfolio ? `${selectedPortfolio} Trades` : 'All Open Trades'}
             {positions && ` (${positions.length})`}
           </h2>
         </div>
@@ -176,7 +181,26 @@ export function PortfolioPage() {
         ) : positions && positions.length > 0 ? (
           <PositionGrid trades={positions} />
         ) : (
-          <EmptyState message="No open positions" />
+          <EmptyState message="No system-booked trades" />
+        )}
+      </div>
+
+      {/* Broker Positions (synced from TastyTrade/broker) */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+            Broker Positions
+            {brokerPositions && ` (${brokerPositions.length})`}
+          </h2>
+        </div>
+        {loadingBrokerPositions ? (
+          <div className="card-body flex justify-center py-8">
+            <Spinner />
+          </div>
+        ) : brokerPositions && brokerPositions.length > 0 ? (
+          <BrokerPositionGrid positions={brokerPositions} />
+        ) : (
+          <EmptyState message="No broker positions synced" />
         )}
       </div>
     </div>

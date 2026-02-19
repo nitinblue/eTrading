@@ -97,11 +97,23 @@ class WorkflowEngine:
         # Create adapters via factory (or use pre-provided broker)
         adapters = {}
         if broker:
+            # Pre-provided broker (e.g., from harness) — assumed already authenticated
             adapters['tastytrade'] = broker
         else:
-            # Create API adapters from registry
+            # Create API adapters from registry and authenticate each one
             api_adapters = BrokerAdapterFactory.create_all_api(self.broker_registry)
-            adapters.update(api_adapters)
+            for name, adapter in api_adapters.items():
+                if hasattr(adapter, 'authenticate'):
+                    try:
+                        if adapter.authenticate():
+                            logger.info(f"Broker [{name}] authenticated successfully")
+                            adapters[name] = adapter
+                        else:
+                            logger.warning(f"Broker [{name}] authentication failed — skipping")
+                    except Exception as e:
+                        logger.warning(f"Broker [{name}] auth error: {e} — skipping")
+                else:
+                    adapters[name] = adapter
 
         self.broker_router = BrokerRouter(self.broker_registry, adapters)
 
@@ -110,6 +122,9 @@ class WorkflowEngine:
             'cycle_count': 0,
             'engine_start_time': datetime.utcnow().isoformat(),
         }
+
+        # Initialize ContainerManager so API endpoints have live data
+        self._init_container_manager()
 
         # Initialize all agents
         self.guardian = GuardianAgent(self.config)
@@ -190,8 +205,14 @@ class WorkflowEngine:
         # Market data
         md_result = self._run_agent(self.market_data, self.context)
 
-        # Portfolio state
+        # Sync positions from broker(s) into DB (before reading state)
+        self._sync_broker_positions()
+
+        # Portfolio state (reads from DB — now with fresh broker data)
         ps_result = self._run_agent(self.portfolio_state, self.context)
+
+        # Refresh containers from DB so API endpoints serve live data
+        self._refresh_containers()
 
         # Safety check
         safety = self._run_agent(self.guardian, self.context)
@@ -316,6 +337,7 @@ class WorkflowEngine:
 
         # Refresh portfolio state after execution
         self._run_agent(self.portfolio_state, self.context)
+        self._refresh_containers()
         self.monitor()
 
     def on_enter_eod_evaluation(self, event):
@@ -415,9 +437,13 @@ class WorkflowEngine:
             logger.debug(f"Skip monitoring cycle: state is {current}")
             return
 
-        # Refresh
+        # Refresh — sync broker positions, then read state from DB
         self._run_agent(self.market_data, self.context)
+        self._sync_broker_positions()
         self._run_agent(self.portfolio_state, self.context)
+
+        # Refresh containers from DB
+        self._refresh_containers()
 
         # Capital utilization check
         cap_result = self._run_agent(self.capital_utilization, self.context)
@@ -463,9 +489,12 @@ class WorkflowEngine:
             from trading_cotrader.core.database.session import session_scope
             from trading_cotrader.core.database.schema import WorkflowStateORM
 
-            # Serialize context (remove non-serializable items)
+            # Serialize context (skip non-serializable runtime objects)
+            _SKIP_KEYS = {'container_manager'}  # runtime objects, not state
             ctx_copy = {}
             for k, v in self.context.items():
+                if k in _SKIP_KEYS:
+                    continue
                 try:
                     json.dumps(v)
                     ctx_copy[k] = v
@@ -516,13 +545,94 @@ class WorkflowEngine:
                             # Start fresh from idle — don't resume mid-flow
                             logger.info(f"Previous state was {restored}, starting from idle")
 
-                    # Restore context
+                    # Restore context (skip runtime-only keys that may be stale)
                     if state_row.context_json:
-                        self.context.update(state_row.context_json)
+                        restored_ctx = state_row.context_json
+                        # Never restore runtime objects from DB — they're re-created at startup
+                        restored_ctx.pop('container_manager', None)
+                        self.context.update(restored_ctx)
                         logger.info(f"Restored context (cycle {self.context.get('cycle_count', 0)})")
 
         except Exception as e:
             logger.debug(f"Could not restore state (first run?): {e}")
+
+    # -----------------------------------------------------------------
+    # Container initialization & refresh
+    # -----------------------------------------------------------------
+
+    def _init_container_manager(self):
+        """Create ContainerManager with bundles from risk_config.yaml."""
+        try:
+            from trading_cotrader.containers.container_manager import ContainerManager
+            from trading_cotrader.config.risk_config_loader import get_risk_config
+
+            cm = ContainerManager()
+            risk_config = get_risk_config()
+            cm.initialize_bundles(risk_config.portfolios)
+            self.context['container_manager'] = cm
+            logger.info("ContainerManager initialized with portfolio bundles")
+
+            # Load existing data from DB
+            self._refresh_containers()
+        except Exception as e:
+            logger.warning(f"ContainerManager init failed (non-blocking): {e}")
+
+    def _refresh_containers(self):
+        """Refresh ContainerManager from DB — populates positions, risk factors, trades."""
+        cm = self.container_manager
+        if cm is None:
+            return
+        try:
+            from trading_cotrader.core.database.session import session_scope
+            with session_scope() as session:
+                cm.load_all_bundles(session)
+            logger.info("Containers refreshed from DB")
+        except Exception as e:
+            logger.warning(f"Container refresh failed (non-blocking): {e}")
+
+    def _sync_broker_positions(self):
+        """
+        Sync positions from all API-capable brokers into DB.
+
+        Uses PortfolioSyncService for each broker adapter that has real
+        connectivity (not Manual/ReadOnly). Skips gracefully when no
+        broker is available (--no-broker mode).
+        """
+        from trading_cotrader.adapters.base import ManualBrokerAdapter, ReadOnlyAdapter
+
+        adapters = self.broker_router.adapters if self.broker_router else {}
+        if not adapters:
+            logger.debug("No broker adapters — skipping position sync")
+            return
+
+        synced_any = False
+        for broker_name, adapter in adapters.items():
+            # Skip non-API adapters
+            if isinstance(adapter, (ManualBrokerAdapter, ReadOnlyAdapter)):
+                continue
+
+            try:
+                from trading_cotrader.core.database.session import session_scope
+                from trading_cotrader.services.portfolio_sync import PortfolioSyncService
+
+                with session_scope() as session:
+                    sync_svc = PortfolioSyncService(session, adapter)
+                    result = sync_svc.sync_portfolio()
+
+                if result.success:
+                    logger.info(
+                        f"Broker sync [{broker_name}]: "
+                        f"{result.positions_synced} positions synced"
+                    )
+                    synced_any = True
+                else:
+                    logger.warning(
+                        f"Broker sync [{broker_name}] failed: {result.error}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Broker sync [{broker_name}] error (non-blocking): {e}"
+                )
 
     # -----------------------------------------------------------------
     # Internal helpers
