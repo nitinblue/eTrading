@@ -45,7 +45,8 @@
       "Bash(npx tsc:*)",
       "Bash(npx vite build)",
       "Bash(findstr:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "WebSearch"
     ]
   }
 }

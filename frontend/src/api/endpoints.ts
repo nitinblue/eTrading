@@ -16,6 +16,7 @@ export const endpoints = {
 
   // Recommendations
   recommendations: `${V2}/recommendations`,
+  recommendationDetail: (id: string) => `${V2}/recommendations/${id}`,
   approveRec: (id: string) => `/api/approve/${id}`,
   rejectRec: (id: string) => `/api/reject/${id}`,
   deferRec: (id: string) => `/api/defer/${id}`,
@@ -59,6 +60,25 @@ export const endpoints = {
   agent: (name: string) => `${V2}/agents/${name}`,
   agentRuns: (name: string) => `${V2}/agents/${name}/runs`,
   agentObjectives: (name: string) => `${V2}/agents/${name}/objectives`,
+
+  // Agent Intelligence (LLM-powered)
+  agentBrief: `${V2}/agent/brief`,
+  agentChat: `${V2}/agent/chat`,
+  agentAnalyze: (symbol: string) => `${V2}/agent/analyze/${symbol}`,
+  agentIntelStatus: `${V2}/agent/status`,
+
+  // Account Activity
+  accountTransactions: `${V2}/account/transactions`,
+  accountOrders: `${V2}/account/orders`,
+  equityCurve: `${V2}/account/equity-curve`,
+  marketMetrics: `${V2}/account/market-metrics`,
+
+  // Trading Dashboard
+  tradingDashboard: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}`,
+  refreshDashboard: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/refresh`,
+  evaluateTemplate: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/evaluate`,
+  addWhatIf: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/add-whatif`,
+  bookTrade: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/book`,
 
   // WebSocket
   ws: '/ws',

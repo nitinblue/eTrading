@@ -12,12 +12,12 @@ import { Spinner } from '../components/common/Spinner'
 import { EmptyState } from '../components/common/EmptyState'
 import { clsx } from 'clsx'
 
-type ViewMode = 'all' | 'real' | 'whatif'
+type ViewMode = 'real' | 'whatif' | 'fund' | 'all'
 
 export function PortfolioPage() {
   const { data: portfolios, isLoading: loadingPortfolios } = usePortfolios()
   const [selectedPortfolio, setSelectedPortfolio] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>('all')
+  const [viewMode, setViewMode] = useState<ViewMode>('real')
 
   const { data: positions, isLoading: loadingPositions } = usePositions(
     selectedPortfolio || undefined,
@@ -28,9 +28,12 @@ export function PortfolioPage() {
 
   const filteredPortfolios = useMemo(() => {
     if (!portfolios) return []
-    if (viewMode === 'real') return portfolios.filter((p) => p.portfolio_type === 'real')
-    if (viewMode === 'whatif') return portfolios.filter((p) => p.portfolio_type === 'what_if')
-    return portfolios
+    // Always exclude research portfolios from main view
+    const nonResearch = portfolios.filter((p) => !p.name.startsWith('research_'))
+    if (viewMode === 'real') return nonResearch.filter((p) => p.portfolio_type === 'real' && p.broker !== 'stallion')
+    if (viewMode === 'whatif') return nonResearch.filter((p) => p.portfolio_type === 'what_if')
+    if (viewMode === 'fund') return nonResearch.filter((p) => p.broker === 'stallion')
+    return nonResearch
   }, [portfolios, viewMode])
 
   const selected = useMemo(
@@ -102,7 +105,7 @@ export function PortfolioPage() {
 
               {/* View mode toggle */}
               <div className="flex items-center gap-1 bg-bg-tertiary rounded p-0.5">
-                {(['all', 'real', 'whatif'] as ViewMode[]).map((mode) => (
+                {(['real', 'whatif', 'fund', 'all'] as ViewMode[]).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
@@ -113,7 +116,7 @@ export function PortfolioPage() {
                         : 'text-text-muted hover:text-text-secondary',
                     )}
                   >
-                    {mode === 'whatif' ? 'WhatIf' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    {mode === 'whatif' ? 'WhatIf' : mode === 'fund' ? 'Funds' : mode.charAt(0).toUpperCase() + mode.slice(1)}
                   </button>
                 ))}
               </div>

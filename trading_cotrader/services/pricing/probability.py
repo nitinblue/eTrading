@@ -346,6 +346,216 @@ class ProbabilityCalculator:
             breakeven_prices=[lower_breakeven, upper_breakeven]
         )
     
+    def compute_trade_payoff(
+        self,
+        legs: List[dict],
+        spot: float,
+        iv: float,
+        dte: int,
+        premium: Optional[float] = None,
+        rate: float = 0.05,
+    ) -> ProbabilityResult:
+        """
+        Compute payoff for any multi-leg options trade.
+
+        Detects strategy type from legs and delegates to the correct calculator.
+
+        Args:
+            legs: List of dicts with keys: strike, option_type, quantity, side
+            spot: Current underlying price
+            iv: Implied volatility (annualized, e.g. 0.25)
+            dte: Days to expiration
+            premium: Net premium received (positive=credit). If None, estimated.
+            rate: Risk-free rate
+
+        Returns:
+            ProbabilityResult with POP, EV, breakevens, max profit/loss
+        """
+        if not legs:
+            return ProbabilityResult(
+                probability_of_profit=0, probability_max_profit=0,
+                probability_max_loss=1, probability_breakeven=0.5,
+                expected_value=0, expected_return_percent=0,
+                breakeven_prices=[],
+            )
+
+        # Classify legs
+        puts = [l for l in legs if l.get('option_type', '').lower() == 'put']
+        calls = [l for l in legs if l.get('option_type', '').lower() == 'call']
+        short_legs = [l for l in legs if l.get('quantity', 0) < 0 or l.get('side', '').lower() in ('sell', 'sell_to_open')]
+        long_legs = [l for l in legs if l.get('quantity', 0) > 0 or l.get('side', '').lower() in ('buy', 'buy_to_open')]
+
+        # Iron condor: 4 legs, both puts and calls
+        if len(legs) == 4 and len(puts) == 2 and len(calls) == 2:
+            return self._payoff_iron_condor(puts, calls, spot, iv, dte, premium, rate)
+
+        # Vertical spread: 2 legs, same option type
+        if len(legs) == 2 and (len(puts) == 2 or len(calls) == 2):
+            return self._payoff_vertical(legs, spot, iv, dte, premium, rate)
+
+        # Single leg
+        if len(legs) == 1:
+            return self._payoff_single(legs[0], spot, iv, dte, premium, rate)
+
+        # Strangle: 2 legs, 1 put + 1 call
+        if len(legs) == 2 and len(puts) == 1 and len(calls) == 1:
+            return self._payoff_strangle(puts[0], calls[0], spot, iv, dte, premium, rate)
+
+        # Fallback: treat as custom multi-leg, estimate from outer strikes
+        return self._payoff_fallback(legs, spot, iv, dte, premium, rate)
+
+    def _payoff_iron_condor(
+        self, puts, calls, spot, iv, dte, premium, rate
+    ) -> ProbabilityResult:
+        put_strikes = sorted([float(l['strike']) for l in puts])
+        call_strikes = sorted([float(l['strike']) for l in calls])
+        put_long, put_short = put_strikes[0], put_strikes[1]
+        call_short, call_long = call_strikes[0], call_strikes[1]
+
+        width = max(put_short - put_long, call_long - call_short)
+        if premium is None:
+            premium = width * 0.33  # rough estimate: 1/3 of width
+
+        return self.probability_of_profit_iron_condor(
+            put_long_strike=put_long,
+            put_short_strike=put_short,
+            call_short_strike=call_short,
+            call_long_strike=call_long,
+            premium_received=abs(premium),
+            spot=spot, volatility=iv, days_to_expiry=dte, rate=rate,
+        )
+
+    def _payoff_vertical(
+        self, legs, spot, iv, dte, premium, rate
+    ) -> ProbabilityResult:
+        strikes = sorted([float(l['strike']) for l in legs])
+        option_type = legs[0].get('option_type', 'put').lower()
+        is_put = option_type == 'put'
+
+        width = strikes[1] - strikes[0]
+        # Determine credit/debit from leg sides
+        short_leg = next(
+            (l for l in legs if l.get('quantity', 0) < 0 or l.get('side', '').lower() in ('sell', 'sell_to_open')),
+            None,
+        )
+        if short_leg:
+            short_strike = float(short_leg['strike'])
+        else:
+            # Default: higher strike is short for puts, lower for calls
+            short_strike = strikes[1] if is_put else strikes[0]
+
+        long_strike = strikes[0] if short_strike == strikes[1] else strikes[1]
+
+        if premium is None:
+            premium = width * 0.30  # rough estimate
+
+        return self.probability_of_profit_vertical(
+            short_strike=short_strike,
+            long_strike=long_strike,
+            premium_received=abs(premium),
+            spot=spot, volatility=iv, days_to_expiry=dte,
+            is_put_spread=is_put, rate=rate,
+        )
+
+    def _payoff_single(
+        self, leg, spot, iv, dte, premium, rate
+    ) -> ProbabilityResult:
+        strike = float(leg['strike'])
+        opt_type = leg.get('option_type', 'put').lower()
+        is_short = leg.get('quantity', 0) < 0 or leg.get('side', '').lower() in ('sell', 'sell_to_open')
+
+        if premium is None:
+            premium = spot * iv * math.sqrt(dte / 365) * 0.4  # rough BS estimate
+
+        if is_short:
+            pop = self.probability_otm(strike, spot, iv, dte, opt_type, rate)
+            max_profit = abs(premium)
+            max_loss = float('inf')  # undefined risk
+            ev = self.expected_value(max_profit, max_profit * 2, pop)  # cap at 2x for EV
+        else:
+            pop = self.probability_itm(strike, spot, iv, dte, opt_type, rate)
+            max_profit = float('inf')
+            max_loss = abs(premium)
+            ev = self.expected_value(max_loss * 2, max_loss, pop)  # target 2:1
+
+        breakeven = strike - abs(premium) if opt_type == 'put' else strike + abs(premium)
+        if is_short:
+            breakeven = strike + abs(premium) if opt_type == 'call' else strike - abs(premium)
+
+        return ProbabilityResult(
+            probability_of_profit=pop,
+            probability_max_profit=pop * 0.5,  # rough estimate
+            probability_max_loss=1 - pop,
+            probability_breakeven=0.5,
+            expected_value=ev,
+            expected_return_percent=(ev / max_loss * 100) if max_loss and max_loss != float('inf') else 0,
+            breakeven_prices=[breakeven],
+        )
+
+    def _payoff_strangle(
+        self, put_leg, call_leg, spot, iv, dte, premium, rate
+    ) -> ProbabilityResult:
+        put_strike = float(put_leg['strike'])
+        call_strike = float(call_leg['strike'])
+        is_short = put_leg.get('quantity', 0) < 0 or put_leg.get('side', '').lower() in ('sell', 'sell_to_open')
+
+        if premium is None:
+            premium = spot * iv * math.sqrt(dte / 365) * 0.6
+
+        if is_short:
+            lower_be = put_strike - abs(premium)
+            upper_be = call_strike + abs(premium)
+            pop = self.probability_between(lower_be, upper_be, spot, iv, dte, rate)
+            max_profit = abs(premium)
+            max_loss = float('inf')  # undefined
+            ev = self.expected_value(max_profit, max_profit * 3, pop)
+        else:
+            lower_be = put_strike - abs(premium)
+            upper_be = call_strike + abs(premium)
+            pop = 1 - self.probability_between(lower_be, upper_be, spot, iv, dte, rate)
+            max_profit = float('inf')
+            max_loss = abs(premium)
+            ev = self.expected_value(max_loss * 3, max_loss, pop)
+
+        return ProbabilityResult(
+            probability_of_profit=pop,
+            probability_max_profit=pop * 0.3,
+            probability_max_loss=1 - pop,
+            probability_breakeven=0.5,
+            expected_value=ev,
+            expected_return_percent=(ev / max_loss * 100) if max_loss and max_loss != float('inf') else 0,
+            breakeven_prices=[lower_be, upper_be],
+        )
+
+    def _payoff_fallback(
+        self, legs, spot, iv, dte, premium, rate
+    ) -> ProbabilityResult:
+        """Fallback for complex multi-leg trades: use outer strikes as bounds."""
+        strikes = sorted([float(l['strike']) for l in legs if l.get('strike')])
+        if len(strikes) < 2:
+            return ProbabilityResult(
+                probability_of_profit=0.5, probability_max_profit=0.25,
+                probability_max_loss=0.25, probability_breakeven=0.5,
+                expected_value=0, expected_return_percent=0,
+                breakeven_prices=strikes,
+            )
+        pop = self.probability_between(strikes[0], strikes[-1], spot, iv, dte, rate)
+        width = strikes[-1] - strikes[0]
+        est_premium = width * 0.25 if premium is None else abs(premium)
+        max_profit = est_premium
+        max_loss = width - est_premium
+        ev = self.expected_value(max_profit, max_loss, pop)
+
+        return ProbabilityResult(
+            probability_of_profit=pop,
+            probability_max_profit=pop * 0.5,
+            probability_max_loss=1 - pop,
+            probability_breakeven=0.5,
+            expected_value=ev,
+            expected_return_percent=(ev / max_loss * 100) if max_loss > 0 else 0,
+            breakeven_prices=[strikes[0] + est_premium, strikes[-1] - est_premium],
+        )
+
     def _norm_cdf(self, x: float) -> float:
         """Cumulative distribution function for standard normal."""
         return 0.5 * (1 + math.erf(x / math.sqrt(2)))

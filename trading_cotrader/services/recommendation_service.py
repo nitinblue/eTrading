@@ -155,13 +155,27 @@ class RecommendationService:
                 if rec.confidence != original:
                     rec.rationale += f" [macro: {assessment.regime}, conf {original}→{rec.confidence}]"
 
-        # Step 6: Persist to DB
+        # Step 6: Dedup — skip if same underlying/strategy/source already pending
         saved = []
+        skipped = 0
         for rec in recommendations:
+            if self.rec_repo.has_pending_duplicate(
+                underlying=rec.underlying,
+                strategy_type=rec.strategy_type,
+                source=rec.source,
+            ):
+                skipped += 1
+                logger.info(
+                    f"DEDUP: Skipping {rec.underlying} {rec.strategy_type} "
+                    f"from {rec.source} — duplicate pending"
+                )
+                continue
             created = self.rec_repo.create_from_domain(rec)
             if created:
                 saved.append(created)
 
+        if skipped > 0:
+            logger.info(f"Dedup skipped {skipped} duplicate recommendations")
         logger.info(f"Saved {len(saved)} recommendations to DB")
         return saved
 

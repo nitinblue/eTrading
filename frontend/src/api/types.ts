@@ -152,6 +152,26 @@ export interface Recommendation {
   status: 'pending' | 'accepted' | 'rejected' | 'expired'
   created_at: string
   reviewed_at: string | null
+  age_hours: number | null
+  portfolio_name: string | null
+  trade_id: string | null
+  accepted_notes: string | null
+  rejection_reason: string | null
+
+  // Exit/roll specific
+  trade_id_to_close: string | null
+  exit_action: string | null
+  exit_urgency: string | null
+  triggered_rules: string[] | null
+
+  // Full reasoning data
+  market_context: Record<string, unknown> | null
+  scenario_template_name: string | null
+  scenario_type: string | null
+  trigger_conditions_met: Record<string, unknown> | null
+
+  // LLM explanation (from detail endpoint)
+  agent_explanation: string | null
 
   // Financials (computed)
   max_loss_display: string
@@ -748,6 +768,158 @@ export interface BrokerPosition {
   pnl_delta: number
   pnl_theta: number
   pnl_vega: number
+}
+
+// ---------------------------------------------------------------------------
+// Trading Dashboard Types (matches api_trading_sheet.py)
+// ---------------------------------------------------------------------------
+
+export interface TradingDashboardPortfolio {
+  name: string
+  portfolio_type: string
+  broker: string | null
+  total_equity: number
+  cash_balance: number
+  buying_power: number
+  margin_used: number
+  margin_used_pct: number
+  net_delta: number
+  net_gamma: number
+  net_theta: number
+  net_vega: number
+  net_delta_with_whatif: number
+  net_theta_with_whatif: number
+  var_1d_95: number
+  theta_var_ratio: number
+  capital_deployed_pct: number
+  max_delta: number
+  delta_utilization_pct: number
+  open_positions: number
+  open_strategies: number
+  whatif_count: number
+}
+
+export interface TradingDashboardStrategy {
+  trade_id: string
+  underlying: string
+  strategy_type: string
+  legs_summary: string
+  dte: number | null
+  quantity: number
+  entry_cost: number
+  margin_used: number
+  margin_pct_of_capital: number
+  max_risk: number
+  max_risk_pct_margin: number
+  max_risk_pct_total_bp: number
+  net_delta: number
+  net_theta: number
+  net_gamma: number
+  net_vega: number
+  total_pnl: number
+  pnl_pct: number
+  trade_source: string
+  trade_type: string
+  status: string
+  opened_at: string | null
+  is_open: boolean
+}
+
+export interface TradingDashboardPosition {
+  id: string
+  symbol: string
+  underlying: string
+  option_type: string | null
+  strike: number | null
+  expiry: string | null
+  dte: number | null
+  quantity: number
+  side: string
+  // Entry
+  entry_price: number
+  entry_delta: number
+  entry_gamma: number
+  entry_theta: number
+  entry_vega: number
+  entry_iv: number
+  // Current
+  current_price: number
+  delta: number
+  gamma: number
+  theta: number
+  vega: number
+  iv: number
+  // P&L attribution
+  pnl_delta: number
+  pnl_gamma: number
+  pnl_theta: number
+  pnl_vega: number
+  pnl_unexplained: number
+  total_pnl: number
+  broker_pnl: number
+  pnl_pct: number
+}
+
+export interface TradingDashboardRiskFactor {
+  underlying: string
+  spot: number
+  delta: number
+  gamma: number
+  theta: number
+  vega: number
+  delta_dollars: number
+  concentration_pct: number
+  count: number
+  pnl: number
+}
+
+export interface TradingDashboardData {
+  portfolio: TradingDashboardPortfolio
+  strategies: TradingDashboardStrategy[]
+  positions: TradingDashboardPosition[]
+  whatif_trades: TradingDashboardStrategy[]
+  risk_factors: TradingDashboardRiskFactor[]
+}
+
+export interface RefreshResult {
+  success: boolean
+  broker_synced: boolean
+  containers_refreshed: boolean
+  snapshot_captured: boolean
+}
+
+export interface TemplateConditionResult {
+  passed: boolean
+  actual: number | string | null
+  target: number | string | null
+  operator: string
+}
+
+export interface EvaluatedSymbol {
+  symbol: string
+  triggered: boolean
+  conditions: Record<string, TemplateConditionResult>
+  snapshot?: { price: number; rsi_14: number | null; iv_rank: number | null }
+  proposed_trade?: {
+    strategy_type: string
+    legs: Array<{ strike: number; option_type: string; quantity: number; side: string }>
+    dte: number
+    pop?: number
+    expected_value?: number
+    max_profit?: number
+    max_loss?: number
+    breakevens?: number[]
+    fits_portfolio?: boolean
+    fitness_reasons?: string[]
+    fitness_warnings?: string[]
+  }
+  error?: string
+}
+
+export interface TemplateEvaluationResult {
+  template: { name: string; display_name: string; description: string; universe: string[] }
+  evaluated_symbols: EvaluatedSymbol[]
+  summary: string
 }
 
 // WebSocket message types

@@ -396,40 +396,113 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
     # Recommendations
     # ------------------------------------------------------------------
 
+    def _serialize_recommendation(r):
+        """Serialize a RecommendationORM to dict with full reasoning data."""
+        # Calculate age for pending recs
+        age_hours = None
+        if r.created_at:
+            from datetime import datetime
+            age_hours = round((datetime.utcnow() - r.created_at).total_seconds() / 3600, 1)
+
+        return {
+            'id': r.id,
+            'recommendation_type': r.recommendation_type,
+            'source': r.source,
+            'screener_name': r.screener_name,
+            'underlying': r.underlying,
+            'strategy_type': r.strategy_type,
+            'legs': r.legs,
+            'confidence': r.confidence,
+            'rationale': r.rationale,
+            'risk_category': r.risk_category,
+            'suggested_portfolio': r.suggested_portfolio,
+            'status': r.status,
+            'created_at': _iso(r.created_at),
+            'reviewed_at': _iso(r.reviewed_at),
+            'age_hours': age_hours,
+            'portfolio_name': r.portfolio_name,
+            'trade_id': r.trade_id,
+            'accepted_notes': r.accepted_notes,
+            'rejection_reason': r.rejection_reason,
+            'trade_id_to_close': r.trade_id_to_close,
+            'exit_action': r.exit_action,
+            'exit_urgency': r.exit_urgency,
+            'triggered_rules': r.triggered_rules,
+            # Full reasoning data
+            'market_context': r.market_context,
+            'scenario_template_name': getattr(r, 'scenario_template_name', None),
+            'scenario_type': getattr(r, 'scenario_type', None),
+            'trigger_conditions_met': getattr(r, 'trigger_conditions_met', None),
+        }
+
     @router.get("/recommendations")
     async def get_recommendations(
         status: Optional[str] = Query(None, description="pending, accepted, rejected, all"),
+        source: Optional[str] = Query(None),
+        underlying: Optional[str] = Query(None),
     ):
-        """All recommendations."""
+        """All recommendations with full reasoning data."""
         with session_scope() as session:
             q = session.query(RecommendationORM).order_by(RecommendationORM.created_at.desc())
             if status and status != 'all':
                 q = q.filter(RecommendationORM.status == status)
+            if source:
+                q = q.filter(RecommendationORM.source == source)
+            if underlying:
+                q = q.filter(RecommendationORM.underlying == underlying)
             recs = q.limit(200).all()
-            return [
-                {
-                    'id': r.id,
-                    'recommendation_type': r.recommendation_type,
-                    'source': r.source,
-                    'screener_name': r.screener_name,
-                    'underlying': r.underlying,
-                    'strategy_type': r.strategy_type,
-                    'legs': r.legs,
-                    'confidence': r.confidence,
-                    'rationale': r.rationale,
-                    'risk_category': r.risk_category,
-                    'suggested_portfolio': r.suggested_portfolio,
-                    'status': r.status,
-                    'created_at': _iso(r.created_at),
-                    'reviewed_at': _iso(r.reviewed_at),
-                    'portfolio_name': r.portfolio_name,
-                    'trade_id_to_close': r.trade_id_to_close,
-                    'exit_action': r.exit_action,
-                    'exit_urgency': r.exit_urgency,
-                    'triggered_rules': r.triggered_rules,
-                }
-                for r in recs
-            ]
+            return [_serialize_recommendation(r) for r in recs]
+
+    @router.get("/recommendations/{rec_id}")
+    async def get_recommendation_detail(rec_id: str):
+        """Single recommendation with full detail + LLM explanation."""
+        with session_scope() as session:
+            r = session.query(RecommendationORM).filter_by(id=rec_id).first()
+            if not r:
+                return {"error": "Not found"}
+
+            detail = _serialize_recommendation(r)
+
+            # Add LLM explanation if available
+            try:
+                from trading_cotrader.services.agent_brain import get_agent_brain
+                brain = get_agent_brain()
+                if brain.is_available:
+                    # Build portfolio context for impact assessment
+                    portfolio_state = None
+                    if r.suggested_portfolio:
+                        try:
+                            p = session.query(PortfolioORM).filter_by(
+                                name=r.suggested_portfolio
+                            ).first()
+                            if p:
+                                portfolio_state = {
+                                    'name': p.name,
+                                    'total_equity': float(p.total_equity or 0),
+                                    'deployed_capital': float(p.deployed_capital or 0),
+                                    'portfolio_delta': float(p.portfolio_delta or 0),
+                                    'portfolio_theta': float(p.portfolio_theta or 0),
+                                    'portfolio_gamma': float(p.portfolio_gamma or 0),
+                                    'portfolio_vega': float(p.portfolio_vega or 0),
+                                    'max_portfolio_delta': float(p.max_portfolio_delta or 0),
+                                    'buying_power_used_pct': float(p.buying_power_used_pct or 0),
+                                }
+                        except Exception:
+                            pass
+
+                    explanation = brain.explain_recommendation(
+                        recommendation=detail,
+                        portfolio_state=portfolio_state,
+                        market_context=r.market_context,
+                    )
+                    detail['agent_explanation'] = explanation
+                else:
+                    detail['agent_explanation'] = None
+            except Exception as e:
+                logger.warning(f"Agent explanation failed: {e}")
+                detail['agent_explanation'] = None
+
+            return detail
 
     # ------------------------------------------------------------------
     # Workflow & Agents
@@ -748,5 +821,349 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                 if entry:
                     return entry.to_dict()
         raise HTTPException(status_code=404, detail=f"No market data for {symbol}")
+
+    # ------------------------------------------------------------------
+    # Agent Intelligence (LLM-powered analysis)
+    # ------------------------------------------------------------------
+
+    @router.get("/agent/brief")
+    async def get_agent_brief():
+        """Get intelligent portfolio brief from the agent brain."""
+        from trading_cotrader.services.agent_brain import get_agent_brain
+
+        brain = get_agent_brain()
+        if not brain.is_available:
+            return {
+                'available': False,
+                'brief': '[Agent brain not configured. Add ANTHROPIC_API_KEY to .env]',
+            }
+
+        # Gather all available data for the agent
+        positions = []
+        balances = {}
+        transactions = []
+        market_metrics = {}
+        pending_recs = []
+        capital_alerts = []
+
+        try:
+            # Get positions from broker
+            if engine and hasattr(engine, '_adapters'):
+                for name, adapter in engine._adapters.items():
+                    try:
+                        bal = adapter.get_account_balance()
+                        if bal:
+                            balances[name] = {k: float(v) for k, v in bal.items()}
+                        pos_list = adapter.get_positions()
+                        for p in pos_list:
+                            positions.append({
+                                'symbol': p.symbol.ticker,
+                                'type': str(p.symbol.asset_type.value) if p.symbol.asset_type else 'equity',
+                                'quantity': int(p.quantity),
+                                'entry_price': float(p.entry_price),
+                                'current_price': float(p.current_price),
+                                'market_value': float(p.market_value),
+                                'pnl': float(p.current_price - p.entry_price) * int(p.quantity) * int(p.symbol.multiplier),
+                                'delta': float(p.greeks.delta) if p.greeks else 0,
+                                'theta': float(p.greeks.theta) if p.greeks else 0,
+                                'gamma': float(p.greeks.gamma) if p.greeks else 0,
+                                'vega': float(p.greeks.vega) if p.greeks else 0,
+                                'strike': float(p.symbol.strike) if p.symbol.strike else None,
+                                'expiration': p.symbol.expiration.strftime('%Y-%m-%d') if p.symbol.expiration else None,
+                                'option_type': p.symbol.option_type.value if p.symbol.option_type else None,
+                            })
+                        # Get recent transactions
+                        if hasattr(adapter, 'get_transaction_history'):
+                            try:
+                                seven_days_ago = date_cls.today() - __import__('datetime').timedelta(days=7)
+                                transactions = adapter.get_transaction_history(start_date=seven_days_ago)
+                            except Exception:
+                                pass
+                        # Get market metrics for position underlyings
+                        if hasattr(adapter, 'get_market_metrics'):
+                            try:
+                                underlyings = list(set(p['symbol'] for p in positions if p.get('type') != 'option'))
+                                option_underlyings = list(set(
+                                    p['symbol'] for p in positions if p.get('type') == 'option'
+                                ))
+                                all_symbols = list(set(underlyings + option_underlyings))
+                                if all_symbols:
+                                    market_metrics = adapter.get_market_metrics(all_symbols[:20])
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        logger.warning(f"Failed to get data from {name}: {e}")
+
+            # Get pending recommendations
+            with session_scope() as session:
+                recs = (
+                    session.query(RecommendationORM)
+                    .filter(RecommendationORM.status == 'pending')
+                    .order_by(RecommendationORM.created_at.desc())
+                    .limit(5)
+                    .all()
+                )
+                for r in recs:
+                    pending_recs.append({
+                        'id': r.id,
+                        'type': r.recommendation_type,
+                        'underlying': r.underlying_symbol,
+                        'strategy': r.strategy_type,
+                        'rationale': r.rationale,
+                        'confidence': float(r.confidence) if r.confidence else None,
+                        'created': r.created_at.isoformat() if r.created_at else None,
+                    })
+
+            # Get capital alerts from engine context
+            if engine and hasattr(engine, 'context'):
+                capital_alerts = engine.context.get('capital_alerts', [])
+
+        except Exception as e:
+            logger.error(f"Error gathering data for agent brief: {e}")
+
+        # Generate the brief
+        brief = brain.generate_portfolio_brief(
+            positions=positions,
+            balances=balances,
+            transactions=transactions,
+            market_metrics=market_metrics,
+            pending_recommendations=pending_recs,
+            capital_alerts=capital_alerts,
+        )
+
+        return {
+            'available': True,
+            'brief': brief,
+            'generated_at': datetime.now().isoformat(),
+            'data_summary': {
+                'positions': len(positions),
+                'transactions': len(transactions),
+                'pending_recs': len(pending_recs),
+                'has_market_metrics': bool(market_metrics),
+            },
+        }
+
+    @router.post("/agent/chat")
+    async def agent_chat(body: dict):
+        """Chat with the agent brain."""
+        from trading_cotrader.services.agent_brain import get_agent_brain
+
+        brain = get_agent_brain()
+        if not brain.is_available:
+            return {
+                'available': False,
+                'response': '[Agent brain not configured. Add ANTHROPIC_API_KEY to .env]',
+            }
+
+        message = body.get('message', '')
+        if not message:
+            raise HTTPException(400, "Message is required")
+
+        # Build portfolio context for the chat
+        context = {}
+        try:
+            if engine and hasattr(engine, '_adapters'):
+                for name, adapter in engine._adapters.items():
+                    try:
+                        bal = adapter.get_account_balance()
+                        if bal:
+                            context['balances'] = {k: float(v) for k, v in bal.items()}
+                        pos_list = adapter.get_positions()
+                        context['positions'] = [
+                            {
+                                'symbol': p.symbol.ticker,
+                                'quantity': int(p.quantity),
+                                'delta': float(p.greeks.delta) if p.greeks else 0,
+                                'theta': float(p.greeks.theta) if p.greeks else 0,
+                            }
+                            for p in pos_list
+                        ]
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        response = brain.chat_response(message, portfolio_context=context or None)
+
+        return {
+            'available': True,
+            'response': response,
+            'generated_at': datetime.now().isoformat(),
+        }
+
+    @router.get("/agent/analyze/{symbol}")
+    async def agent_analyze_position(symbol: str):
+        """Get agent analysis of a specific position."""
+        from trading_cotrader.services.agent_brain import get_agent_brain
+
+        brain = get_agent_brain()
+        if not brain.is_available:
+            return {'available': False, 'analysis': '[Agent brain not configured]'}
+
+        # Find the position
+        position_data = None
+        market_data = None
+        tx_history = []
+
+        try:
+            if engine and hasattr(engine, '_adapters'):
+                for name, adapter in engine._adapters.items():
+                    try:
+                        pos_list = adapter.get_positions()
+                        for p in pos_list:
+                            if p.symbol.ticker.upper() == symbol.upper():
+                                position_data = {
+                                    'symbol': p.symbol.ticker,
+                                    'type': str(p.symbol.asset_type.value),
+                                    'quantity': int(p.quantity),
+                                    'entry_price': float(p.entry_price),
+                                    'current_price': float(p.current_price),
+                                    'market_value': float(p.market_value),
+                                    'delta': float(p.greeks.delta) if p.greeks else 0,
+                                    'theta': float(p.greeks.theta) if p.greeks else 0,
+                                    'gamma': float(p.greeks.gamma) if p.greeks else 0,
+                                    'vega': float(p.greeks.vega) if p.greeks else 0,
+                                    'strike': float(p.symbol.strike) if p.symbol.strike else None,
+                                    'expiration': p.symbol.expiration.strftime('%Y-%m-%d') if p.symbol.expiration else None,
+                                    'option_type': p.symbol.option_type.value if p.symbol.option_type else None,
+                                }
+                                break
+                        # Get market metrics
+                        if hasattr(adapter, 'get_market_metrics'):
+                            try:
+                                metrics = adapter.get_market_metrics([symbol.upper()])
+                                market_data = metrics.get(symbol.upper())
+                            except Exception:
+                                pass
+                        # Get transaction history for this symbol
+                        if hasattr(adapter, 'get_transaction_history'):
+                            try:
+                                tx_history = adapter.get_transaction_history(
+                                    underlying_symbol=symbol.upper()
+                                )
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"Error getting position data: {e}")
+
+        if not position_data:
+            raise HTTPException(404, f"Position {symbol} not found")
+
+        analysis = brain.analyze_position(
+            position=position_data,
+            market_data=market_data,
+            transaction_history=tx_history,
+        )
+
+        return {
+            'available': True,
+            'analysis': analysis,
+            'position': position_data,
+            'generated_at': datetime.now().isoformat(),
+        }
+
+    @router.get("/agent/status")
+    async def agent_status():
+        """Check if the agent brain is available and what it can do."""
+        from trading_cotrader.services.agent_brain import get_agent_brain
+
+        brain = get_agent_brain()
+        has_adapters = bool(engine and hasattr(engine, '_adapters') and engine._adapters)
+
+        return {
+            'llm_available': brain.is_available,
+            'broker_connected': has_adapters,
+            'capabilities': {
+                'portfolio_brief': brain.is_available and has_adapters,
+                'position_analysis': brain.is_available and has_adapters,
+                'chat': brain.is_available,
+                'recommendations': brain.is_available,
+                'accountability': brain.is_available,
+            },
+        }
+
+    # ------------------------------------------------------------------
+    # Account Activity (transaction history from broker)
+    # ------------------------------------------------------------------
+
+    @router.get("/account/transactions")
+    async def get_transactions(
+        days: int = Query(7, description="Number of days of history"),
+        underlying: Optional[str] = Query(None, description="Filter by underlying symbol"),
+    ):
+        """Get transaction history from connected brokers."""
+        results = []
+        if engine and hasattr(engine, '_adapters'):
+            start = date_cls.today() - __import__('datetime').timedelta(days=days)
+            for name, adapter in engine._adapters.items():
+                if hasattr(adapter, 'get_transaction_history'):
+                    try:
+                        txs = adapter.get_transaction_history(
+                            start_date=start,
+                            underlying_symbol=underlying,
+                        )
+                        for t in txs:
+                            t['broker'] = name
+                        results.extend(txs)
+                    except Exception as e:
+                        logger.warning(f"Failed to get transactions from {name}: {e}")
+        return {'transactions': results, 'count': len(results)}
+
+    @router.get("/account/orders")
+    async def get_order_history(
+        days: int = Query(7, description="Number of days of history"),
+        underlying: Optional[str] = Query(None, description="Filter by underlying"),
+    ):
+        """Get order history from connected brokers."""
+        results = []
+        if engine and hasattr(engine, '_adapters'):
+            start = date_cls.today() - __import__('datetime').timedelta(days=days)
+            for name, adapter in engine._adapters.items():
+                if hasattr(adapter, 'get_order_history'):
+                    try:
+                        orders = adapter.get_order_history(
+                            start_date=start,
+                            underlying_symbol=underlying,
+                        )
+                        for o in orders:
+                            o['broker'] = name
+                        results.extend(orders)
+                    except Exception as e:
+                        logger.warning(f"Failed to get order history from {name}: {e}")
+        return {'orders': results, 'count': len(results)}
+
+    @router.get("/account/equity-curve")
+    async def get_equity_curve(
+        period: str = Query('1m', description="Time period: 1d, 1m, 3m, 6m, 1y, all"),
+    ):
+        """Get net liquidating value history for equity curve chart."""
+        results = []
+        if engine and hasattr(engine, '_adapters'):
+            for name, adapter in engine._adapters.items():
+                if hasattr(adapter, 'get_net_liq_history'):
+                    try:
+                        data = adapter.get_net_liq_history(time_back=period)
+                        return {'broker': name, 'data': data, 'count': len(data)}
+                    except Exception as e:
+                        logger.warning(f"Failed to get equity curve from {name}: {e}")
+        return {'data': [], 'count': 0}
+
+    @router.get("/account/market-metrics")
+    async def get_broker_market_metrics(
+        symbols: str = Query(..., description="Comma-separated symbols"),
+    ):
+        """Get IV rank, IV percentile, beta from broker."""
+        symbol_list = [s.strip().upper() for s in symbols.split(',')]
+        if engine and hasattr(engine, '_adapters'):
+            for name, adapter in engine._adapters.items():
+                if hasattr(adapter, 'get_market_metrics'):
+                    try:
+                        metrics = adapter.get_market_metrics(symbol_list)
+                        return {'broker': name, 'metrics': metrics}
+                    except Exception as e:
+                        logger.warning(f"Failed to get market metrics from {name}: {e}")
+        return {'metrics': {}}
 
     return router

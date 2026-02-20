@@ -297,6 +297,17 @@ class QuantResearchAgent:
                 # Build recommendations for each strategy
                 for strategy in strategies:
                     try:
+                        # Dedup: skip if already booked today for this template/variant/symbol/strategy
+                        if self._has_research_duplicate(
+                            session, template.name, variant.variant_id,
+                            symbol, strategy.strategy_type,
+                        ):
+                            logger.debug(
+                                f"DEDUP: Skipping {symbol}/{strategy.strategy_type} "
+                                f"for {template.name}/{variant.variant_id} — already booked today"
+                            )
+                            continue
+
                         rec = self._build_recommendation(
                             template=template,
                             strategy=strategy,
@@ -341,6 +352,31 @@ class QuantResearchAgent:
                         failed_count += 1
 
         return recs_count, booked_count, failed_count
+
+    def _has_research_duplicate(
+        self, session, template_name: str, variant_id: str,
+        symbol: str, strategy_type: str,
+    ) -> bool:
+        """Check if same template/variant/symbol/strategy already booked today."""
+        try:
+            from trading_cotrader.core.database.schema import RecommendationORM
+            from sqlalchemy import func
+
+            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            count = (
+                session.query(func.count(RecommendationORM.id))
+                .filter(
+                    RecommendationORM.underlying == symbol,
+                    RecommendationORM.strategy_type == strategy_type,
+                    RecommendationORM.scenario_template_name == template_name,
+                    RecommendationORM.created_at >= today_start,
+                )
+                .scalar() or 0
+            )
+            return count > 0
+        except Exception as e:
+            logger.warning(f"Research dedup check failed: {e}")
+            return False
 
     def _apply_variant_overrides(
         self, template: ResearchTemplate, variant: ParameterVariant,

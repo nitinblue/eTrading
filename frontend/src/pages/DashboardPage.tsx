@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -9,6 +9,7 @@ import { useWorkflowStatus } from '../hooks/useWorkflowStatus'
 import { useCapitalData } from '../hooks/useCapital'
 import { useRecommendations } from '../hooks/useRecommendations'
 import { useWeeklyPnL } from '../hooks/usePerformance'
+import { useAgentBrief, useAgentStatus, useAgentChat } from '../hooks/useAgentBrain'
 import { Spinner } from '../components/common/Spinner'
 import { clsx } from 'clsx'
 
@@ -20,6 +21,8 @@ export function DashboardPage() {
   const { data: capitalData } = useCapitalData()
   const { data: pendingRecs } = useRecommendations({ status: 'pending' })
   const { data: weeklyPnl } = useWeeklyPnL('all', 12)
+  const { data: agentBrief, isLoading: loadingBrief, refetch: refetchBrief } = useAgentBrief()
+  const { data: agentStatus } = useAgentStatus()
 
   const agg = useMemo(() => {
     if (!portfolios) return null
@@ -52,6 +55,14 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-3">
+      {/* Agent Intelligence Brief — THE PRIMARY ELEMENT */}
+      <AgentBriefCard
+        brief={agentBrief}
+        loading={loadingBrief}
+        status={agentStatus}
+        onRefresh={() => refetchBrief()}
+      />
+
       {/* KPI strip */}
       <div className="card">
         <div className="card-body">
@@ -182,13 +193,166 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Row 3: mini tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      {/* Row 3: Agent chat + mini tables */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* Agent chat — full column */}
+        <AgentChatCard />
+
         {/* Pending recommendations */}
         <PendingRecsCard recs={pendingRecs ?? []} />
 
         {/* Workflow summary */}
         <WorkflowSummaryCard status={wfStatus ?? null} />
+      </div>
+    </div>
+  )
+}
+
+// --- Agent Brief Card (THE CORE INTELLIGENCE ELEMENT) ---
+
+function AgentBriefCard({
+  brief,
+  loading,
+  status,
+  onRefresh,
+}: {
+  brief?: { available: boolean; brief: string; generated_at?: string; data_summary?: { positions: number; transactions: number; pending_recs: number; has_market_metrics: boolean } }
+  loading: boolean
+  status?: { llm_available: boolean; broker_connected: boolean }
+  onRefresh: () => void
+}) {
+  const isConfigured = status?.llm_available ?? false
+  const isBrokerConnected = status?.broker_connected ?? false
+
+  return (
+    <div className="card border-l-4 border-l-accent-blue">
+      <div className="card-header flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className={clsx(
+            'w-2 h-2 rounded-full',
+            isConfigured && isBrokerConnected ? 'bg-accent-green animate-pulse' : 'bg-accent-red',
+          )} />
+          <h2 className="text-xs font-semibold text-accent-blue uppercase tracking-wider">
+            Agent Intelligence
+          </h2>
+          {brief?.data_summary && (
+            <span className="text-2xs text-text-muted">
+              {brief.data_summary.positions} positions | {brief.data_summary.pending_recs} pending recs
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {brief?.generated_at && (
+            <span className="text-2xs text-text-muted">
+              {new Date(brief.generated_at).toLocaleTimeString()}
+            </span>
+          )}
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            className="text-2xs text-accent-blue hover:underline disabled:opacity-50"
+          >
+            {loading ? 'Thinking...' : 'Refresh'}
+          </button>
+        </div>
+      </div>
+      <div className="card-body">
+        {loading ? (
+          <div className="flex items-center gap-2 py-4">
+            <Spinner size="sm" />
+            <span className="text-xs text-text-muted">Agent is analyzing your portfolio...</span>
+          </div>
+        ) : !isConfigured ? (
+          <div className="py-4">
+            <p className="text-xs text-accent-orange">
+              Agent brain not configured. Add <code className="bg-bg-tertiary px-1 rounded">ANTHROPIC_API_KEY</code> to your .env file to enable intelligent analysis.
+            </p>
+            <p className="text-2xs text-text-muted mt-1">
+              The agent will analyze your positions, explain recommendations, track your activity, and hold you accountable.
+            </p>
+          </div>
+        ) : (
+          <div className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">
+            {brief?.brief || 'No analysis available. Click Refresh to generate.'}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// --- Agent Chat Card ---
+
+function AgentChatCard() {
+  const [input, setInput] = useState('')
+  const [messages, setMessages] = useState<{ role: 'user' | 'agent'; text: string }[]>([])
+  const chatMutation = useAgentChat()
+
+  const handleSend = () => {
+    if (!input.trim()) return
+    const userMsg = input.trim()
+    setMessages((prev) => [...prev, { role: 'user', text: userMsg }])
+    setInput('')
+
+    chatMutation.mutate(userMsg, {
+      onSuccess: (data) => {
+        setMessages((prev) => [...prev, { role: 'agent', text: data.response }])
+      },
+      onError: (err) => {
+        setMessages((prev) => [...prev, { role: 'agent', text: `Error: ${err.message}` }])
+      },
+    })
+  }
+
+  return (
+    <div className="card flex flex-col" style={{ minHeight: 200 }}>
+      <div className="card-header">
+        <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+          Ask Agent
+        </h2>
+      </div>
+      <div className="card-body flex-1 overflow-auto space-y-2" style={{ maxHeight: 200 }}>
+        {messages.length === 0 ? (
+          <p className="text-2xs text-text-muted py-2">
+            Ask about your portfolio, positions, risk, or strategy...
+          </p>
+        ) : (
+          messages.map((m, i) => (
+            <div
+              key={i}
+              className={clsx(
+                'text-xs p-2 rounded max-w-[90%]',
+                m.role === 'user'
+                  ? 'bg-accent-blue/20 text-text-primary ml-auto'
+                  : 'bg-bg-tertiary text-text-secondary',
+              )}
+            >
+              {m.text}
+            </div>
+          ))
+        )}
+        {chatMutation.isPending && (
+          <div className="flex items-center gap-1 text-2xs text-text-muted">
+            <Spinner size="sm" /> Thinking...
+          </div>
+        )}
+      </div>
+      <div className="border-t border-border-secondary p-2 flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+          placeholder="What's my delta exposure?"
+          className="flex-1 bg-bg-tertiary text-text-primary text-xs rounded px-2 py-1.5 outline-none focus:ring-1 focus:ring-accent-blue"
+        />
+        <button
+          onClick={handleSend}
+          disabled={chatMutation.isPending || !input.trim()}
+          className="bg-accent-blue text-white text-xs px-3 py-1.5 rounded hover:bg-accent-blue/80 disabled:opacity-50"
+        >
+          Send
+        </button>
       </div>
     </div>
   )

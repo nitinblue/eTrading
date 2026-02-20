@@ -13,7 +13,7 @@ Usage:
 
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Dict, Any, Optional
 import logging
 
@@ -106,6 +106,40 @@ class BrokerAdapterBase(ABC):
             List of order dicts with order_id, status, legs, etc.
         """
         raise NotImplementedError(f"{self.name} does not support order queries")
+
+    def get_transaction_history(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        underlying_symbol: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get transaction history (fills, dividends, fees). Override in API-capable adapters."""
+        raise NotImplementedError(f"{self.name} does not support transaction history")
+
+    def get_order_history(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        underlying_symbol: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get historical orders. Override in API-capable adapters."""
+        raise NotImplementedError(f"{self.name} does not support order history")
+
+    def get_balance_snapshots(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get daily balance snapshots for equity curve. Override in API-capable adapters."""
+        raise NotImplementedError(f"{self.name} does not support balance snapshots")
+
+    def get_net_liq_history(self, time_back: str = '1m') -> List[Dict[str, Any]]:
+        """Get net liquidating value OHLC history. Override in API-capable adapters."""
+        raise NotImplementedError(f"{self.name} does not support net liq history")
+
+    def get_market_metrics(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Get IV rank, IV percentile, beta, liquidity for symbols. Override in API-capable adapters."""
+        raise NotImplementedError(f"{self.name} does not support market metrics")
 
 
 class ManualBrokerAdapter(BrokerAdapterBase):

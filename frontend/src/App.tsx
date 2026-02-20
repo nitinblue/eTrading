@@ -18,6 +18,7 @@ import {
   WorkflowSettingsPage,
   CapitalDeploymentPage,
 } from './pages/settings'
+import { TradingDashboardPage } from './pages/TradingDashboardPage'
 import { ToastContainer } from './components/common/Toast'
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/agents/:name" element={<AgentDetailPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/trading" element={<TradingDashboardPage />} />
         <Route path="/data" element={<DataExplorerPage />} />
 
         {/* Settings / Config */}

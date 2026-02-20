@@ -116,6 +116,7 @@ class WorkflowEngine:
                     adapters[name] = adapter
 
         self.broker_router = BrokerRouter(self.broker_registry, adapters)
+        self._adapters = adapters  # Expose for API endpoints (agent brain, transactions, etc.)
 
         # Shared context between all agents
         self.context: dict = {

@@ -821,6 +821,171 @@ class TastytradeAdapter(BrokerAdapterBase):
         orders = self.account.get_live_orders(self.session)
         return [self._placed_order_to_dict(o) for o in orders]
 
+    # -----------------------------------------------------------------
+    # Account activity & history
+    # -----------------------------------------------------------------
+
+    def get_transaction_history(
+        self,
+        start_date=None,
+        end_date=None,
+        underlying_symbol: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get transaction history from TastyTrade (fills, dividends, fees)."""
+        if not self.session or not self.account:
+            raise ValueError("Not authenticated")
+
+        kwargs = {'per_page': 250, 'page_offset': None}  # None = auto-paginate all
+        if start_date:
+            kwargs['start_date'] = start_date
+        if end_date:
+            kwargs['end_date'] = end_date
+        if underlying_symbol:
+            kwargs['underlying_symbol'] = underlying_symbol
+
+        transactions = self.account.get_history(self.session, **kwargs)
+
+        results = []
+        for t in transactions:
+            results.append({
+                'id': t.id,
+                'type': t.transaction_type,
+                'sub_type': t.transaction_sub_type,
+                'description': t.description,
+                'executed_at': t.executed_at.isoformat() if t.executed_at else None,
+                'transaction_date': t.transaction_date.isoformat() if t.transaction_date else None,
+                'symbol': t.symbol,
+                'underlying_symbol': t.underlying_symbol,
+                'instrument_type': str(t.instrument_type) if t.instrument_type else None,
+                'action': str(t.action) if t.action else None,
+                'quantity': float(t.quantity) if t.quantity else None,
+                'price': float(t.price) if t.price else None,
+                'value': float(t.value) if t.value else None,
+                'net_value': float(t.net_value) if t.net_value else None,
+                'commission': float(t.commission) if t.commission else None,
+                'clearing_fees': float(t.clearing_fees) if t.clearing_fees else None,
+                'regulatory_fees': float(t.regulatory_fees) if t.regulatory_fees else None,
+                'order_id': t.order_id,
+                'leg_count': t.leg_count,
+            })
+
+        logger.info(f"Fetched {len(results)} transactions from TastyTrade")
+        return results
+
+    def get_order_history(
+        self,
+        start_date=None,
+        end_date=None,
+        underlying_symbol: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get historical orders from TastyTrade."""
+        if not self.session or not self.account:
+            raise ValueError("Not authenticated")
+
+        kwargs = {'per_page': 50, 'page_offset': None}
+        if start_date:
+            kwargs['start_date'] = start_date
+        if end_date:
+            kwargs['end_date'] = end_date
+        if underlying_symbol:
+            kwargs['underlying_symbol'] = underlying_symbol
+
+        orders = self.account.get_order_history(self.session, **kwargs)
+
+        results = []
+        for o in orders:
+            results.append(self._placed_order_to_dict(o))
+
+        logger.info(f"Fetched {len(results)} historical orders from TastyTrade")
+        return results
+
+    def get_balance_snapshots(
+        self,
+        start_date=None,
+        end_date=None,
+    ) -> List[Dict[str, Any]]:
+        """Get daily EOD balance snapshots for equity curve."""
+        if not self.session or not self.account:
+            raise ValueError("Not authenticated")
+
+        kwargs = {'time_of_day': 'EOD', 'page_offset': None}
+        if start_date:
+            kwargs['start_date'] = start_date
+        if end_date:
+            kwargs['end_date'] = end_date
+
+        snapshots = self.account.get_balance_snapshots(self.session, **kwargs)
+
+        results = []
+        for s in snapshots:
+            results.append({
+                'date': s.snapshot_date.isoformat() if hasattr(s, 'snapshot_date') and s.snapshot_date else None,
+                'cash_balance': float(s.cash_balance) if hasattr(s, 'cash_balance') and s.cash_balance else 0,
+                'net_liquidating_value': float(s.net_liquidating_value) if hasattr(s, 'net_liquidating_value') and s.net_liquidating_value else 0,
+                'equity_buying_power': float(s.equity_buying_power) if hasattr(s, 'equity_buying_power') and s.equity_buying_power else 0,
+                'derivative_buying_power': float(s.derivative_buying_power) if hasattr(s, 'derivative_buying_power') and s.derivative_buying_power else 0,
+                'maintenance_requirement': float(s.maintenance_requirement) if hasattr(s, 'maintenance_requirement') and s.maintenance_requirement else 0,
+            })
+
+        logger.info(f"Fetched {len(results)} balance snapshots from TastyTrade")
+        return results
+
+    def get_net_liq_history(self, time_back: str = '1m') -> List[Dict[str, Any]]:
+        """Get net liquidating value OHLC history."""
+        if not self.session or not self.account:
+            raise ValueError("Not authenticated")
+
+        data = self.account.get_net_liquidating_value_history(
+            self.session, time_back=time_back
+        )
+
+        results = []
+        for d in data:
+            results.append({
+                'time': d.time.isoformat() if hasattr(d, 'time') and d.time else None,
+                'open': float(d.open) if hasattr(d, 'open') and d.open else 0,
+                'high': float(d.high) if hasattr(d, 'high') and d.high else 0,
+                'low': float(d.low) if hasattr(d, 'low') and d.low else 0,
+                'close': float(d.close) if hasattr(d, 'close') and d.close else 0,
+            })
+
+        logger.info(f"Fetched {len(results)} net liq OHLC points from TastyTrade")
+        return results
+
+    def get_market_metrics(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Get IV rank, IV percentile, beta, liquidity for symbols."""
+        if not self.session:
+            raise ValueError("Not authenticated")
+
+        from tastytrade.metrics import get_market_metrics
+
+        metrics = get_market_metrics(self.session, symbols)
+
+        results = {}
+        for m in metrics:
+            results[m.symbol] = {
+                'iv_index': float(m.implied_volatility_index) if m.implied_volatility_index else None,
+                'iv_rank': float(m.implied_volatility_index_rank) if m.implied_volatility_index_rank else None,
+                'iv_percentile': float(m.implied_volatility_percentile) if m.implied_volatility_percentile else None,
+                'iv_30_day': float(m.implied_volatility_30_day) if m.implied_volatility_30_day else None,
+                'hv_30_day': float(m.historical_volatility_30_day) if m.historical_volatility_30_day else None,
+                'hv_60_day': float(m.historical_volatility_60_day) if m.historical_volatility_60_day else None,
+                'hv_90_day': float(m.historical_volatility_90_day) if m.historical_volatility_90_day else None,
+                'beta': float(m.beta) if m.beta else None,
+                'corr_spy': float(m.corr_spy_3month) if m.corr_spy_3month else None,
+                'liquidity_rating': float(m.liquidity_rating) if m.liquidity_rating else None,
+                'liquidity_value': float(m.liquidity_value) if m.liquidity_value else None,
+                'market_cap': float(m.market_cap) if m.market_cap else None,
+                'pe_ratio': float(m.price_earnings_ratio) if m.price_earnings_ratio else None,
+                'dividend_rate': float(m.dividend_rate_per_share) if m.dividend_rate_per_share else None,
+                'earnings': {
+                    'expected_report_date': m.earnings.expected_report_date.isoformat() if m.earnings and hasattr(m.earnings, 'expected_report_date') and m.earnings.expected_report_date else None,
+                } if m.earnings else None,
+            }
+
+        logger.info(f"Fetched market metrics for {len(results)} symbols")
+        return results
+
 
 if __name__ == "__main__":
     adapter = TastytradeAdapter()

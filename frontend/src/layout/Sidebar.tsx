@@ -50,7 +50,7 @@ const navItems: NavItem[] = [
   },
   { to: '/reports', icon: FileText, label: 'Reports', phase: 1 },
   { to: '/data', icon: Database, label: 'Data Explorer', phase: 1 },
-  { to: '/trading', icon: ArrowLeftRight, label: 'Trading', phase: 4 },
+  { to: '/trading', icon: ArrowLeftRight, label: 'Trading', phase: 1 },
 ]
 
 export function Sidebar() {

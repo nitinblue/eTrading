@@ -9,21 +9,28 @@ Provides:
 - Scenario analysis (what-if)
 
 Usage:
-    from services.pricing import BlackScholesModel, ProbabilityCalculator
-    
-    bs = BlackScholesModel()
-    price = bs.price(spot=100, strike=105, tte=0.25, rate=0.05, vol=0.2, opt_type='call')
-    greeks = bs.greeks(spot=100, strike=105, tte=0.25, rate=0.05, vol=0.2, opt_type='call')
-    
-    prob = ProbabilityCalculator()
-    pop = prob.probability_of_profit(trade, current_price=100, iv=0.25)
+    from trading_cotrader.services.pricing.probability import ProbabilityCalculator
+    from trading_cotrader.services.pricing.black_scholes import BlackScholesModel
 """
 
-from services.pricing.black_scholes import BlackScholesModel, OptionPrice, BSGreeks
-from services.pricing.greeks import GreeksCalculator, PositionGreeks
-from services.pricing.implied_vol import ImpliedVolCalculator, IVSurface
-from services.pricing.probability import ProbabilityCalculator, ProbabilityResult
-from services.pricing.scenarios import ScenarioEngine, WhatIfResult, Scenario
+# Lazy imports — some sub-modules use old-style paths (services.pricing.*)
+# that only resolve when running from the project root. Wrap in try/except
+# so direct module imports (e.g. from ...probability import X) still work.
+try:
+    from trading_cotrader.services.pricing.black_scholes import BlackScholesModel, OptionPrice, BSGreeks
+    from trading_cotrader.services.pricing.greeks import GreeksCalculator, PositionGreeks
+    from trading_cotrader.services.pricing.implied_vol import ImpliedVolCalculator, IVSurface
+    from trading_cotrader.services.pricing.probability import ProbabilityCalculator, ProbabilityResult
+    from trading_cotrader.services.pricing.scenarios import ScenarioEngine, WhatIfResult, Scenario
+except ImportError:
+    try:
+        from services.pricing.black_scholes import BlackScholesModel, OptionPrice, BSGreeks
+        from services.pricing.greeks import GreeksCalculator, PositionGreeks
+        from services.pricing.implied_vol import ImpliedVolCalculator, IVSurface
+        from services.pricing.probability import ProbabilityCalculator, ProbabilityResult
+        from services.pricing.scenarios import ScenarioEngine, WhatIfResult, Scenario
+    except ImportError:
+        pass  # Individual module imports will still work
 
 __all__ = [
     'BlackScholesModel',

@@ -4,6 +4,7 @@ Recommendation Repository - CRUD for trade recommendations.
 
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from datetime import datetime, timedelta
 import logging
 
@@ -120,6 +121,29 @@ class RecommendationRepository(BaseRepository[Recommendation, RecommendationORM]
             self.rollback()
             logger.error(f"Error updating recommendation {rec.id}: {e}")
             return None
+
+    def has_pending_duplicate(
+        self, underlying: str, strategy_type: str, source: str,
+        hours: int = 4,
+    ) -> bool:
+        """Check if a pending rec already exists for this underlying/strategy/source."""
+        try:
+            cutoff = datetime.utcnow() - timedelta(hours=hours)
+            count = (
+                self.session.query(func.count(RecommendationORM.id))
+                .filter(
+                    RecommendationORM.underlying == underlying,
+                    RecommendationORM.strategy_type == strategy_type,
+                    RecommendationORM.source == source,
+                    RecommendationORM.status.in_(['pending', 'accepted']),
+                    RecommendationORM.created_at >= cutoff,
+                )
+                .scalar() or 0
+            )
+            return count > 0
+        except Exception as e:
+            logger.error(f"Dedup check failed: {e}")
+            return False
 
     def expire_old(self, max_age_hours: int = 24) -> int:
         """Expire pending recommendations older than max_age_hours."""

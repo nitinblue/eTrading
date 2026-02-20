@@ -168,6 +168,13 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
     app.include_router(agents_router, prefix="/api/v2")
 
     # ------------------------------------------------------------------
+    # Trading Sheet API Router (comprehensive trading view)
+    # ------------------------------------------------------------------
+    from trading_cotrader.web.api_trading_sheet import create_trading_sheet_router
+    trading_sheet_router = create_trading_sheet_router(engine)
+    app.include_router(trading_sheet_router, prefix="/api/v2")
+
+    # ------------------------------------------------------------------
     # Serve React frontend (production build)
     # ------------------------------------------------------------------
     from fastapi.staticfiles import StaticFiles
