@@ -359,13 +359,14 @@ class TastytradeAdapter(BrokerAdapterBase):
                     market_value = current_price * abs(signed_quantity) * symbol.multiplier
 
                     # Create position
+                    entry = Decimal(str(pos_data.average_open_price or 0))
                     position = dm.Position(
                         symbol=symbol,
                         quantity=signed_quantity,  # Signed: positive=long, negative=short
-                        entry_price=Decimal(str(pos_data.average_open_price or 0)),
+                        entry_price=entry,
                         current_price=current_price,
                         market_value=market_value,
-                        total_cost=Decimal(str(abs(pos_data.average_open_price or 0))) * abs(signed_quantity) * symbol.multiplier,
+                        total_cost=entry * signed_quantity * symbol.multiplier,  # Signed: negative for shorts (credit received)
                         broker_position_id=broker_pos_id,
                     )
 

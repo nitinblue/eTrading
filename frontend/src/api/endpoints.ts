@@ -70,6 +70,7 @@ export const endpoints = {
   // Account Activity
   accountTransactions: `${V2}/account/transactions`,
   accountOrders: `${V2}/account/orders`,
+  liveOrders: `${V2}/account/live-orders`,
   equityCurve: `${V2}/account/equity-curve`,
   marketMetrics: `${V2}/account/market-metrics`,
 
@@ -79,6 +80,17 @@ export const endpoints = {
   evaluateTemplate: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/evaluate`,
   addWhatIf: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/add-whatif`,
   bookTrade: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/book`,
+
+  // Market Watchlist + Regime
+  marketWatchlist: `${V2}/market/watchlist`,
+  regime: (ticker: string) => `${V2}/regime/${ticker}`,
+  regimeBatch: `${V2}/regime/batch`,
+  regimeResearch: (ticker: string) => `${V2}/regime/${ticker}/research`,
+  regimeChart: (ticker: string) => `${V2}/regime/${ticker}/chart`,
+  regimeResearchBatch: `${V2}/regime/research`,
+  technicals: (ticker: string) => `${V2}/technicals/${ticker}`,
+  fundamentals: (ticker: string) => `${V2}/fundamentals/${ticker}`,
+  macroCalendar: `${V2}/macro/calendar`,
 
   // WebSocket
   ws: '/ws',

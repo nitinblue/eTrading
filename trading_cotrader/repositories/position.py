@@ -50,10 +50,11 @@ class PositionRepository(BaseRepository[dm.Position, PositionORM]):
                 total_cost=position.total_cost,
                 current_price=position.current_price,
                 market_value=position.market_value,
+                total_pnl=position.unrealized_pnl(),
                 broker_position_id=position.broker_position_id,
                 trade_ids=position.trade_ids or [],
             )
-            
+
             # Add Greeks if available
             if position.greeks:
                 position_orm.delta = position.greeks.delta

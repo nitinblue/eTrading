@@ -808,6 +808,7 @@ margin:
   margin_warning_percent: 70
   margin_critical_percent: 85
   max_single_trade_margin_percent: 10
+  margin_buffer_multiplier: 2.0    # Required buffer = margin_used * this multiplier
 
 
 # =============================================================================

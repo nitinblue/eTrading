@@ -31,6 +31,8 @@ class PortfolioBundle:
     """
     config_name: str          # "tastytrade", "fidelity_ira", etc.
     currency: str             # "USD" or "INR"
+    broker_firm: str = ""     # "tastytrade", "fidelity", etc. — for DB matching
+    account_number: str = ""  # "5WZ78765" — for DB matching
     portfolio_ids: List[str] = field(default_factory=list)  # [real_id, whatif_id]
 
     portfolio: PortfolioContainer = field(default_factory=PortfolioContainer)

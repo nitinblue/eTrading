@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react'
 import { usePortfolios } from '../hooks/usePortfolios'
-import { usePositions } from '../hooks/usePositions'
 import { useBrokerPositions } from '../hooks/useBrokerPositions'
+import { useRiskFactors } from '../hooks/useRisk'
+import { useLiveOrders } from '../hooks/useLiveOrders'
 import { PortfolioGrid } from '../components/grids/PortfolioGrid'
-import { PositionGrid } from '../components/grids/PositionGrid'
 import { BrokerPositionGrid } from '../components/grids/BrokerPositionGrid'
 import { PortfolioCard } from '../components/cards/PortfolioCard'
 import { PnLDisplay } from '../components/common/PnLDisplay'
@@ -12,28 +12,26 @@ import { Spinner } from '../components/common/Spinner'
 import { EmptyState } from '../components/common/EmptyState'
 import { clsx } from 'clsx'
 
-type ViewMode = 'real' | 'whatif' | 'fund' | 'all'
+type ViewMode = 'real' | 'whatif' | 'all'
 
 export function PortfolioPage() {
   const { data: portfolios, isLoading: loadingPortfolios } = usePortfolios()
   const [selectedPortfolio, setSelectedPortfolio] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('real')
 
-  const { data: positions, isLoading: loadingPositions } = usePositions(
-    selectedPortfolio || undefined,
-  )
   const { data: brokerPositions, isLoading: loadingBrokerPositions } = useBrokerPositions(
     selectedPortfolio || undefined,
   )
+  const { data: riskFactors } = useRiskFactors(selectedPortfolio || undefined)
+  const { data: liveOrders } = useLiveOrders()
 
   const filteredPortfolios = useMemo(() => {
     if (!portfolios) return []
-    // Always exclude research portfolios from main view
-    const nonResearch = portfolios.filter((p) => !p.name.startsWith('research_'))
-    if (viewMode === 'real') return nonResearch.filter((p) => p.portfolio_type === 'real' && p.broker !== 'stallion')
-    if (viewMode === 'whatif') return nonResearch.filter((p) => p.portfolio_type === 'what_if')
-    if (viewMode === 'fund') return nonResearch.filter((p) => p.broker === 'stallion')
-    return nonResearch
+    // Exclude research + fund/stallion portfolios (funds have their own page)
+    const base = portfolios.filter((p) => !p.name.startsWith('research_') && p.broker !== 'stallion')
+    if (viewMode === 'real') return base.filter((p) => p.portfolio_type === 'real')
+    if (viewMode === 'whatif') return base.filter((p) => p.portfolio_type === 'what_if')
+    return base
   }, [portfolios, viewMode])
 
   const selected = useMemo(
@@ -41,10 +39,10 @@ export function PortfolioPage() {
     [portfolios, selectedPortfolio],
   )
 
-  // Aggregate totals
+  // Aggregate totals — real USD portfolios only (exclude funds/stallion which are INR)
   const totals = useMemo(() => {
     if (!portfolios) return null
-    const real = portfolios.filter((p) => p.portfolio_type === 'real')
+    const real = portfolios.filter((p) => p.portfolio_type === 'real' && p.broker !== 'stallion')
     return {
       equity: real.reduce((sum, p) => sum + p.total_equity, 0),
       dailyPnl: real.reduce((sum, p) => sum + p.daily_pnl, 0),
@@ -105,7 +103,7 @@ export function PortfolioPage() {
 
               {/* View mode toggle */}
               <div className="flex items-center gap-1 bg-bg-tertiary rounded p-0.5">
-                {(['real', 'whatif', 'fund', 'all'] as ViewMode[]).map((mode) => (
+                {(['real', 'whatif', 'all'] as ViewMode[]).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
@@ -116,7 +114,7 @@ export function PortfolioPage() {
                         : 'text-text-muted hover:text-text-secondary',
                     )}
                   >
-                    {mode === 'whatif' ? 'WhatIf' : mode === 'fund' ? 'Funds' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    {mode === 'whatif' ? 'WhatIf' : mode.charAt(0).toUpperCase() + mode.slice(1)}
                   </button>
                 ))}
               </div>
@@ -160,39 +158,20 @@ export function PortfolioPage() {
           </div>
           <div className="card-body">
             <div className="grid grid-cols-4 gap-2 mb-3">
-              <GreeksBar label="\u0394" value={selected.portfolio_delta} limit={selected.max_portfolio_delta} />
-              <GreeksBar label="\u0393" value={selected.portfolio_gamma} limit={selected.max_portfolio_gamma} />
-              <GreeksBar label="\u0398" value={selected.portfolio_theta} limit={selected.min_portfolio_theta} />
-              <GreeksBar label="\u03BD" value={selected.portfolio_vega} limit={selected.max_portfolio_vega} />
+              <GreeksBar label="Delta" value={selected.portfolio_delta} limit={selected.max_portfolio_delta} />
+              <GreeksBar label="Gamma" value={selected.portfolio_gamma} limit={selected.max_portfolio_gamma} />
+              <GreeksBar label="Theta" value={selected.portfolio_theta} limit={selected.min_portfolio_theta} />
+              <GreeksBar label="Vega" value={selected.portfolio_vega} limit={selected.max_portfolio_vega} />
             </div>
           </div>
         </div>
       )}
 
-      {/* System Trades (booked via workflow) */}
+      {/* Broker Positions (synced from TastyTrade/broker) — shown first since these are the real positions */}
       <div className="card">
         <div className="card-header">
           <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-            {selectedPortfolio ? `${selectedPortfolio} Trades` : 'All Open Trades'}
-            {positions && ` (${positions.length})`}
-          </h2>
-        </div>
-        {loadingPositions ? (
-          <div className="card-body flex justify-center py-8">
-            <Spinner />
-          </div>
-        ) : positions && positions.length > 0 ? (
-          <PositionGrid trades={positions} />
-        ) : (
-          <EmptyState message="No system-booked trades" />
-        )}
-      </div>
-
-      {/* Broker Positions (synced from TastyTrade/broker) */}
-      <div className="card">
-        <div className="card-header">
-          <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-            Broker Positions
+            Live Positions
             {brokerPositions && ` (${brokerPositions.length})`}
           </h2>
         </div>
@@ -206,6 +185,132 @@ export function PortfolioPage() {
           <EmptyState message="No broker positions synced" />
         )}
       </div>
+
+      {/* Risk Factors — per-underlying Greeks aggregation */}
+      {riskFactors && riskFactors.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+              Risk Factors ({riskFactors.length})
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead>
+                <tr className="border-b border-border-primary text-text-muted text-left">
+                  <th className="px-3 py-2">Account</th>
+                  <th className="px-3 py-2">Underlying</th>
+                  <th className="px-3 py-2 text-right">Spot</th>
+                  <th className="px-3 py-2 text-right">Delta</th>
+                  <th className="px-3 py-2 text-right">Gamma</th>
+                  <th className="px-3 py-2 text-right">Theta</th>
+                  <th className="px-3 py-2 text-right">Vega</th>
+                  <th className="px-3 py-2 text-right">Delta $</th>
+                  <th className="px-3 py-2 text-right">Gamma $</th>
+                  <th className="px-3 py-2 text-right">P&L</th>
+                  <th className="px-3 py-2 text-right">Positions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {riskFactors.map((rf) => (
+                  <tr key={`${rf.account}-${rf.underlying}`} className="border-b border-border-primary hover:bg-bg-secondary">
+                    <td className="px-3 py-2 text-text-muted">{rf.account ?? '-'}</td>
+                    <td className="px-3 py-2 font-semibold text-text-primary">{rf.underlying}</td>
+                    <td className="px-3 py-2 text-right">{rf.spot?.toFixed(2) ?? '-'}</td>
+                    <td className="px-3 py-2 text-right">{rf.delta?.toFixed(2) ?? '-'}</td>
+                    <td className="px-3 py-2 text-right">{rf.gamma?.toFixed(4) ?? '-'}</td>
+                    <td className="px-3 py-2 text-right">{rf.theta?.toFixed(2) ?? '-'}</td>
+                    <td className="px-3 py-2 text-right">{rf.vega?.toFixed(2) ?? '-'}</td>
+                    <td className="px-3 py-2 text-right">{rf['delta_$']?.toLocaleString('en-US', { maximumFractionDigits: 0 }) ?? '-'}</td>
+                    <td className="px-3 py-2 text-right">{rf['gamma_$']?.toLocaleString('en-US', { maximumFractionDigits: 0 }) ?? '-'}</td>
+                    <td className={`px-3 py-2 text-right ${(rf.pnl ?? 0) > 0 ? 'text-pnl-profit' : (rf.pnl ?? 0) < 0 ? 'text-pnl-loss' : 'text-text-muted'}`}>
+                      {rf.pnl?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '-'}
+                    </td>
+                    <td className="px-3 py-2 text-right">{rf.positions}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                {(() => {
+                  const totDelta$ = riskFactors.reduce((s, r) => s + (r['delta_$'] ?? 0), 0)
+                  const totGamma$ = riskFactors.reduce((s, r) => s + (r['gamma_$'] ?? 0), 0)
+                  const totPnl = riskFactors.reduce((s, r) => s + (r.pnl ?? 0), 0)
+                  const totPositions = riskFactors.reduce((s, r) => s + (r.positions ?? 0), 0)
+                  return (
+                    <tr className="border-t-2 border-border-primary bg-bg-tertiary font-bold">
+                      <td className="px-3 py-2"></td>
+                      <td className="px-3 py-2 text-text-primary">TOTAL</td>
+                      <td className="px-3 py-2"></td>
+                      <td className="px-3 py-2"></td>
+                      <td className="px-3 py-2"></td>
+                      <td className="px-3 py-2"></td>
+                      <td className="px-3 py-2"></td>
+                      <td className="px-3 py-2 text-right">{totDelta$.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                      <td className="px-3 py-2 text-right">{totGamma$.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                      <td className={`px-3 py-2 text-right ${totPnl > 0 ? 'text-pnl-profit' : totPnl < 0 ? 'text-pnl-loss' : 'text-text-muted'}`}>
+                        {totPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-2 text-right">{totPositions}</td>
+                    </tr>
+                  )
+                })()}
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Orders — working orders not yet filled */}
+      {liveOrders && liveOrders.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+              Pending Orders ({liveOrders.length})
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead>
+                <tr className="border-b border-border-primary text-text-muted text-left">
+                  <th className="px-3 py-2">Broker</th>
+                  <th className="px-3 py-2">Underlying</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Legs</th>
+                  <th className="px-3 py-2 text-right">Price</th>
+                  <th className="px-3 py-2 text-right">Filled</th>
+                  <th className="px-3 py-2">Received</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liveOrders.map((order) => (
+                  <tr key={order.order_id} className="border-b border-border-primary hover:bg-bg-secondary">
+                    <td className="px-3 py-2 text-text-muted">{order.broker}</td>
+                    <td className="px-3 py-2 font-semibold text-text-primary">{order.underlying}</td>
+                    <td className="px-3 py-2">
+                      <span className="px-1.5 py-0.5 rounded text-2xs font-semibold bg-orange-900/30 text-orange-400 border border-orange-800">
+                        {order.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-text-secondary">
+                      {order.legs.map((leg, i) => (
+                        <div key={i}>
+                          {leg.action} {leg.quantity} {leg.symbol}
+                        </div>
+                      ))}
+                    </td>
+                    <td className="px-3 py-2 text-right">{order.price?.toFixed(2) ?? '-'}</td>
+                    <td className="px-3 py-2 text-right">{order.filled_quantity}</td>
+                    <td className="px-3 py-2 text-text-muted">
+                      {order.received_at ? new Date(order.received_at).toLocaleString() : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

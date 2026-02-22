@@ -19,13 +19,18 @@ import {
   CapitalDeploymentPage,
 } from './pages/settings'
 import { TradingDashboardPage } from './pages/TradingDashboardPage'
+import { FundsPage } from './pages/FundsPage'
+import { MarketDashboardPage } from './pages/MarketDashboardPage'
+import { ResearchPage } from './pages/ResearchPage'
 import { ToastContainer } from './components/common/Toast'
 
 export default function App() {
   return (
     <AppShell>
       <Routes>
-        <Route path="/" element={<DashboardPage />} />
+        <Route path="/" element={<MarketDashboardPage />} />
+        <Route path="/market" element={<MarketDashboardPage />} />
+        <Route path="/market/:ticker" element={<ResearchPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/position/:id" element={<PositionDetailPage />} />
         <Route path="/recommendations" element={<RecommendationsPage />} />
@@ -37,6 +42,7 @@ export default function App() {
         <Route path="/agents/:name" element={<AgentDetailPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/trading" element={<TradingDashboardPage />} />
+        <Route path="/funds" element={<FundsPage />} />
         <Route path="/data" element={<DataExplorerPage />} />
 
         {/* Settings / Config */}

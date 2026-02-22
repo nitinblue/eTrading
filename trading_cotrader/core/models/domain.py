@@ -939,15 +939,18 @@ class Position:
         return self.symbol.multiplier if self.symbol else 1
     
     def unrealized_pnl(self) -> Decimal:
-        if not self.current_price:
+        if not self.current_price or not self.entry_price:
             return Decimal('0')
-        current_value = self.current_price * self.quantity * self.multiplier
-        return current_value - self.total_cost
-    
+        # (current - entry) * signed_qty * multiplier
+        # Long:  price up   → positive P&L
+        # Short: price down → positive P&L (sold high, buy back low)
+        return (self.current_price - self.entry_price) * self.quantity * self.multiplier
+
     def pnl_percent(self) -> Decimal:
-        if self.total_cost == 0:
+        entry_value = abs(self.entry_price * self.quantity * self.multiplier)
+        if entry_value == 0:
             return Decimal('0')
-        return (self.unrealized_pnl() / abs(self.total_cost)) * 100
+        return (self.unrealized_pnl() / entry_value) * 100
     
     def record_greeks_snapshot(self):
         """Record current Greeks to history"""

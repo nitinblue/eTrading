@@ -38,6 +38,7 @@ class PositionState:
     bid: Decimal = Decimal('0')
     ask: Decimal = Decimal('0')
     mark: Decimal = Decimal('0')
+    underlying_price: Decimal = Decimal('0')  # Spot price of underlying
 
     # Greeks (position-level, already * quantity)
     delta: Decimal = Decimal('0')
@@ -209,24 +210,44 @@ class PositionContainer:
             if symbol_orm and symbol_orm.expiration:
                 dte = (symbol_orm.expiration.date() - datetime.utcnow().date()).days
 
+            # Compute P&L from prices: (current - entry) * qty * multiplier
+            entry = pos_orm.entry_price or Decimal('0')
+            current = pos_orm.current_price or Decimal('0')
+            qty = pos_orm.quantity or 0
+            multiplier = Decimal(str(symbol_orm.multiplier)) if symbol_orm and symbol_orm.multiplier else (Decimal('100') if option_type else Decimal('1'))
+            computed_pnl = (current - entry) * qty * multiplier if entry and current else Decimal('0')
+            entry_value = abs(entry * qty * multiplier)
+            pnl_pct = (computed_pnl / entry_value * 100) if entry_value else Decimal('0')
+
+            # Build proper symbol name: ticker for stocks, full description for options
+            if symbol_orm:
+                if option_type:
+                    sym_name = f"{underlying} {expiry} {strike}{option_type[0]}" if expiry and strike else symbol_orm.description or underlying
+                else:
+                    sym_name = underlying
+            else:
+                sym_name = pos_orm.id
+
             state = PositionState(
                 position_id=pos_orm.id,
-                symbol=pos_orm.id,  # Will be overwritten if symbol_orm exists
+                symbol=sym_name,
                 underlying=underlying,
                 option_type=option_type,
                 strike=Decimal(str(strike)) if strike else None,
                 expiry=expiry,
                 dte=dte,
-                quantity=pos_orm.quantity,
-                entry_price=pos_orm.entry_price or Decimal('0'),
-                current_price=pos_orm.current_price or Decimal('0'),
+                quantity=qty,
+                entry_price=entry,
+                current_price=current,
+                underlying_price=Decimal(str(pos_orm.current_underlying_price)) if pos_orm.current_underlying_price else (current if not option_type else Decimal('0')),
                 market_value=pos_orm.market_value or Decimal('0'),
                 delta=pos_orm.delta or Decimal('0'),
                 gamma=pos_orm.gamma or Decimal('0'),
                 theta=pos_orm.theta or Decimal('0'),
                 vega=pos_orm.vega or Decimal('0'),
                 rho=pos_orm.rho or Decimal('0'),
-                unrealized_pnl=pos_orm.total_pnl or Decimal('0'),
+                unrealized_pnl=computed_pnl,
+                unrealized_pnl_pct=pnl_pct,
                 pnl_delta=pos_orm.delta_pnl or Decimal('0'),
                 pnl_gamma=pos_orm.gamma_pnl or Decimal('0'),
                 pnl_theta=pos_orm.theta_pnl or Decimal('0'),

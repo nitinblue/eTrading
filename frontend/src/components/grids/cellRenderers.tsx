@@ -7,7 +7,7 @@ export function PnLRenderer({ value }: ICellRendererParams) {
   const sign = num > 0 ? '+' : ''
   return (
     <span className={`font-mono-num font-medium ${color}`}>
-      {sign}${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      {sign}{num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
     </span>
   )
 }
@@ -69,7 +69,7 @@ export function CurrencyRenderer({ value }: ICellRendererParams) {
   const num = Number(value)
   return (
     <span className="font-mono-num text-text-primary">
-      ${num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+      {num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
     </span>
   )
 }

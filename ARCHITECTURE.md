@@ -1,443 +1,261 @@
-# Trading Co-Trader: Architecture & Flow
+# Trading Co-Trader: Architecture & Data Flow
 
-> This document contains system architecture, data flows, and component diagrams.
-> Uses Mermaid format for diagrams (renders in GitHub).
-
----
-
-## 1. System Overview
-
-```mermaid
-graph TB
-    subgraph External
-        BROKER[Tastytrade API]
-        MARKET[Market Data]
-    end
-    
-    subgraph Adapters
-        TA[TastytradeAdapter]
-    end
-    
-    subgraph Services
-        SYNC[PortfolioSyncService]
-        EVENT[EventLogger]
-        SNAP[SnapshotService]
-        RISK[RiskChecker]
-        RULES[RulesEngine]
-    end
-    
-    subgraph Repositories
-        PREPO[PortfolioRepository]
-        POSREPO[PositionRepository]
-        EREPO[EventRepository]
-        TREPO[TradeRepository]
-    end
-    
-    subgraph Database
-        DB[(SQLite)]
-    end
-    
-    subgraph AI/ML
-        FEAT[FeatureExtractor]
-        SUP[PatternRecognizer]
-        RL[QLearningAgent]
-        ADV[TradingAdvisor]
-    end
-    
-    BROKER --> TA
-    TA --> SYNC
-    SYNC --> PREPO
-    SYNC --> POSREPO
-    PREPO --> DB
-    POSREPO --> DB
-    
-    EVENT --> EREPO
-    EREPO --> DB
-    
-    SNAP --> DB
-    
-    DB --> FEAT
-    FEAT --> SUP
-    FEAT --> RL
-    SUP --> ADV
-    RL --> ADV
-```
+> Source of truth for system architecture and data flows.
+> Uses Mermaid format for diagrams (renders in GitHub/VS Code).
+> Last updated: 2026-02-21 (Session 28)
 
 ---
 
-## 2. Current Data Flow (What's Working)
+## 1. Position Data Flow: Broker to Screen
 
-### 2.1 Portfolio Sync Flow
+This is the critical path. Every number you see on screen traces back through this flow.
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant AutoTrader
-    participant TastytradeAdapter
-    participant PortfolioSyncService
-    participant PortfolioRepo
-    participant PositionRepo
-    participant Database
-    
-    User->>AutoTrader: run_full_cycle()
-    AutoTrader->>TastytradeAdapter: authenticate()
-    TastytradeAdapter-->>AutoTrader: success
-    
-    AutoTrader->>PortfolioSyncService: sync_portfolio()
-    PortfolioSyncService->>TastytradeAdapter: get_account_balance()
-    TastytradeAdapter-->>PortfolioSyncService: balance data
-    
-    PortfolioSyncService->>TastytradeAdapter: get_positions()
-    TastytradeAdapter-->>PortfolioSyncService: positions[]
-    
-    Note over PortfolioSyncService: BUG: May create new portfolio<br/>instead of finding existing
-    
-    PortfolioSyncService->>PortfolioRepo: get_by_account(broker, account_id)
-    PortfolioRepo->>Database: SELECT
-    Database-->>PortfolioRepo: portfolio or None
-    
-    alt Portfolio not found
-        PortfolioSyncService->>PortfolioRepo: create_from_domain()
-        Note right of PortfolioRepo: Creates duplicate!
-    else Portfolio found
-        PortfolioSyncService->>PortfolioRepo: update_from_domain()
-    end
-    
-    PortfolioSyncService->>PositionRepo: delete_by_portfolio()
-    PositionRepo->>Database: DELETE
-    
+    participant TT as TastyTrade API
+    participant DX as DXLink (Streaming)
+    participant AD as TastytradeAdapter
+    participant SS as PortfolioSyncService
+    participant DB as SQLite DB
+    participant CM as ContainerManager
+    participant API as FastAPI
+    participant UI as React Frontend
+
+    Note over TT,UI: === SYNC CYCLE (every 60s in monitoring state) ===
+
+    AD->>TT: account.get_positions(include_marks=True)
+    TT-->>AD: positions[] (qty, avg_open_price, mark_price, direction)
+
+    AD->>DX: Subscribe Greeks for option symbols
+    DX-->>AD: delta, gamma, theta, vega, IV (current only)
+
+    Note over AD: Creates dm.Position objects:<br/>entry_price = average_open_price<br/>current_price = mark_price<br/>quantity = signed (+long, -short)<br/>total_cost = entry * qty * multiplier (signed)<br/>greeks = current from DXLink
+
+    AD-->>SS: List[dm.Position]
+
+    SS->>DB: DELETE all positions for this portfolio_id
     loop For each position
-        PortfolioSyncService->>PositionRepo: create_from_domain()
-        PositionRepo->>Database: INSERT
+        SS->>DB: INSERT PositionORM (entry, current, qty, Greeks, total_pnl)
     end
-    
-    PortfolioSyncService-->>AutoTrader: SyncResult
+    SS->>DB: UPDATE PortfolioORM (equity, cash, aggregate Greeks, total_pnl)
+
+    Note over CM: === CONTAINER REFRESH ===
+
+    CM->>DB: SELECT PositionORM WHERE portfolio_id matches bundle
+    Note over CM: Bundle matched by broker_firm + account_number<br/>(NOT first-found — that was the duplication bug)
+    DB-->>CM: positions[]
+
+    CM->>CM: Compute P&L per position:<br/>(current - entry) * qty * multiplier
+    CM->>CM: Aggregate RiskFactors per underlying:<br/>sum delta, gamma, theta, vega
+
+    Note over API,UI: === API RESPONSE ===
+
+    UI->>API: GET /api/v2/broker-positions
+    API->>CM: bundle.positions.to_grid_rows()
+    CM-->>API: [{symbol, qty, entry, mark, delta, pnl, ...}]
+    API-->>UI: JSON response
+
+    UI->>API: GET /api/v2/risk/factors
+    API->>CM: bundle.risk_factors.to_grid_rows()
+    CM-->>API: [{underlying, delta, gamma, theta, vega, delta_$}]
+    API-->>UI: JSON response
+
+    UI->>API: GET /api/v2/portfolios
+    API->>DB: SELECT PortfolioORM
+    DB-->>API: [{equity, cash, Greeks, pnl}]
+    API-->>UI: JSON response
 ```
 
-### 2.2 Event Logging Flow
+### What TastyTrade Provides vs What We Compute
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant EventLogger
-    participant TradeRepo
-    participant EventRepo
-    participant Database
-    
-    User->>EventLogger: log_trade_opened(underlying, strategy, rationale)
-    
-    EventLogger->>EventLogger: create Trade object (status=INTENT)
-    EventLogger->>TradeRepo: create_from_domain(trade)
-    TradeRepo->>Database: INSERT trade
-    
-    EventLogger->>EventLogger: create TradeEvent object
-    EventLogger->>EventRepo: create_from_domain(event)
-    EventRepo->>Database: INSERT event
-    
-    EventLogger-->>User: LogResult(trade_id, event_id)
-```
-
-### 2.3 Snapshot Flow (For ML)
-
-```mermaid
-sequenceDiagram
-    participant AutoTrader
-    participant SnapshotService
-    participant PositionRepo
-    participant Database
-    
-    AutoTrader->>SnapshotService: capture_daily_snapshot(portfolio, positions)
-    
-    SnapshotService->>SnapshotService: Calculate metrics
-    Note over SnapshotService: total_equity, delta, theta<br/>pnl, position_count
-    
-    SnapshotService->>Database: INSERT daily_performance
-    SnapshotService->>Database: INSERT greeks_history (per position)
-    
-    SnapshotService-->>AutoTrader: success
-    
-    Note over Database: Data accumulates for ML training
-```
+| Data Point | Source | Notes |
+|-----------|--------|-------|
+| Entry price | TT `average_open_price` | Per-contract price at fill |
+| Current price | TT `mark_price` | Mid of bid/ask |
+| Quantity + direction | TT `quantity_direction` | Long/Short enum |
+| Current Greeks | DXLink streaming | Real-time delta/gamma/theta/vega |
+| **Entry Greeks** | **NOT AVAILABLE** | TT has no historical Greeks API |
+| **P&L** | **We compute** | `(current - entry) * qty * multiplier` |
+| **P&L attribution** | **NOT YET** | Needs entry Greeks + daily snapshots |
 
 ---
 
-## 3. Future Data Flow (After Integration)
-
-### 3.1 Complete Trading Cycle with AI
+## 2. Container Architecture
 
 ```mermaid
 graph TB
-    subgraph "1. Data Collection"
-        SYNC[Sync from Broker]
-        SNAP[Daily Snapshot]
-        EVENT[Log Events]
+    subgraph "risk_config.yaml (5 real portfolios)"
+        RC_TT["tastytrade<br/>broker=tastytrade<br/>account=5WZ78765"]
+        RC_FI["fidelity_ira<br/>broker=fidelity<br/>account=259510977"]
+        RC_FP["fidelity_personal<br/>broker=fidelity<br/>account=Z71212342"]
+        RC_ZE["zerodha<br/>broker=zerodha"]
+        RC_ST["stallion<br/>broker=stallion<br/>account=SACF5925"]
     end
-    
-    subgraph "2. Analysis"
-        RISK[Risk Analysis]
-        WHATIF[What-If Scenarios]
-        RULES[Exit Rules Check]
+
+    subgraph "ContainerManager (in-memory)"
+        subgraph "Bundle: tastytrade"
+            B1_PF["PortfolioContainer<br/>equity, cash, Greeks"]
+            B1_PS["PositionContainer<br/>9 positions + P&L"]
+            B1_RF["RiskFactorContainer<br/>per-underlying Greeks"]
+            B1_TR["TradeContainer<br/>agent-booked trades"]
+        end
+        subgraph "Bundle: fidelity_ira"
+            B2["Empty — no API broker"]
+        end
+        subgraph "Bundle: stallion"
+            B5["INR fund — separate currency"]
+        end
     end
-    
-    subgraph "3. ML Training"
-        FEAT[Feature Extraction]
-        TRAIN[Model Training]
+
+    subgraph "SQLite DB"
+        DB_P["PortfolioORM<br/>14 rows (5 real + 5 whatif + 4 research)"]
+        DB_POS["PositionORM<br/>9 rows (all TastyTrade)"]
+        DB_TR["TradeORM<br/>0 rows (no agent trades yet)"]
     end
-    
-    subgraph "4. Recommendations"
-        SUP[Pattern Recognition]
-        RL[RL Agent]
-        ADV[Trading Advisor]
-    end
-    
-    subgraph "5. Action"
-        DISPLAY[Display to User]
-        APPROVE[User Approval]
-        EXEC[Execute Trade]
-    end
-    
-    SYNC --> SNAP
-    SNAP --> FEAT
-    EVENT --> FEAT
-    FEAT --> TRAIN
-    
-    SYNC --> RISK
-    RISK --> WHATIF
-    WHATIF --> RULES
-    
-    TRAIN --> SUP
-    TRAIN --> RL
-    SUP --> ADV
-    RL --> ADV
-    RULES --> ADV
-    
-    ADV --> DISPLAY
-    DISPLAY --> APPROVE
-    APPROVE --> EXEC
-    EXEC --> EVENT
+
+    RC_TT -->|"broker+account match"| B1_PF
+    DB_P -->|"WHERE broker=tastytrade<br/>AND account=5WZ78765"| B1_PF
+    DB_POS -->|"WHERE portfolio_id IN bundle.portfolio_ids"| B1_PS
+    B1_PS -->|"aggregate by underlying"| B1_RF
 ```
 
-### 3.2 ML Data Pipeline
+### Bundle-to-DB Matching (Fixed Bug)
+
+**Before (broken):** `load_from_repositories()` grabbed the first portfolio from DB for every bundle. All 5 bundles got TastyTrade's portfolio_id → 5x duplication.
+
+**After (fixed):** Each bundle stores `broker_firm` + `account_number` from risk_config.yaml. DB lookup uses `WHERE broker = ? AND account_id = ?`. Only the matching bundle gets positions.
+
+---
+
+## 3. Real Trades vs Agent Trades vs WhatIf
 
 ```mermaid
 graph LR
     subgraph "Data Sources"
-        E[Trade Events]
-        S[Portfolio Snapshots]
-        G[Greeks History]
-        P[Positions]
+        BROKER["TastyTrade Broker"]
+        AGENT["Agents/Screeners"]
+        USER["User (Trading Sheet)"]
     end
-    
-    subgraph "Feature Engineering"
-        MF[Market Features]
-        PF[Position Features]
-        PtF[Portfolio Features]
+
+    subgraph "DB Tables"
+        POS["PositionORM<br/>(Live Positions)"]
+        TRADE_REAL["TradeORM<br/>type=paper/live"]
+        TRADE_WI["TradeORM<br/>type=what_if"]
     end
-    
-    subgraph "Dataset"
-        X[Feature Matrix X]
-        Y[Labels y]
+
+    subgraph "Frontend Sections"
+        UI_LIVE["Live Positions<br/>(always shown)"]
+        UI_AGENT["Agent-Booked Trades<br/>(shown when non-empty)"]
+        UI_WI["WhatIf Trades<br/>(Trading Sheet only)"]
     end
-    
-    subgraph "Models"
-        DT[Decision Tree<br/>Supervised]
-        QL[Q-Learning<br/>RL]
-    end
-    
-    E --> MF
-    E --> Y
-    S --> PtF
-    G --> PF
-    P --> PF
-    
-    MF --> X
-    PF --> X
-    PtF --> X
-    
-    X --> DT
-    X --> QL
-    Y --> DT
+
+    BROKER -->|"PortfolioSyncService<br/>clear+rebuild every 60s"| POS
+    AGENT -->|"TradeBookingService"| TRADE_REAL
+    USER -->|"POST /add-whatif"| TRADE_WI
+
+    POS -->|"GET /broker-positions"| UI_LIVE
+    TRADE_REAL -->|"GET /positions"| UI_AGENT
+    TRADE_WI -->|"GET /trading-sheet"| UI_WI
 ```
+
+| Concept | DB Table | Created By | Lifecycle | Has Entry Greeks? |
+|---------|----------|-----------|-----------|-------------------|
+| **Live Positions** | PositionORM | Broker sync | Destroyed + recreated every sync | No |
+| **Agent Trades** | TradeORM (paper/live) | Agents/Screeners | Persist until closed | Yes (captured at booking) |
+| **WhatIf Trades** | TradeORM (what_if) | User via UI | Persist until booked or deleted | Yes (computed at creation) |
 
 ---
 
-## 4. Database Schema Overview
+## 4. Workflow Engine Lifecycle
 
 ```mermaid
-erDiagram
-    PORTFOLIO ||--o{ POSITION : contains
-    PORTFOLIO ||--o{ TRADE : has
-    PORTFOLIO ||--o{ ORDER : has
-    PORTFOLIO ||--o{ DAILY_PERFORMANCE : tracks
-    
-    TRADE ||--o{ LEG : contains
-    TRADE ||--o{ TRADE_EVENT : generates
-    TRADE }o--|| STRATEGY : uses
-    
-    POSITION }o--|| SYMBOL : references
-    POSITION ||--o{ GREEKS_HISTORY : tracks
-    LEG }o--|| SYMBOL : references
-    
-    TRADE_EVENT }o--o{ RECOGNIZED_PATTERN : matches
-    
-    PORTFOLIO {
-        string id PK
-        string name
-        string broker
-        string account_id
-        decimal cash_balance
-        decimal buying_power
-        decimal portfolio_delta
-        decimal portfolio_theta
-    }
-    
-    POSITION {
-        string id PK
-        string portfolio_id FK
-        string symbol_id FK
-        int quantity
-        decimal average_price
-        decimal current_price
-        decimal delta
-        decimal theta
-    }
-    
-    TRADE {
-        string id PK
-        string portfolio_id FK
-        string underlying_symbol
-        string trade_type
-        string trade_status
-        decimal max_risk
-        boolean is_open
-    }
-    
-    TRADE_EVENT {
-        string event_id PK
-        string trade_id FK
-        string event_type
-        json market_context
-        json decision_context
-        json outcome
-    }
-    
-    DAILY_PERFORMANCE {
-        string id PK
-        string portfolio_id FK
-        date date
-        decimal total_equity
-        decimal daily_pnl
-        decimal portfolio_delta
-    }
+stateDiagram-v2
+    [*] --> INITIALIZING
+    INITIALIZING --> MARKET_ANALYSIS: boot complete
+    MARKET_ANALYSIS --> PORTFOLIO_STATE: market data fetched
+    PORTFOLIO_STATE --> MONITORING: state loaded
+
+    MONITORING --> OPPORTUNITY_SCAN: scheduled scan
+    MONITORING --> EOD_EVALUATION: market close
+
+    OPPORTUNITY_SCAN --> RECOMMENDATION: opportunities found
+    RECOMMENDATION --> PENDING_APPROVAL: trades proposed
+    PENDING_APPROVAL --> EXECUTION: user approves
+    EXECUTION --> MONITORING: trades executed
+
+    EOD_EVALUATION --> MONITORING: no action needed
+
+    note right of MONITORING
+        Every 60s:
+        1. Sync broker positions
+        2. Refresh containers
+        3. Check capital utilization
+    end note
+```
+
+### Engine Boot Sequence
+
+```
+1. _init_container_manager()     → Create bundles from risk_config.yaml
+2. _authenticate_adapters()      → Auth TastyTrade API
+3. _sync_broker_positions()      → Fetch positions → DB
+4. _refresh_containers()         → Load DB → ContainerManager
+5. Start FastAPI web server      → Serve API on :8080
+6. Start APScheduler             → Monitor every 60s
 ```
 
 ---
 
-## 5. Module Dependencies
+## 5. P&L Calculation
 
-```mermaid
-graph TD
-    subgraph "Config Layer"
-        SETTINGS[settings.py]
-        RISKCONF[risk_config.yaml]
-    end
-    
-    subgraph "Core Layer"
-        DOMAIN[domain.py]
-        EVENTS[events.py]
-        SCHEMA[schema.py]
-        SESSION[session.py]
-    end
-    
-    subgraph "Repository Layer"
-        BASEREPO[base.py]
-        PORTFOLIOREPO[portfolio.py]
-        POSITIONREPO[position.py]
-        TRADEREPO[trade.py]
-        EVENTREPO[event.py]
-    end
-    
-    subgraph "Service Layer"
-        SYNC[portfolio_sync.py]
-        EVENTLOG[event_logger.py]
-        SNAPSHOT[snapshot_service.py]
-        RISKCHECK[risk_checker.py]
-    end
-    
-    subgraph "Adapter Layer"
-        TASTY[tastytrade_adapter.py]
-    end
-    
-    subgraph "Runner Layer"
-        AUTO[auto_trader.py]
-    end
-    
-    SETTINGS --> TASTY
-    RISKCONF --> RISKCHECK
-    
-    DOMAIN --> SCHEMA
-    EVENTS --> SCHEMA
-    SESSION --> SCHEMA
-    
-    BASEREPO --> SESSION
-    PORTFOLIOREPO --> BASEREPO
-    POSITIONREPO --> BASEREPO
-    TRADEREPO --> BASEREPO
-    EVENTREPO --> BASEREPO
-    
-    SYNC --> PORTFOLIOREPO
-    SYNC --> POSITIONREPO
-    SYNC --> TASTY
-    
-    EVENTLOG --> TRADEREPO
-    EVENTLOG --> EVENTREPO
-    
-    SNAPSHOT --> PORTFOLIOREPO
-    
-    AUTO --> SYNC
-    AUTO --> EVENTLOG
-    AUTO --> SNAPSHOT
-    AUTO --> RISKCHECK
+### Formula (Fixed 2026-02-21)
+
 ```
+unrealized_pnl = (current_price - entry_price) * quantity * multiplier
+```
+
+- **Long call** bought at $5, now at $3: `(3 - 5) * 1 * 100 = -$200`
+- **Short put** sold at $7.47, now at $5.05: `(5.05 - 7.47) * (-2) * 100 = +$484`
+- **Long stock** at $54.50, now at $52.79: `(52.79 - 54.50) * 100 * 1 = -$171`
+
+### Previous Bug (Sessions 25-27)
+
+Old formula: `current_price * qty * multiplier - abs(total_cost)`
+- Short positions always showed massive losses because total_cost was unsigned
+- Portfolio P&L was **-$6,260.50** when actual was **-$162.50**
 
 ---
 
-## 6. Component Status
+## 6. Key File Map
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| TastytradeAdapter | ✅ Working | Auth, positions, balance |
-| PortfolioSyncService | ⚠️ Bug | May create duplicate portfolios |
-| EventLogger | ✅ Working | Logs trade intents/events |
-| SnapshotService | ✅ Working | Daily snapshots for ML |
-| RiskChecker | ✅ Working | Basic risk checks |
-| PortfolioRiskAnalyzer | 📋 New | VaR, correlation - needs integration |
-| RulesEngine | 📋 New | Exit rules - needs integration |
-| FeatureExtractor | 📋 New | ML features - needs integration |
-| PatternRecognizer | 📋 New | Supervised learning - needs data |
-| QLearningAgent | 📋 New | RL agent - needs data |
-| TradingAdvisor | 📋 New | Combined advisor - needs integration |
-
----
-
-## 7. File Organization
-
-```
-trading_cotrader/
-├── PROJECT_STATUS.yaml      # YOU edit - current state
-├── ARCHITECTURE.md          # This file - diagrams/flows
-│
-├── adapters/                # External integrations
-├── analytics/               # Your existing analytics
-├── config/                  # Configuration
-├── core/                    # Domain models, DB schema
-├── repositories/            # Data access
-├── services/                # Business logic
-├── ai_cotrader/            # ML/RL modules
-└── runners/
-    └── auto_trader.py       # Main entry point
-```
+| Layer | File | Purpose |
+|-------|------|---------|
+| **Adapter** | `adapters/tastytrade_adapter.py` | TastyTrade API + DXLink Greeks |
+| **Sync** | `services/portfolio_sync.py` | Broker → DB (clear+rebuild) |
+| **DB Schema** | `core/database/schema.py` | 21 ORM tables |
+| **Domain** | `core/models/domain.py` | Position, Trade, Portfolio, Greeks |
+| **Containers** | `containers/container_manager.py` | In-memory bundles, DB loading |
+| **Bundle** | `containers/portfolio_bundle.py` | Per-portfolio container group |
+| **Position Container** | `containers/position_container.py` | Position state + P&L computation |
+| **Risk Factors** | `containers/risk_factor_container.py` | Per-underlying Greeks aggregation |
+| **Engine** | `workflow/engine.py` | State machine + sync + refresh |
+| **API v2** | `web/api_v2.py` | FastAPI endpoints for frontend |
+| **Trading Sheet** | `web/api_trading_sheet.py` | 4 endpoints for trading view |
+| **Config** | `config/risk_config.yaml` | 15 portfolios, risk limits |
+| **Frontend** | `frontend/src/pages/PortfolioPage.tsx` | Portfolio + Positions + Risk |
 
 ---
 
-*Last updated: 2026-01-24*
+## 7. Known Gaps
+
+| Gap | Impact | Fix Needed |
+|-----|--------|------------|
+| No entry Greeks | Can't do P&L attribution (delta/theta/vega breakdown) | Capture Greeks at first sync of new position |
+| No daily snapshots | Can't track Greeks evolution over time | PositionGreeksSnapshotORM exists but unpopulated |
+| VaR not computed fresh | Shows stale DB value | Wire VaR calculator into sync cycle |
+| No position health | Missing % of max profit, breakeven distance | Compute from entry/current/strikes |
+| Fidelity/Zerodha no API | Positions only for TastyTrade | Manual entry or adapter stubs |
+
+---
+
+*This document is the single source of truth for data flow. Update it when the flow changes.*

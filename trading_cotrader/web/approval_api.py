@@ -188,13 +188,24 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def serve_dashboard():
-        # Try React build first
         react_index = Path(__file__).parent.parent.parent / "frontend" / "dist" / "index.html"
         if react_index.exists():
             return HTMLResponse(react_index.read_text(encoding="utf-8"))
-        # Fallback to legacy approval dashboard
         html_path = Path(__file__).parent.parent / "ui" / "approval-dashboard.html"
         return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+    # SPA catch-all: serve index.html for all non-API client-side routes
+    @app.get("/{path:path}", response_class=HTMLResponse)
+    async def spa_fallback(path: str):
+        # Skip API routes and static assets
+        if path.startswith(("api/", "ws", "assets/")):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        react_index = Path(__file__).parent.parent.parent / "frontend" / "dist" / "index.html"
+        if react_index.exists():
+            return HTMLResponse(react_index.read_text(encoding="utf-8"))
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
 
     # ------------------------------------------------------------------
     # Read endpoints

@@ -118,11 +118,13 @@ class ContainerManager:
             bundle = PortfolioBundle(
                 config_name=pc.name,
                 currency=pc.currency,
+                broker_firm=pc.broker_firm,
+                account_number=pc.account_number,
             )
             self._bundles[pc.name] = bundle
             if self._default_bundle is None:
                 self._default_bundle = pc.name
-            logger.info(f"Created bundle: {pc.name} ({pc.currency})")
+            logger.info(f"Created bundle: {pc.name} ({pc.currency}) broker={pc.broker_firm} account={pc.account_number}")
 
         # Map whatif → real parent
         for pc in portfolios_config.get_whatif_portfolios():
@@ -282,18 +284,20 @@ class ContainerManager:
                 PortfolioORM.id.in_(bundle.portfolio_ids)
             ).first()
         else:
-            # Fallback: query by broker+account from config
-            portfolio_repo = PortfolioRepository(session)
-            portfolios = portfolio_repo.get_all_portfolios()
+            # Match by broker+account from bundle config (set during initialize_bundles)
             portfolio_orm = None
-            if portfolios:
-                # Find by name match
-                for p in portfolios:
-                    p_orm = session.query(PortfolioORM).filter_by(id=p.id).first()
-                    if p_orm:
-                        portfolio_orm = p_orm
-                        bundle.add_portfolio_id(p.id)
-                        break
+            if bundle.broker_firm and bundle.account_number:
+                portfolio_orm = session.query(PortfolioORM).filter_by(
+                    broker=bundle.broker_firm,
+                    account_id=bundle.account_number,
+                ).first()
+                if portfolio_orm:
+                    bundle.add_portfolio_id(portfolio_orm.id)
+                    logger.info(f"Bundle '{bundle.config_name}' matched to DB portfolio {portfolio_orm.id} "
+                                f"(broker={bundle.broker_firm}, account={bundle.account_number})")
+                else:
+                    logger.debug(f"No DB portfolio for bundle '{bundle.config_name}' "
+                                 f"(broker={bundle.broker_firm}, account={bundle.account_number}) — not synced yet")
 
         if portfolio_orm:
             changes = bundle.portfolio.load_from_orm(portfolio_orm)

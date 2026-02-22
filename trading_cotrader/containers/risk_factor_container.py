@@ -159,7 +159,14 @@ class RiskFactorContainer:
                 rf.gross_exposure += pos_value
                 rf.net_exposure += pos.market_value
 
-            # Calculate dollar exposures (assuming spot_price is set)
+                # Pick up underlying spot price from any position that has it
+                if rf.spot_price == 0 and hasattr(pos, 'underlying_price') and pos.underlying_price:
+                    rf.spot_price = pos.underlying_price
+                # For stock positions, current_price IS the spot price
+                if rf.spot_price == 0 and not getattr(pos, 'is_option', True) and pos.current_price:
+                    rf.spot_price = pos.current_price
+
+            # Calculate dollar exposures
             if rf.spot_price > 0:
                 rf.delta_dollars = rf.delta * rf.spot_price
                 rf.gamma_dollars = rf.gamma * rf.spot_price * rf.spot_price * Decimal('0.01')
@@ -265,6 +272,7 @@ class RiskFactorContainer:
                 'theta': float(rf.theta),
                 'vega': float(rf.vega),
                 'delta_$': float(rf.delta_dollars),
+                'gamma_$': float(rf.gamma_dollars),
                 'positions': rf.position_count,
                 'long': rf.long_count,
                 'short': rf.short_count,

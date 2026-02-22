@@ -42,6 +42,15 @@ export interface Portfolio {
   // Computed
   deployed_pct: number
   open_trade_count: number
+
+  // Margin / Capital
+  margin_used: number
+  available_margin: number
+  margin_utilization_pct: number
+  margin_buffer: number
+  margin_buffer_remaining: number
+  risk_pct_of_margin: number
+  margin_buffer_multiplier: number
 }
 
 export interface Leg {
@@ -729,6 +738,7 @@ export interface AgentTimelineCycle {
 
 export interface RiskFactor {
   id: string
+  account?: string
   underlying: string
   spot: number
   spot_chg: number
@@ -737,6 +747,7 @@ export interface RiskFactor {
   theta: number
   vega: number
   'delta_$': number
+  'gamma_$': number
   positions: number
   long: number
   short: number
@@ -747,6 +758,7 @@ export interface RiskFactor {
 
 export interface BrokerPosition {
   id: string
+  account?: string
   symbol: string
   underlying: string
   type: string
@@ -920,6 +932,287 @@ export interface TemplateEvaluationResult {
   template: { name: string; display_name: string; description: string; universe: string[] }
   evaluated_symbols: EvaluatedSymbol[]
   summary: string
+}
+
+// ---------------------------------------------------------------------------
+// Market Regime Types
+// ---------------------------------------------------------------------------
+
+export interface RegimeResult {
+  ticker: string
+  regime: number
+  regime_name: string
+  confidence: number
+  trend_direction: string | null
+  regime_probabilities: Record<string, number>
+  as_of_date: string | null
+  model_version: string
+}
+
+export interface MarketWatchlistItem {
+  name: string
+  ticker: string
+  asset_class: string
+  regime: number
+  regime_name: string
+  confidence: number
+  trend_direction: string | null
+  strategy_comment: string
+}
+
+export interface TransitionRow {
+  from_regime: number
+  to_probabilities: Record<string, number>
+  stay_probability: number
+  stability: string
+  likely_transition_target: number | null
+}
+
+export interface StateMeansRow {
+  regime: number
+  feature_means: Record<string, number>
+  vol_character: string
+  trend_character: string
+}
+
+export interface FeatureZScore {
+  feature: string
+  z_score: number
+  comment: string
+}
+
+export interface RegimeHistoryDay {
+  date: string
+  regime: number
+  trend_direction: string | null
+  confidence: number
+  changed_from: number | null
+}
+
+export interface RegimeDistributionEntry {
+  regime: number
+  name: string
+  days: number
+  percentage: number
+  is_dominant: boolean
+  is_rare: boolean
+}
+
+export interface RegimeChartResponse {
+  ticker: string
+  chart_base64: string
+  format: string
+}
+
+export interface TickerResearch {
+  ticker: string
+  regime_result: RegimeResult
+  explanation_text: string
+  transition_matrix: TransitionRow[]
+  state_means: StateMeansRow[]
+  current_features: FeatureZScore[]
+  recent_history: RegimeHistoryDay[]
+  regime_distribution: RegimeDistributionEntry[]
+  strategy_comment: string
+  model_info: Record<string, unknown>
+}
+
+// ---------------------------------------------------------------------------
+// Technicals Types (from market_regime library)
+// ---------------------------------------------------------------------------
+
+export interface MovingAverages {
+  sma_20: number
+  sma_50: number
+  sma_200: number
+  ema_9: number
+  ema_21: number
+  price_vs_sma_20_pct: number
+  price_vs_sma_50_pct: number
+  price_vs_sma_200_pct: number
+}
+
+export interface RSIData {
+  value: number
+  is_overbought: boolean
+  is_oversold: boolean
+}
+
+export interface BollingerBands {
+  upper: number
+  middle: number
+  lower: number
+  bandwidth: number
+  percent_b: number
+}
+
+export interface MACDData {
+  macd_line: number
+  signal_line: number
+  histogram: number
+  is_bullish_crossover: boolean
+  is_bearish_crossover: boolean
+}
+
+export interface StochasticData {
+  k: number
+  d: number
+  is_overbought: boolean
+  is_oversold: boolean
+}
+
+export interface SupportResistance {
+  support: number | null
+  resistance: number | null
+  price_vs_support_pct: number | null
+  price_vs_resistance_pct: number | null
+}
+
+export interface TechnicalSignal {
+  name: string
+  direction: 'bullish' | 'bearish' | 'neutral'
+  strength: 'strong' | 'moderate' | 'weak'
+  description: string
+}
+
+export interface TechnicalSnapshot {
+  ticker: string
+  as_of_date: string
+  current_price: number
+  atr: number
+  atr_pct: number
+  vwma_20: number
+  moving_averages: MovingAverages
+  rsi: RSIData
+  bollinger: BollingerBands
+  macd: MACDData
+  stochastic: StochasticData
+  support_resistance: SupportResistance
+  signals: TechnicalSignal[]
+}
+
+// ---------------------------------------------------------------------------
+// Fundamentals Types (from market_regime library)
+// ---------------------------------------------------------------------------
+
+export interface BusinessInfo {
+  long_name: string | null
+  sector: string | null
+  industry: string | null
+  beta: number | null
+}
+
+export interface ValuationMetrics {
+  trailing_pe: number | null
+  forward_pe: number | null
+  peg_ratio: number | null
+  price_to_book: number | null
+  price_to_sales: number | null
+}
+
+export interface EarningsMetrics {
+  trailing_eps: number | null
+  forward_eps: number | null
+  earnings_growth: number | null
+}
+
+export interface RevenueMetrics {
+  market_cap: number | null
+  total_revenue: number | null
+  revenue_per_share: number | null
+  revenue_growth: number | null
+}
+
+export interface MarginMetrics {
+  profit_margins: number | null
+  gross_margins: number | null
+  operating_margins: number | null
+  ebitda_margins: number | null
+}
+
+export interface CashMetrics {
+  operating_cashflow: number | null
+  free_cashflow: number | null
+  total_cash: number | null
+  total_cash_per_share: number | null
+}
+
+export interface DebtMetrics {
+  total_debt: number | null
+  debt_to_equity: number | null
+  current_ratio: number | null
+}
+
+export interface ReturnMetrics {
+  return_on_assets: number | null
+  return_on_equity: number | null
+}
+
+export interface DividendMetrics {
+  dividend_yield: number | null
+  dividend_rate: number | null
+}
+
+export interface FiftyTwoWeek {
+  high: number | null
+  low: number | null
+  pct_from_high: number | null
+  pct_from_low: number | null
+}
+
+export interface EarningsEvent {
+  date: string
+  eps_estimate: number | null
+  eps_actual: number | null
+  eps_difference: number | null
+  surprise_pct: number | null
+}
+
+export interface UpcomingEvents {
+  next_earnings_date: string | null
+  days_to_earnings: number | null
+  ex_dividend_date: string | null
+  dividend_date: string | null
+}
+
+export interface FundamentalsSnapshot {
+  ticker: string
+  as_of: string
+  business: BusinessInfo
+  valuation: ValuationMetrics
+  earnings: EarningsMetrics
+  revenue: RevenueMetrics
+  margins: MarginMetrics
+  cash: CashMetrics
+  debt: DebtMetrics
+  returns: ReturnMetrics
+  dividends: DividendMetrics
+  fifty_two_week: FiftyTwoWeek
+  recent_earnings: EarningsEvent[]
+  upcoming_events: UpcomingEvents
+}
+
+// ---------------------------------------------------------------------------
+// Macro Calendar Types (from market_regime library)
+// ---------------------------------------------------------------------------
+
+export interface MacroEvent {
+  event_type: string
+  date: string
+  name: string
+  impact: 'high' | 'medium' | 'low'
+  description: string
+  options_impact: string
+}
+
+export interface MacroCalendar {
+  events: MacroEvent[]
+  next_event: MacroEvent | null
+  days_to_next: number | null
+  next_fomc: MacroEvent | null
+  days_to_next_fomc: number | null
+  events_next_7_days: MacroEvent[]
+  events_next_30_days: MacroEvent[]
 }
 
 // WebSocket message types

@@ -13,6 +13,8 @@ import {
   Database,
   ArrowLeftRight,
   FileText,
+  Landmark,
+  TrendingUp,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -28,7 +30,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard', phase: 1 },
+  { to: '/', icon: TrendingUp, label: 'Research', phase: 1 },
   { to: '/portfolio', icon: Briefcase, label: 'Portfolio', phase: 1 },
   { to: '/recommendations', icon: ListChecks, label: 'Recommendations', phase: 1 },
   { to: '/workflow', icon: Activity, label: 'Workflow', phase: 1 },
@@ -48,6 +50,7 @@ const navItems: NavItem[] = [
       { to: '/settings/capital', label: 'Capital' },
     ],
   },
+  { to: '/funds', icon: Landmark, label: 'Funds', phase: 1 },
   { to: '/reports', icon: FileText, label: 'Reports', phase: 1 },
   { to: '/data', icon: Database, label: 'Data Explorer', phase: 1 },
   { to: '/trading', icon: ArrowLeftRight, label: 'Trading', phase: 1 },

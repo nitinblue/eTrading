@@ -11,6 +11,13 @@ interface BrokerPositionGridProps {
 
 const columnDefs: ColDef[] = [
   {
+    field: 'account',
+    headerName: 'Account',
+    width: 110,
+    cellStyle: { color: '#8888a0', fontSize: '11px' },
+    pinned: 'left',
+  },
+  {
     field: 'underlying',
     headerName: 'Underlying',
     width: 85,
@@ -69,14 +76,14 @@ const columnDefs: ColDef[] = [
     headerName: 'Entry',
     width: 75,
     ...numericColDef,
-    valueFormatter: ({ value }) => value ? `$${Number(value).toFixed(2)}` : '--',
+    valueFormatter: ({ value }) => value ? Number(value).toFixed(2) : '--',
   },
   {
     field: 'mark',
     headerName: 'Mark',
     width: 75,
     ...numericColDef,
-    valueFormatter: ({ value }) => value ? `$${Number(value).toFixed(2)}` : '--',
+    valueFormatter: ({ value }) => value ? Number(value).toFixed(2) : '--',
   },
   {
     field: 'pnl',
@@ -99,28 +106,28 @@ const columnDefs: ColDef[] = [
   },
   {
     field: 'delta',
-    headerName: '\u0394',
+    headerName: 'Delta',
     width: 65,
     ...numericColDef,
     cellRenderer: GreeksRenderer,
   },
   {
     field: 'gamma',
-    headerName: '\u0393',
+    headerName: 'Gamma',
     width: 65,
     ...numericColDef,
     cellRenderer: GreeksRenderer,
   },
   {
     field: 'theta',
-    headerName: '\u0398',
+    headerName: 'Theta',
     width: 65,
     ...numericColDef,
     cellRenderer: GreeksRenderer,
   },
   {
     field: 'vega',
-    headerName: '\u03BD',
+    headerName: 'Vega',
     width: 65,
     ...numericColDef,
     cellRenderer: GreeksRenderer,
@@ -136,8 +143,33 @@ const columnDefs: ColDef[] = [
 
 export function BrokerPositionGrid({ positions }: BrokerPositionGridProps) {
   const gridHeight = useMemo(() => {
-    return Math.max(Math.min(positions.length * 28 + 36, 600), 150)
+    // +1 row for pinned bottom totals
+    return Math.max(Math.min((positions.length + 1) * 28 + 36, 600), 150)
   }, [positions.length])
+
+  const pinnedBottomRowData = useMemo(() => {
+    if (positions.length === 0) return []
+    return [{
+      id: '__totals__',
+      account: '',
+      underlying: 'TOTAL',
+      symbol: '',
+      type: '',
+      strike: null,
+      expiry: null,
+      dte: null,
+      qty: null,
+      entry: null,
+      mark: null,
+      pnl: positions.reduce((sum, p) => sum + (p.pnl ?? 0), 0),
+      pnl_pct: null,
+      delta: null,
+      gamma: null,
+      theta: positions.reduce((sum, p) => sum + (p.theta ?? 0), 0),
+      vega: null,
+      iv: null,
+    }]
+  }, [positions])
 
   return (
     <div className="ag-theme-alpine-dark w-full" style={{ height: gridHeight }}>
@@ -146,6 +178,13 @@ export function BrokerPositionGrid({ positions }: BrokerPositionGridProps) {
         rowData={positions}
         columnDefs={columnDefs}
         getRowId={(params) => params.data.id}
+        pinnedBottomRowData={pinnedBottomRowData}
+        getRowStyle={(params) => {
+          if (params.node.rowPinned === 'bottom') {
+            return { fontWeight: '700', background: 'rgba(255,255,255,0.04)', borderTop: '2px solid #333' }
+          }
+          return undefined
+        }}
       />
     </div>
   )

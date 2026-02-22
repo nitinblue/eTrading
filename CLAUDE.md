@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 19, 2026 (session 27)
+# Last Updated: February 21, 2026 (session 29)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log s1-s26, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -22,6 +22,8 @@ Mental model: Macro Context → My Exposure → Action Required. Never "I have a
 ---
 
 ## [NITIN OWNS] BUSINESS OBJECTIVES — CURRENT
+A stateful, constrained decision-maker that chooses actions under uncertainty using a formal objective function.
+🔹 Model Class 1: Regime Detection (Structural, not predictive)
 
 ### Feb 19, 2026 (Session 27) — THE PIVOT: One View, Real World
 We have built a gazillion things over 26 sessions — 16 agents, 7 research templates, screeners, VaR, fitness checker, probability calculator, broker sync, 11 frontend pages, containers, workflow engine. **But none of it works end-to-end as a real trading tool.**
@@ -95,6 +97,7 @@ Everything below EXISTS in the codebase. The job now is to wire each into the Tr
 | **Portfolio Evaluation** | `services/portfolio_evaluation_service.py` | Exit rules: take profit, stop loss, DTE, delta breach, roll, adjust | NOT YET |
 | **Screeners** | `services/screeners/` (7 screeners) | VIX regime, IV rank, LEAPS, correction, earnings, black swan, arbitrage | VIA TEMPLATES |
 | **QuantResearchAgent** | `agents/analysis/quant_research.py` | Auto-evaluates templates, books into research portfolios | NOT YET |
+| **Market Regime (HMM)** | `market_regime` library (external), 4 endpoints in `web/api_v2.py` | HMM-based regime detection (R1-R4), research with transition matrices, feature z-scores, strategy comments | YES (api_v2.py, no UI yet) |
 | **Macro Context** | `services/macro_context_service.py`, `config/daily_macro.yaml` | VIX regime, macro outlook, expected vol — gates all recommendations | NOT YET |
 | **Earnings Calendar** | `services/earnings_calendar_service.py` | yfinance earnings dates, 24h cache | NOT YET |
 | **Performance Metrics** | `services/performance_metrics_service.py` | Win rate, Sharpe, drawdown, expectancy, profit factor, CAGR | NOT YET |
@@ -128,6 +131,14 @@ Everything below EXISTS in the codebase. The job now is to wire each into the Tr
 | POST | `/api/v2/trading-sheet/{portfolio}/evaluate` | Evaluate research template — per-symbol condition breakdown | v1 DONE |
 | POST | `/api/v2/trading-sheet/{portfolio}/add-whatif` | Add proposed trade to WhatIf | v1 DONE |
 | POST | `/api/v2/trading-sheet/{portfolio}/book` | Convert WhatIf to paper trade | v1 DONE |
+
+### Market Regime Endpoints (in api_v2.py)
+| Method | Path | What It Does | Status |
+|--------|------|-------------|--------|
+| GET | `/api/v2/regime/{ticker}` | Tier 1: regime label (R1-R4), confidence, trend, probabilities | DONE |
+| POST | `/api/v2/regime/batch` | Tier 1 batch: multiple tickers `{"tickers": [...]}` | DONE |
+| GET | `/api/v2/regime/{ticker}/research` | Tier 2: full research — transition matrix, features, history, strategy | DONE |
+| POST | `/api/v2/regime/research` | Tier 2 batch: multi-ticker research + cross-comparison | DONE |
 
 ### What GET /trading-sheet returns today
 ```
@@ -184,6 +195,8 @@ RiskFactorsSection (table), TemplateEvalSection (dropdown + condition breakdown)
 | **Trade Booking** | `services/trade_booking_service.py` |
 | **Broker Sync** | `services/portfolio_sync.py`, `services/position_sync.py` |
 | **DB/ORM** | `core/database/schema.py` (21 tables), `core/database/session.py`, `repositories/` |
+| **Market Regime** | External lib `market_regime` (editable install from `../market_regime`). 4 API endpoints in `web/api_v2.py` (regime section). Frontend endpoints in `frontend/src/api/endpoints.ts` |
+| **Agent Intelligence** | `services/agent_brain.py` (AgentBrain — LLM via Claude API), 4 endpoints in `web/api_v2.py` (agent section), `frontend/src/hooks/useAgentBrain.ts` |
 | **Web Server** | `web/approval_api.py` (FastAPI factory), `web/api_v2.py`, `web/api_admin.py`, `web/api_reports.py`, `web/api_explorer.py`, `web/api_agents.py` |
 | **Config** | `config/risk_config.yaml` (15 portfolios), `config/brokers.yaml` (4 brokers), `config/workflow_rules.yaml`, `config/research_templates.yaml` |
 | **Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid + Recharts), 11 pages + 4 settings |
@@ -236,8 +249,22 @@ python -m trading_cotrader.harness.runner --skip-sync
 
 ---
 
+## [CLAUDE OWNS] OPEN ITEMS
+
+### Agent Intelligence (Dashboard) — Unfinished
+1. 3 AgentBrain methods have no API endpoints: `explain_recommendation()`, `generate_accountability_message()`, `generate_self_assessment()`
+2. Position analysis endpoint (`/agent/analyze/{symbol}`) exists but no UI trigger
+3. Chat is stateless — no conversation history across messages
+4. Data source gap — brief uses raw broker adapter data, not processed container data with corrected P&L/risk
+5. Requires `ANTHROPIC_API_KEY` in `.env` to function
+
+### Market Regime — API Done, UI Pending
+- 4 endpoints live in `api_v2.py`, Pydantic models serialize cleanly
+- Frontend endpoint constants added to `endpoints.ts`
+- Nitin will provide detailed UI integration plan
+
 ## [CLAUDE OWNS] OPEN QUESTIONS
 
 | # | Question | Context |
 |---|----------|---------|
-| 1 | What feature to plug in first? | Nitin directs — options: accurate VaR, P&L attribution, order execution, position health, macro gate |
+| 1 | Market regime UI integration plan | Nitin to provide detailed plan for where/how regime data appears in UI |

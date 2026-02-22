@@ -142,12 +142,34 @@ def _serialize_trade(trade: TradeORM) -> dict:
     }
 
 
+def _get_margin_buffer_multiplier() -> float:
+    """Load margin_buffer_multiplier from risk_config.yaml."""
+    try:
+        import yaml
+        config_path = Path(__file__).parent.parent / "config" / "risk_config.yaml"
+        with open(config_path, 'r') as f:
+            cfg = yaml.safe_load(f)
+        return float(cfg.get('margin', {}).get('margin_buffer_multiplier', 2.0))
+    except Exception:
+        return 2.0
+
+
 def _serialize_portfolio(p: PortfolioORM, open_count: int = 0) -> dict:
     """Serialize a portfolio ORM."""
     equity = _dec(p.total_equity)
     cash = _dec(p.cash_balance)
     initial = _dec(p.initial_capital)
+    buying_power = _dec(p.buying_power)
     deployed_pct = ((equity - cash) / equity * 100) if equity else 0
+
+    # Margin computations
+    margin_used = max(equity - buying_power, 0) if equity else 0
+    available_margin = buying_power
+    buffer_mult = _get_margin_buffer_multiplier()
+    margin_buffer = margin_used * buffer_mult
+    margin_utilization_pct = (margin_used / equity * 100) if equity else 0
+    margin_buffer_remaining = available_margin - margin_buffer
+    risk_pct_of_margin = ((_dec(p.var_1d_95) / margin_used) * 100) if margin_used else 0
 
     # Determine currency from broker name
     currency = 'USD'
@@ -164,7 +186,7 @@ def _serialize_portfolio(p: PortfolioORM, open_count: int = 0) -> dict:
         'currency': currency,
         'initial_capital': initial,
         'cash_balance': cash,
-        'buying_power': _dec(p.buying_power),
+        'buying_power': buying_power,
         'total_equity': equity,
         'portfolio_delta': _dec(p.portfolio_delta),
         'portfolio_gamma': _dec(p.portfolio_gamma),
@@ -185,6 +207,14 @@ def _serialize_portfolio(p: PortfolioORM, open_count: int = 0) -> dict:
         'unrealized_pnl': _dec(p.unrealized_pnl),
         'deployed_pct': round(deployed_pct, 1),
         'open_trade_count': open_count,
+        # Margin / Capital columns
+        'margin_used': round(margin_used, 2),
+        'available_margin': round(available_margin, 2),
+        'margin_utilization_pct': round(margin_utilization_pct, 1),
+        'margin_buffer': round(margin_buffer, 2),
+        'margin_buffer_remaining': round(margin_buffer_remaining, 2),
+        'risk_pct_of_margin': round(risk_pct_of_margin, 1),
+        'margin_buffer_multiplier': buffer_mult,
     }
 
 
@@ -729,13 +759,19 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             if portfolio:
                 bundle = cm.get_bundle(portfolio)
                 if bundle and bundle.risk_factors.is_initialized:
-                    return {'factors': bundle.risk_factors.to_grid_rows()}
+                    rows = bundle.risk_factors.to_grid_rows()
+                    for r in rows:
+                        r['account'] = bundle.config_name
+                    return {'factors': rows}
                 return {'factors': []}
             # All risk factors from all bundles
             all_factors = []
             for bundle in cm.get_all_bundles():
                 if bundle.risk_factors.is_initialized:
-                    all_factors.extend(bundle.risk_factors.to_grid_rows())
+                    rows = bundle.risk_factors.to_grid_rows()
+                    for r in rows:
+                        r['account'] = bundle.config_name
+                    all_factors.extend(rows)
             if all_factors:
                 return {'factors': all_factors}
             # Fallback to default bundle
@@ -773,8 +809,11 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             if portfolio:
                 bundle = cm.get_bundle(portfolio)
                 if bundle and bundle.positions.is_initialized:
+                    rows = bundle.positions.to_grid_rows()
+                    for r in rows:
+                        r['account'] = bundle.config_name
                     return {
-                        'positions': bundle.positions.to_grid_rows(),
+                        'positions': rows,
                         'count': bundle.positions.count,
                     }
             else:
@@ -782,7 +821,10 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                 all_positions = []
                 for bundle in cm.get_all_bundles():
                     if bundle.positions.is_initialized:
-                        all_positions.extend(bundle.positions.to_grid_rows())
+                        rows = bundle.positions.to_grid_rows()
+                        for r in rows:
+                            r['account'] = bundle.config_name
+                        all_positions.extend(rows)
                 if all_positions:
                     return {'positions': all_positions, 'count': len(all_positions)}
                 # Fallback to default bundle
@@ -1134,6 +1176,22 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                         logger.warning(f"Failed to get order history from {name}: {e}")
         return {'orders': results, 'count': len(results)}
 
+    @router.get("/account/live-orders")
+    async def get_live_orders():
+        """Get all working/pending orders from connected brokers."""
+        results = []
+        if engine and hasattr(engine, '_adapters'):
+            for name, adapter in engine._adapters.items():
+                if hasattr(adapter, 'get_live_orders'):
+                    try:
+                        orders = adapter.get_live_orders()
+                        for o in orders:
+                            o['broker'] = name
+                        results.extend(orders)
+                    except Exception as e:
+                        logger.warning(f"Failed to get live orders from {name}: {e}")
+        return {'orders': results, 'count': len(results)}
+
     @router.get("/account/equity-curve")
     async def get_equity_curve(
         period: str = Query('1m', description="Time period: 1d, 1m, 3m, 6m, 1y, all"),
@@ -1165,5 +1223,368 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                     except Exception as e:
                         logger.warning(f"Failed to get market metrics from {name}: {e}")
         return {'metrics': {}}
+
+    # ------------------------------------------------------------------
+    # Market Regime (HMM-based regime detection via market_regime library)
+    # ------------------------------------------------------------------
+
+    # Lazy-init singletons — created on first request, reused after
+    _regime_svc_holder: dict = {}
+
+    def _get_regime_service():
+        """Get or create RegimeService singleton."""
+        if 'svc' not in _regime_svc_holder:
+            from market_regime import RegimeService, DataService
+            data_svc = DataService()
+            _regime_svc_holder['svc'] = RegimeService(data_service=data_svc)
+        return _regime_svc_holder['svc']
+
+    # ------------------------------------------------------------------
+    # Market Watchlist (configurable watchlist + regime detection)
+    # ------------------------------------------------------------------
+
+    @router.get("/market/watchlist")
+    async def get_market_watchlist():
+        """
+        Return configured market watchlist with current HMM regime for each ticker.
+
+        Reads market_watchlist.yaml, calls regime detect_batch, merges results.
+        """
+        import yaml
+        from pathlib import Path
+
+        config_path = Path(__file__).parent.parent / 'config' / 'market_watchlist.yaml'
+        if not config_path.exists():
+            raise HTTPException(404, "market_watchlist.yaml not found")
+
+        with open(config_path, 'r') as f:
+            cfg = yaml.safe_load(f)
+
+        items = cfg.get('watchlist', [])
+        if not items:
+            return []
+
+        tickers = [item['ticker'] for item in items]
+
+        # Detect regimes for all tickers in one batch call
+        regime_map = {}
+        try:
+            svc = _get_regime_service()
+            results = svc.detect_batch(tickers=tickers)
+            for ticker_key, r in results.items():
+                regime_map[ticker_key] = {
+                    'regime': r.regime.value,
+                    'regime_name': r.regime.name,
+                    'confidence': r.confidence,
+                    'trend_direction': r.trend_direction,
+                }
+        except Exception as e:
+            logger.warning(f"Regime batch detection failed for watchlist: {e}")
+
+        # Also get strategy comments via research (lightweight — cached by library)
+        strategy_map = {}
+        try:
+            svc = _get_regime_service()
+            for t in tickers:
+                try:
+                    research = svc.research(t)
+                    strategy_map[t] = research.strategy_comment
+                except Exception:
+                    strategy_map[t] = ''
+        except Exception:
+            pass
+
+        result = []
+        for item in items:
+            t = item['ticker']
+            regime_info = regime_map.get(t, {})
+            result.append({
+                'name': item['name'],
+                'ticker': t,
+                'asset_class': item.get('asset_class', ''),
+                'regime': regime_info.get('regime', 0),
+                'regime_name': regime_info.get('regime_name', 'UNKNOWN'),
+                'confidence': regime_info.get('confidence', 0),
+                'trend_direction': regime_info.get('trend_direction'),
+                'strategy_comment': strategy_map.get(t, ''),
+            })
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Market Regime (HMM-based regime detection via market_regime library)
+    # ------------------------------------------------------------------
+
+    @router.get("/regime/{ticker}")
+    async def get_regime(ticker: str):
+        """
+        Tier 1: Get current regime label for a single ticker.
+
+        Returns regime ID (R1-R4), confidence, trend direction,
+        and probability distribution across all regimes.
+        """
+        try:
+            svc = _get_regime_service()
+            result = svc.detect(ticker.upper())
+            return {
+                'ticker': result.ticker,
+                'regime': result.regime.value,
+                'regime_name': result.regime.name,
+                'confidence': result.confidence,
+                'trend_direction': result.trend_direction,
+                'regime_probabilities': {
+                    str(k): v for k, v in result.regime_probabilities.items()
+                },
+                'as_of_date': result.as_of_date.isoformat() if result.as_of_date else None,
+                'model_version': result.model_version,
+            }
+        except Exception as e:
+            logger.error(f"Regime detection failed for {ticker}: {e}")
+            raise HTTPException(500, f"Regime detection failed: {e}")
+
+    @router.post("/regime/batch")
+    async def get_regime_batch(body: dict):
+        """
+        Tier 1 batch: Get regime labels for multiple tickers.
+
+        Request body: {"tickers": ["SPY", "QQQ", "GLD", "TLT"]}
+        """
+        tickers = body.get('tickers', [])
+        if not tickers:
+            raise HTTPException(400, "tickers list is required")
+
+        try:
+            svc = _get_regime_service()
+            results = svc.detect_batch(tickers=[t.upper() for t in tickers])
+            return {
+                'results': {
+                    ticker: {
+                        'regime': r.regime.value,
+                        'regime_name': r.regime.name,
+                        'confidence': r.confidence,
+                        'trend_direction': r.trend_direction,
+                        'regime_probabilities': {
+                            str(k): v for k, v in r.regime_probabilities.items()
+                        },
+                        'as_of_date': r.as_of_date.isoformat() if r.as_of_date else None,
+                    }
+                    for ticker, r in results.items()
+                },
+                'count': len(results),
+            }
+        except Exception as e:
+            logger.error(f"Batch regime detection failed: {e}")
+            raise HTTPException(500, f"Batch regime detection failed: {e}")
+
+    @router.get("/regime/{ticker}/research")
+    async def get_regime_research(ticker: str):
+        """
+        Tier 2: Full research for a single ticker.
+
+        Returns regime + transition matrix, state means, feature z-scores,
+        recent history (20 days), regime distribution, strategy comment.
+        """
+        try:
+            svc = _get_regime_service()
+            r = svc.research(ticker.upper())
+            return r.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Regime research failed for {ticker}: {e}")
+            raise HTTPException(500, f"Regime research failed: {e}")
+
+    @router.get("/regime/{ticker}/chart")
+    async def get_regime_chart(ticker: str):
+        """
+        Return regime detection chart as PNG image.
+
+        Uses market_regime plot_ticker() to generate a two-panel chart:
+        top = price with colored regime bands, bottom = confidence bars.
+        """
+        import io
+        import base64
+        try:
+            svc = _get_regime_service()
+            explanation = svc.explain(ticker.upper())
+            ohlcv = svc.data_service.get_ohlcv(ticker.upper())
+
+            # Generate chart to BytesIO
+            from market_regime.cli.plot import plot_ticker as _plot_ticker
+            import matplotlib
+            matplotlib.use('Agg')  # non-interactive backend
+            import matplotlib.pyplot as _plt
+
+            # Temporarily monkey-patch to capture bytes
+            buf = io.BytesIO()
+
+            # Replicate plot_ticker but save to buffer
+            from market_regime.config import get_settings as _get_settings
+            from market_regime.models.regime import RegimeID as _RegimeID
+            import matplotlib.dates as _mdates
+            import numpy as _np
+
+            settings = _get_settings()
+            plot_cfg = settings.display.plot
+            regime_colors = {_RegimeID(k): v for k, v in settings.regimes.colors.items()}
+            regime_labels = {_RegimeID(k): v for k, v in settings.regimes.labels.items()}
+
+            entries = explanation.regime_series.entries
+            if not entries:
+                raise HTTPException(404, f"No regime series for {ticker}")
+
+            dates = [e.date for e in entries]
+            regimes = [e.regime for e in entries]
+            confidences = [e.confidence for e in entries]
+
+            ohlcv_copy = ohlcv.copy()
+            ohlcv_copy.index = ohlcv_copy.index.date
+            prices = [
+                ohlcv_copy.loc[d, "Close"] if d in ohlcv_copy.index else _np.nan
+                for d in dates
+            ]
+
+            transitions = []
+            for i in range(1, len(regimes)):
+                if regimes[i] != regimes[i - 1]:
+                    transitions.append(i)
+
+            fig, (ax_price, ax_conf) = _plt.subplots(
+                2, 1,
+                figsize=tuple(plot_cfg.figure_size),
+                height_ratios=plot_cfg.height_ratios,
+                sharex=True,
+                gridspec_kw={"hspace": 0.05},
+            )
+
+            ax_price.plot(dates, prices, color="black", linewidth=0.8, zorder=3)
+
+            i = 0
+            while i < len(dates):
+                j = i + 1
+                while j < len(dates) and regimes[j] == regimes[i]:
+                    j += 1
+                color = regime_colors[regimes[i]]
+                ax_price.axvspan(
+                    dates[i], dates[min(j, len(dates) - 1)],
+                    alpha=0.15, color=color, zorder=1,
+                )
+                i = j
+
+            for idx in transitions:
+                d = dates[idx]
+                ax_price.axvline(d, color="gray", linestyle="--", linewidth=0.7, alpha=0.7, zorder=2)
+                ax_conf.axvline(d, color="gray", linestyle="--", linewidth=0.7, alpha=0.7, zorder=2)
+                if not _np.isnan(prices[idx]):
+                    ax_price.plot(
+                        d, prices[idx], marker="v",
+                        color=regime_colors[regimes[idx]], markersize=6, zorder=4,
+                    )
+
+            ax_price.set_ylabel("Close Price")
+            ax_price.set_title(f"{ticker.upper()} — Regime Detection", fontsize=13, fontweight="bold")
+            ax_price.tick_params(axis="x", labelbottom=False)
+
+            legend_handles = [
+                _plt.Line2D([0], [0], color=c, linewidth=6, alpha=0.4, label=regime_labels[rid])
+                for rid, c in regime_colors.items()
+            ]
+            ax_price.legend(
+                handles=legend_handles, loc="upper left",
+                fontsize=plot_cfg.font_size, framealpha=plot_cfg.legend_alpha,
+            )
+
+            bar_colors = [regime_colors[r] for r in regimes]
+            ax_conf.bar(dates, confidences, color=bar_colors, width=1.0, alpha=0.7)
+            ax_conf.set_ylabel("Confidence")
+            ax_conf.set_ylim(0, 1)
+            ax_conf.yaxis.set_major_formatter(_plt.FuncFormatter(lambda y, _: f"{y:.0%}"))
+            ax_conf.xaxis.set_major_locator(_mdates.MonthLocator(interval=plot_cfg.month_interval))
+            ax_conf.xaxis.set_major_formatter(_mdates.DateFormatter("%Y-%m"))
+            fig.autofmt_xdate(rotation=plot_cfg.xaxis_rotation)
+
+            _plt.tight_layout()
+            fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            _plt.close(fig)
+            buf.seek(0)
+
+            png_b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+            return {
+                'ticker': ticker.upper(),
+                'chart_base64': png_b64,
+                'format': 'png',
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Regime chart generation failed for {ticker}: {e}")
+            raise HTTPException(500, f"Chart generation failed: {e}")
+
+    @router.post("/regime/research")
+    async def get_regime_research_batch(body: dict):
+        """
+        Tier 2 batch: Full research for multiple tickers with cross-comparison.
+
+        Request body: {"tickers": ["SPY", "QQQ", "GLD"]}
+        """
+        tickers = body.get('tickers', [])
+        if not tickers:
+            raise HTTPException(400, "tickers list is required")
+
+        try:
+            svc = _get_regime_service()
+            report = svc.research_batch(tickers=[t.upper() for t in tickers])
+            return report.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Batch regime research failed: {e}")
+            raise HTTPException(500, f"Batch regime research failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Technicals (via market_regime library)
+    # ------------------------------------------------------------------
+
+    @router.get("/technicals/{ticker}")
+    async def get_technicals(ticker: str):
+        """
+        Technical indicators for a single ticker.
+
+        Returns moving averages, RSI, Bollinger, MACD, Stochastic,
+        support/resistance, and actionable signals.
+        """
+        try:
+            svc = _get_regime_service()
+            snapshot = svc.get_technicals(ticker.upper())
+            return snapshot.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Technicals failed for {ticker}: {e}")
+            raise HTTPException(500, f"Technicals failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Fundamentals (via market_regime library)
+    # ------------------------------------------------------------------
+
+    @router.get("/fundamentals/{ticker}")
+    async def get_fundamentals(ticker: str):
+        """Stock fundamentals: valuation, earnings, margins, cash, debt, dividends, 52w range."""
+        try:
+            from market_regime import fetch_fundamentals
+            snapshot = fetch_fundamentals(ticker.upper())
+            return snapshot.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Fundamentals failed for {ticker}: {e}")
+            raise HTTPException(500, f"Fundamentals failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Macro Calendar (via market_regime library)
+    # ------------------------------------------------------------------
+
+    @router.get("/macro/calendar")
+    async def get_macro_calendar(lookahead_days: int = 90):
+        """Macro economic calendar: FOMC, CPI, NFP, PCE, GDP events."""
+        try:
+            from market_regime import get_macro_calendar as _get_macro_cal
+            cal = _get_macro_cal(lookahead_days=lookahead_days)
+            return cal.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Macro calendar failed: {e}")
+            raise HTTPException(500, f"Macro calendar failed: {e}")
 
     return router
