@@ -8,6 +8,7 @@ import {
   DTERenderer,
 } from '../components/grids/cellRenderers'
 import { useRiskFactors, useBrokerPositions } from '../hooks/useRisk'
+import { AgentBadge } from '../components/common/AgentBadge'
 import { Spinner } from '../components/common/Spinner'
 import { EmptyState } from '../components/common/EmptyState'
 import { clsx } from 'clsx'
@@ -364,6 +365,11 @@ export function RiskPage() {
 
   return (
     <div className="space-y-3">
+      {/* Agent ownership */}
+      <div className="flex items-center gap-1.5">
+        <AgentBadge agent="risk" />
+        <AgentBadge agent="circuit_breaker" />
+      </div>
       {/* Summary header */}
       {totals && (
         <div className="card">

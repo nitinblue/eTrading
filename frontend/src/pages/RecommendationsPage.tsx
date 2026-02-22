@@ -6,6 +6,7 @@ import { StatusBadgeRenderer } from '../components/grids/cellRenderers'
 import { useRecommendations, useApproveRec, useRejectRec, useDeferRec } from '../hooks/useRecommendations'
 import { RecommendationModal } from '../components/modals/RecommendationModal'
 import { Spinner } from '../components/common/Spinner'
+import { AgentBadge } from '../components/common/AgentBadge'
 import { EmptyState } from '../components/common/EmptyState'
 import { showToast } from '../components/common/Toast'
 import { clsx } from 'clsx'
@@ -151,6 +152,11 @@ export function RecommendationsPage() {
 
   return (
     <div className="space-y-3">
+      {/* Agent ownership */}
+      <div className="flex items-center gap-1.5">
+        <AgentBadge agent="quant_research" />
+        <AgentBadge agent="circuit_breaker" />
+      </div>
       {/* Filter bar */}
       <div className="card">
         <div className="card-body">

@@ -22,13 +22,14 @@ import { TradingDashboardPage } from './pages/TradingDashboardPage'
 import { FundsPage } from './pages/FundsPage'
 import { MarketDashboardPage } from './pages/MarketDashboardPage'
 import { ResearchPage } from './pages/ResearchPage'
+import { ResearchDashboardPage } from './pages/ResearchDashboardPage'
 import { ToastContainer } from './components/common/Toast'
 
 export default function App() {
   return (
     <AppShell>
       <Routes>
-        <Route path="/" element={<MarketDashboardPage />} />
+        <Route path="/" element={<ResearchDashboardPage />} />
         <Route path="/market" element={<MarketDashboardPage />} />
         <Route path="/market/:ticker" element={<ResearchPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />

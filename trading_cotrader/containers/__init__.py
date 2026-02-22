@@ -19,6 +19,7 @@ from .risk_factor_container import RiskFactorContainer
 from .trade_container import TradeContainer
 from .portfolio_bundle import PortfolioBundle
 from .container_manager import ContainerManager, CellUpdate, ContainerEvent
+from .research_container import ResearchContainer, ResearchEntry, MacroContext
 
 __all__ = [
     'PortfolioContainer',
@@ -29,4 +30,7 @@ __all__ = [
     'ContainerManager',
     'CellUpdate',
     'ContainerEvent',
+    'ResearchContainer',
+    'ResearchEntry',
+    'MacroContext',
 ]

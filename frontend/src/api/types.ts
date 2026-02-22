@@ -629,8 +629,11 @@ export interface AgentInfo {
   display_name: string
   category: 'safety' | 'perception' | 'analysis' | 'execution' | 'learning'
   role: string
+  intro: string
   description: string
   responsibilities: string[]
+  datasources: string[]
+  boundaries: string[]
   runs_during: string[]
   capabilities_implemented: string[]
   capabilities_planned: string[]
@@ -932,6 +935,125 @@ export interface TemplateEvaluationResult {
   template: { name: string; display_name: string; description: string; universe: string[] }
   evaluated_symbols: EvaluatedSymbol[]
   summary: string
+}
+
+// ---------------------------------------------------------------------------
+// Research Container Types
+// ---------------------------------------------------------------------------
+
+export interface ResearchEntry {
+  symbol: string
+  name: string
+  asset_class: string
+  timestamp: string | null
+  // Price & Technicals
+  current_price: number | null
+  atr: number | null
+  atr_pct: number | null
+  rsi_14: number | null
+  rsi_overbought: boolean
+  rsi_oversold: boolean
+  // MAs
+  sma_20: number | null
+  sma_50: number | null
+  sma_200: number | null
+  ema_9: number | null
+  ema_21: number | null
+  price_vs_sma_20_pct: number | null
+  price_vs_sma_50_pct: number | null
+  price_vs_sma_200_pct: number | null
+  // Bollinger
+  bollinger_upper: number | null
+  bollinger_lower: number | null
+  bollinger_pct_b: number | null
+  bollinger_bandwidth: number | null
+  // MACD
+  macd_histogram: number | null
+  macd_bullish_cross: boolean
+  macd_bearish_cross: boolean
+  // Stochastic
+  stochastic_k: number | null
+  stochastic_d: number | null
+  stochastic_overbought: boolean
+  stochastic_oversold: boolean
+  // Support/Resistance
+  support: number | null
+  resistance: number | null
+  price_vs_support_pct: number | null
+  price_vs_resistance_pct: number | null
+  // Signals
+  signals: Array<{ name: string; direction: string; strength: string; description: string }>
+  // Regime
+  hmm_regime_id: number | null
+  hmm_regime_label: string | null
+  hmm_confidence: number | null
+  hmm_trend_direction: string | null
+  hmm_strategy_comment: string | null
+  // Fundamentals
+  long_name: string | null
+  sector: string | null
+  industry: string | null
+  market_cap: number | null
+  beta: number | null
+  pe_ratio: number | null
+  forward_pe: number | null
+  peg_ratio: number | null
+  earnings_growth: number | null
+  revenue_growth: number | null
+  dividend_yield: number | null
+  profit_margins: number | null
+  pct_from_52w_high: number | null
+  pct_from_52w_low: number | null
+  next_earnings_date: string | null
+  days_to_earnings: number | null
+  // Phase (Wyckoff)
+  phase_name: string | null
+  phase_confidence: number | null
+  phase_description: string | null
+  phase_higher_highs: boolean
+  phase_higher_lows: boolean
+  phase_lower_highs: boolean
+  phase_lower_lows: boolean
+  phase_range_compression: number | null
+  phase_volume_trend: string | null
+  phase_price_vs_sma_50_pct: number | null
+  // VCP (Volatility Contraction Pattern)
+  vcp_stage: string | null
+  vcp_score: number | null
+  vcp_contraction_count: number | null
+  vcp_current_range_pct: number | null
+  vcp_range_compression: number | null
+  vcp_volume_trend: string | null
+  vcp_pivot_price: number | null
+  vcp_pivot_distance_pct: number | null
+  vcp_days_in_base: number | null
+  vcp_above_sma_50: boolean
+  vcp_above_sma_200: boolean
+  vcp_description: string | null
+  // Screening
+  triggered_templates: string[]
+}
+
+export interface ResearchMacroContext {
+  timestamp: string | null
+  next_event_name: string | null
+  next_event_date: string | null
+  next_event_impact: string | null
+  next_event_options_impact: string | null
+  days_to_next_event: number | null
+  next_fomc_date: string | null
+  days_to_fomc: number | null
+  events_7d: MacroEvent[]
+  events_30d: MacroEvent[]
+}
+
+export interface ResearchResponse {
+  data: ResearchEntry[]
+  macro: ResearchMacroContext
+  count: number
+  populated_at: string | null
+  populate_stats: Record<string, unknown> | null
+  from_db?: boolean
 }
 
 // ---------------------------------------------------------------------------

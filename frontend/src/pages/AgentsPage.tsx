@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { Bot, Beaker, BookOpen, Brain, AlertCircle, Clock, Award, Activity } from 'lucide-react'
+import { Beaker, BookOpen, Brain, AlertCircle, Clock, Award, Activity } from 'lucide-react'
 import { useAgents, useAgentSummary, useMLStatus, useAgentTimeline } from '../hooks/useAgents'
 import { AgentCard } from '../components/agents/AgentCard'
+import { CATEGORY_CONFIG, AGENT_ICONS, type AgentCategory } from '../config/agentConfig'
 import type { AgentInfo, AgentTimelineCycle } from '../api/types'
 
 type TabId = 'active' | 'research' | 'knowledge' | 'ml'
 
+const CategoryIcon = CATEGORY_CONFIG.safety.icon // Shield — used for tab
+
 const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: 'active', label: 'Active Agents', icon: Bot },
+  { id: 'active', label: 'Active Agents', icon: CategoryIcon },
   { id: 'research', label: 'Quant Research', icon: Beaker },
   { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
   { id: 'ml', label: 'ML/RL Status', icon: Brain },
@@ -28,9 +31,9 @@ function SummaryBar() {
   const total = Object.values(summary.grade_distribution).reduce((a, b) => a + b, 0)
 
   return (
-    <div className="flex items-center gap-4 mb-4 text-xs">
+    <div className="flex items-center gap-4 mb-4 text-xs flex-wrap">
       <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-bg-secondary border border-border-primary">
-        <Bot size={12} className="text-accent-blue" />
+        <Activity size={12} className="text-accent-blue" />
         <span className="text-text-primary font-medium">{summary.total_agents} Active</span>
       </div>
       {summary.today_errors > 0 && (
@@ -94,13 +97,33 @@ function ActiveAgentsTab() {
     <div>
       <SummaryBar />
 
-      {/* Agent cards grid */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {categoryOrder.map((cat) =>
-          grouped[cat]?.map((agent) => (
-            <AgentCard key={agent.name} agent={agent} />
-          )),
-        )}
+      {/* Agent cards grouped by category with headers */}
+      <div className="space-y-5 mb-6">
+        {categoryOrder.map((cat) => {
+          const agents = grouped[cat]
+          if (!agents || agents.length === 0) return null
+          const catConfig = CATEGORY_CONFIG[cat as AgentCategory]
+          const CatIcon = catConfig.icon
+          return (
+            <div key={cat}>
+              {/* Category header */}
+              <div className="flex items-center gap-2 mb-2">
+                <div className={clsx('w-5 h-5 rounded flex items-center justify-center', catConfig.bg)}>
+                  <CatIcon size={12} className={catConfig.color} />
+                </div>
+                <h3 className={clsx('text-xs font-bold uppercase tracking-wider', catConfig.color)}>{catConfig.label}</h3>
+                <div className="flex-1 h-px bg-border-secondary" />
+                <span className="text-[10px] text-text-muted">{agents.length} agent{agents.length > 1 ? 's' : ''}</span>
+              </div>
+              {/* Cards row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {agents.map((agent) => (
+                  <AgentCard key={agent.name} agent={agent} />
+                ))}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Recent Activity */}
@@ -122,30 +145,38 @@ function ActiveAgentsTab() {
                 </tr>
               </thead>
               <tbody>
-                {recentActivity.slice(0, 30).map((run, i) => (
-                  <tr key={i} className="border-b border-border-secondary/50 hover:bg-bg-hover">
-                    <td className="px-3 py-1.5 font-mono text-text-muted">
-                      {new Date(run.started_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
-                    </td>
-                    <td className="px-3 py-1.5 text-text-primary">{run.agent_name}</td>
-                    <td className="px-3 py-1.5 text-text-secondary">{run.workflow_state || '--'}</td>
-                    <td className="px-3 py-1.5">
-                      <span
-                        className={clsx(
-                          run.status === 'completed' ? 'text-green-400' :
-                          run.status === 'error' ? 'text-red-400' :
-                          'text-text-secondary',
-                        )}
-                      >
-                        {run.status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-1.5 text-right font-mono text-text-muted">
-                      {run.duration_ms != null ? `${run.duration_ms}ms` : '--'}
-                    </td>
-                    <td className="px-3 py-1.5 font-mono text-text-muted">#{run.cycle}</td>
-                  </tr>
-                ))}
+                {recentActivity.slice(0, 30).map((run, i) => {
+                  const RunIcon = AGENT_ICONS[run.agent_name]
+                  return (
+                    <tr key={i} className="border-b border-border-secondary/50 hover:bg-bg-hover">
+                      <td className="px-3 py-1.5 font-mono text-text-muted">
+                        {new Date(run.started_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                      </td>
+                      <td className="px-3 py-1.5 text-text-primary">
+                        <div className="flex items-center gap-1.5">
+                          {RunIcon && <RunIcon size={12} className="text-text-muted" />}
+                          {run.agent_name}
+                        </div>
+                      </td>
+                      <td className="px-3 py-1.5 text-text-secondary">{run.workflow_state || '--'}</td>
+                      <td className="px-3 py-1.5">
+                        <span
+                          className={clsx(
+                            run.status === 'completed' ? 'text-green-400' :
+                            run.status === 'error' ? 'text-red-400' :
+                            'text-text-secondary',
+                          )}
+                        >
+                          {run.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono text-text-muted">
+                        {run.duration_ms != null ? `${run.duration_ms}ms` : '--'}
+                      </td>
+                      <td className="px-3 py-1.5 font-mono text-text-muted">#{run.cycle}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

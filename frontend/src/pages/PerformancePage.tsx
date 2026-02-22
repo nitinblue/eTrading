@@ -6,6 +6,7 @@ import {
   Line, ComposedChart, Cell,
 } from 'recharts'
 import { defaultGridOptions, numericColDef } from '../components/grids/gridTheme'
+import { AgentBadge } from '../components/common/AgentBadge'
 import { PnLRenderer } from '../components/grids/cellRenderers'
 import { usePerformanceMetrics, useWeeklyPnL, useStrategyBreakdown, useSourceAttribution } from '../hooks/usePerformance'
 import { usePortfolios } from '../hooks/usePortfolios'
@@ -136,6 +137,11 @@ export function PerformancePage() {
 
   return (
     <div className="space-y-3">
+      {/* Agent ownership */}
+      <div className="flex items-center gap-1.5">
+        <AgentBadge agent="tech_architect" />
+        <AgentBadge agent="trade_discipline" />
+      </div>
       {/* Portfolio tabs */}
       <div className="card">
         <div className="card-body">

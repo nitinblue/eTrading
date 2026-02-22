@@ -8,6 +8,7 @@ import { BrokerPositionGrid } from '../components/grids/BrokerPositionGrid'
 import { PortfolioCard } from '../components/cards/PortfolioCard'
 import { PnLDisplay } from '../components/common/PnLDisplay'
 import { GreeksBar } from '../components/common/GreeksBar'
+import { AgentBadge } from '../components/common/AgentBadge'
 import { Spinner } from '../components/common/Spinner'
 import { EmptyState } from '../components/common/EmptyState'
 import { clsx } from 'clsx'
@@ -63,6 +64,10 @@ export function PortfolioPage() {
 
   return (
     <div className="space-y-3">
+      {/* Agent ownership */}
+      <div className="flex items-center gap-1.5">
+        <AgentBadge agent="risk" />
+      </div>
       {/* Summary header */}
       {totals && (
         <div className="card">

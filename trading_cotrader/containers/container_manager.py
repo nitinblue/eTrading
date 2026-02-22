@@ -20,6 +20,7 @@ from .risk_factor_container import RiskFactorContainer
 from .trade_container import TradeContainer
 from .portfolio_bundle import PortfolioBundle
 from .market_data_container import MarketDataContainer
+from .research_container import ResearchContainer
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,9 @@ class ContainerManager:
         # Cross-portfolio market data container (shared across all portfolios)
         self._market_data: MarketDataContainer = MarketDataContainer()
 
+        # Cross-portfolio research container (superset of market data)
+        self._research: ResearchContainer = ResearchContainer()
+
     # -----------------------------------------------------------------
     # Bundle initialization
     # -----------------------------------------------------------------
@@ -171,6 +175,11 @@ class ContainerManager:
     def market_data(self) -> MarketDataContainer:
         """Cross-portfolio market data container (technical indicators)."""
         return self._market_data
+
+    @property
+    def research(self) -> ResearchContainer:
+        """Cross-portfolio research container (technicals + regime + fundamentals + macro)."""
+        return self._research
 
     # -----------------------------------------------------------------
     # Backward compatibility: default bundle properties

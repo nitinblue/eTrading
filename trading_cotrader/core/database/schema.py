@@ -995,3 +995,171 @@ class AgentObjectiveORM(Base):
     set_at = Column(DateTime)
     evaluated_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ============================================================================
+# Research Snapshots (DB-backed ResearchContainer cache)
+# ============================================================================
+
+class ResearchSnapshotORM(Base):
+    """
+    Persisted ResearchEntry — one row per (symbol, snapshot_date).
+
+    Enables instant cold start: engine loads from DB instead of
+    calling market_regime library on every restart.
+    """
+    __tablename__ = 'research_snapshots'
+
+    __table_args__ = (
+        UniqueConstraint('symbol', 'snapshot_date', name='uix_research_symbol_date'),
+        Index('idx_research_symbol', 'symbol'),
+        Index('idx_research_date', 'snapshot_date'),
+    )
+
+    id = Column(String(36), primary_key=True)
+    symbol = Column(String(50), nullable=False)
+    snapshot_date = Column(Date, nullable=False)
+
+    # --- Metadata ---
+    name = Column(String(200))
+    asset_class = Column(String(50))
+
+    # --- Price & Technicals ---
+    current_price = Column(Numeric(10, 4))
+    atr = Column(Numeric(10, 4))
+    atr_pct = Column(Numeric(10, 4))
+    vwma_20 = Column(Numeric(10, 4))
+
+    # RSI
+    rsi_14 = Column(Numeric(10, 4))
+    rsi_overbought = Column(Boolean, default=False)
+    rsi_oversold = Column(Boolean, default=False)
+
+    # Moving Averages
+    sma_20 = Column(Numeric(10, 4))
+    sma_50 = Column(Numeric(10, 4))
+    sma_200 = Column(Numeric(10, 4))
+    ema_9 = Column(Numeric(10, 4))
+    ema_21 = Column(Numeric(10, 4))
+    price_vs_sma_20_pct = Column(Numeric(10, 4))
+    price_vs_sma_50_pct = Column(Numeric(10, 4))
+    price_vs_sma_200_pct = Column(Numeric(10, 4))
+
+    # Bollinger
+    bollinger_upper = Column(Numeric(10, 4))
+    bollinger_lower = Column(Numeric(10, 4))
+    bollinger_pct_b = Column(Numeric(10, 4))
+    bollinger_bandwidth = Column(Numeric(10, 4))
+
+    # MACD
+    macd_histogram = Column(Numeric(10, 4))
+    macd_bullish_cross = Column(Boolean, default=False)
+    macd_bearish_cross = Column(Boolean, default=False)
+
+    # Stochastic
+    stochastic_k = Column(Numeric(10, 4))
+    stochastic_d = Column(Numeric(10, 4))
+    stochastic_overbought = Column(Boolean, default=False)
+    stochastic_oversold = Column(Boolean, default=False)
+
+    # Support / Resistance
+    support = Column(Numeric(10, 4))
+    resistance = Column(Numeric(10, 4))
+    price_vs_support_pct = Column(Numeric(10, 4))
+    price_vs_resistance_pct = Column(Numeric(10, 4))
+
+    # Signals (list of dicts as JSON)
+    signals = Column(JSON)
+
+    # --- HMM Regime ---
+    hmm_regime_id = Column(Integer)
+    hmm_regime_label = Column(String(50))
+    hmm_confidence = Column(Numeric(5, 4))
+    hmm_trend_direction = Column(String(20))
+    hmm_strategy_comment = Column(Text)
+
+    # --- Fundamentals Summary ---
+    long_name = Column(String(200))
+    sector = Column(String(100))
+    industry = Column(String(100))
+    market_cap = Column(Numeric(20, 2))
+    beta = Column(Numeric(8, 4))
+    pe_ratio = Column(Numeric(10, 4))
+    forward_pe = Column(Numeric(10, 4))
+    peg_ratio = Column(Numeric(10, 4))
+    earnings_growth = Column(Numeric(10, 4))
+    revenue_growth = Column(Numeric(10, 4))
+    dividend_yield = Column(Numeric(10, 4))
+    profit_margins = Column(Numeric(10, 4))
+    pct_from_52w_high = Column(Numeric(10, 4))
+    pct_from_52w_low = Column(Numeric(10, 4))
+    next_earnings_date = Column(String(20))
+    days_to_earnings = Column(Integer)
+
+    # --- Phase (Wyckoff) ---
+    phase_name = Column(String(20))             # accumulation/markup/distribution/markdown
+    phase_confidence = Column(Numeric(5, 4))
+    phase_description = Column(Text)
+    phase_higher_highs = Column(Boolean, default=False)
+    phase_higher_lows = Column(Boolean, default=False)
+    phase_lower_highs = Column(Boolean, default=False)
+    phase_lower_lows = Column(Boolean, default=False)
+    phase_range_compression = Column(Numeric(8, 4))
+    phase_volume_trend = Column(String(20))
+    phase_price_vs_sma_50_pct = Column(Numeric(10, 4))
+
+    # --- VCP (Volatility Contraction Pattern) ---
+    vcp_stage = Column(String(20))              # none/forming/maturing/ready/breakout
+    vcp_score = Column(Numeric(8, 4))
+    vcp_contraction_count = Column(Integer)
+    vcp_current_range_pct = Column(Numeric(10, 4))
+    vcp_range_compression = Column(Numeric(8, 4))
+    vcp_volume_trend = Column(String(20))
+    vcp_pivot_price = Column(Numeric(10, 4))
+    vcp_pivot_distance_pct = Column(Numeric(10, 4))
+    vcp_days_in_base = Column(Integer)
+    vcp_above_sma_50 = Column(Boolean, default=False)
+    vcp_above_sma_200 = Column(Boolean, default=False)
+    vcp_description = Column(Text)
+
+    # --- Screening ---
+    triggered_templates = Column(JSON)
+
+    # --- Audit ---
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class MacroSnapshotORM(Base):
+    """
+    Persisted MacroContext — one row per snapshot_date.
+
+    Global macro calendar cached alongside research snapshots.
+    """
+    __tablename__ = 'macro_snapshots'
+
+    __table_args__ = (
+        UniqueConstraint('snapshot_date', name='uix_macro_date'),
+    )
+
+    id = Column(String(36), primary_key=True)
+    snapshot_date = Column(Date, nullable=False)
+
+    # Next event
+    next_event_name = Column(String(200))
+    next_event_date = Column(String(20))
+    next_event_impact = Column(String(20))
+    next_event_options_impact = Column(Text)
+    days_to_next_event = Column(Integer)
+
+    # FOMC
+    next_fomc_date = Column(String(20))
+    days_to_fomc = Column(Integer)
+
+    # Event lists (JSON arrays)
+    events_7d = Column(JSON)
+    events_30d = Column(JSON)
+
+    # Audit
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

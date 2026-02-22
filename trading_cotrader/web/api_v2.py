@@ -1248,7 +1248,8 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """
         Return configured market watchlist with current HMM regime for each ticker.
 
-        Reads market_watchlist.yaml, calls regime detect_batch, merges results.
+        First checks ResearchContainer for cached regime data.
+        Falls back to library calls only for tickers missing from container.
         """
         import yaml
         from pathlib import Path
@@ -1266,48 +1267,81 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
 
         tickers = [item['ticker'] for item in items]
 
-        # Detect regimes for all tickers in one batch call
-        regime_map = {}
-        try:
-            svc = _get_regime_service()
-            results = svc.detect_batch(tickers=tickers)
-            for ticker_key, r in results.items():
-                regime_map[ticker_key] = {
-                    'regime': r.regime.value,
-                    'regime_name': r.regime.name,
-                    'confidence': r.confidence,
-                    'trend_direction': r.trend_direction,
-                }
-        except Exception as e:
-            logger.warning(f"Regime batch detection failed for watchlist: {e}")
-
-        # Also get strategy comments via research (lightweight — cached by library)
-        strategy_map = {}
-        try:
-            svc = _get_regime_service()
+        # Try to read regime data from ResearchContainer first
+        container_map = {}
+        cm = engine.container_manager if engine else None
+        if cm is not None:
+            research = cm.research
             for t in tickers:
-                try:
-                    research = svc.research(t)
-                    strategy_map[t] = research.strategy_comment
-                except Exception:
-                    strategy_map[t] = ''
-        except Exception:
-            pass
+                entry = research.get(t)
+                if entry and entry.hmm_regime_id is not None:
+                    container_map[t] = {
+                        'regime': entry.hmm_regime_id,
+                        'regime_name': entry.hmm_regime_label or 'UNKNOWN',
+                        'confidence': entry.hmm_confidence or 0,
+                        'trend_direction': entry.hmm_trend_direction,
+                        'strategy_comment': entry.hmm_strategy_comment or '',
+                    }
+
+        # Fall back to library for tickers missing from container
+        missing_tickers = [t for t in tickers if t not in container_map]
+        regime_map = {}
+        strategy_map = {}
+
+        if missing_tickers:
+            try:
+                svc = _get_regime_service()
+                results = svc.detect_batch(tickers=missing_tickers)
+                for ticker_key, r in results.items():
+                    regime_map[ticker_key] = {
+                        'regime': r.regime.value,
+                        'regime_name': r.regime.name,
+                        'confidence': r.confidence,
+                        'trend_direction': r.trend_direction,
+                    }
+            except Exception as e:
+                logger.warning(f"Regime batch detection failed for watchlist: {e}")
+
+            # Strategy comments for missing tickers
+            try:
+                svc = _get_regime_service()
+                for t in missing_tickers:
+                    try:
+                        research = svc.research(t)
+                        strategy_map[t] = research.strategy_comment
+                    except Exception:
+                        strategy_map[t] = ''
+            except Exception:
+                pass
 
         result = []
         for item in items:
             t = item['ticker']
-            regime_info = regime_map.get(t, {})
-            result.append({
-                'name': item['name'],
-                'ticker': t,
-                'asset_class': item.get('asset_class', ''),
-                'regime': regime_info.get('regime', 0),
-                'regime_name': regime_info.get('regime_name', 'UNKNOWN'),
-                'confidence': regime_info.get('confidence', 0),
-                'trend_direction': regime_info.get('trend_direction'),
-                'strategy_comment': strategy_map.get(t, ''),
-            })
+            # Prefer container data, fall back to library
+            if t in container_map:
+                info = container_map[t]
+                result.append({
+                    'name': item['name'],
+                    'ticker': t,
+                    'asset_class': item.get('asset_class', ''),
+                    'regime': info['regime'],
+                    'regime_name': info['regime_name'],
+                    'confidence': info['confidence'],
+                    'trend_direction': info['trend_direction'],
+                    'strategy_comment': info.get('strategy_comment', ''),
+                })
+            else:
+                regime_info = regime_map.get(t, {})
+                result.append({
+                    'name': item['name'],
+                    'ticker': t,
+                    'asset_class': item.get('asset_class', ''),
+                    'regime': regime_info.get('regime', 0),
+                    'regime_name': regime_info.get('regime_name', 'UNKNOWN'),
+                    'confidence': regime_info.get('confidence', 0),
+                    'trend_direction': regime_info.get('trend_direction'),
+                    'strategy_comment': strategy_map.get(t, ''),
+                })
 
         return result
 
@@ -1450,9 +1484,11 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             fig, (ax_price, ax_conf) = _plt.subplots(
                 2, 1,
                 figsize=tuple(plot_cfg.figure_size),
-                height_ratios=plot_cfg.height_ratios,
                 sharex=True,
-                gridspec_kw={"hspace": 0.05},
+                gridspec_kw={
+                    "hspace": 0.05,
+                    "height_ratios": list(plot_cfg.height_ratios)[:2] if plot_cfg.height_ratios else [3, 1],
+                },
             )
 
             ax_price.plot(dates, prices, color="black", linewidth=0.8, zorder=3)

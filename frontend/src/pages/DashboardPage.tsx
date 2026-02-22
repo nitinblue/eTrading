@@ -8,6 +8,7 @@ import { usePortfolios } from '../hooks/usePortfolios'
 import { useWorkflowStatus } from '../hooks/useWorkflowStatus'
 import { useCapitalData } from '../hooks/useCapital'
 import { useRecommendations } from '../hooks/useRecommendations'
+import { AgentBadge } from '../components/common/AgentBadge'
 import { useWeeklyPnL } from '../hooks/usePerformance'
 import { useAgentBrief, useAgentStatus, useAgentChat } from '../hooks/useAgentBrain'
 import { Spinner } from '../components/common/Spinner'
@@ -47,6 +48,10 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-3">
+      {/* Agent ownership */}
+      <div className="flex items-center gap-1.5">
+        <AgentBadge agent="circuit_breaker" />
+      </div>
       {/* Row 1: KPI strip + Workflow status side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2 card">

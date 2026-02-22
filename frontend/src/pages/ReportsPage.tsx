@@ -4,6 +4,7 @@ import type { ColDef, GridApi } from 'ag-grid-community'
 import { clsx } from 'clsx'
 import { Download } from 'lucide-react'
 import { Spinner } from '../components/common/Spinner'
+import { AgentBadge } from '../components/common/AgentBadge'
 import { EmptyState } from '../components/common/EmptyState'
 import {
   PnLRenderer,
@@ -570,7 +571,11 @@ export function ReportsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tab bar */}
+      {/* Agent ownership + Tab bar */}
+      <div className="flex items-center gap-1.5 px-2 pt-1">
+        <AgentBadge agent="tech_architect" />
+        <AgentBadge agent="trade_discipline" />
+      </div>
       <div className="flex border-b border-border-primary bg-bg-primary px-2">
         {TABS.map((tab) => (
           <button

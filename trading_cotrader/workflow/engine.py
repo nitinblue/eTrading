@@ -236,6 +236,9 @@ class WorkflowEngine:
 
         self.check_macro()
 
+        # Refresh research container from library (background, non-blocking)
+        self._refresh_research_container()
+
     def on_enter_macro_check(self, event):
         """Evaluate macro conditions."""
         result = self._run_agent(self.macro, self.context)
@@ -463,6 +466,9 @@ class WorkflowEngine:
         # Quant research pipeline (auto-book into research portfolios)
         self._run_agent(self.quant_research, self.context)
 
+        # Refresh research container from library + persist to DB
+        self._refresh_research_container()
+
         # Trade management (rolls, adjustments, exits)
         self.manage_trades()
 
@@ -573,6 +579,9 @@ class WorkflowEngine:
             self.context['container_manager'] = cm
             logger.info("ContainerManager initialized with portfolio bundles")
 
+            # Load research from DB (instant cold start)
+            self._load_research_from_db()
+
             # Load existing data from DB
             self._refresh_containers()
         except Exception as e:
@@ -634,6 +643,73 @@ class WorkflowEngine:
                 logger.warning(
                     f"Broker sync [{broker_name}] error (non-blocking): {e}"
                 )
+
+    # -----------------------------------------------------------------
+    # Research container DB bridge
+    # -----------------------------------------------------------------
+
+    def _load_research_from_db(self):
+        """Load research container from DB for instant cold start."""
+        cm = self.container_manager
+        if cm is None:
+            return
+        try:
+            # Load watchlist config first
+            from pathlib import Path
+            import yaml
+            config_path = Path(__file__).parent.parent / 'config' / 'market_watchlist.yaml'
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    cfg = yaml.safe_load(f)
+                items = cfg.get('watchlist', [])
+                cm.research.load_watchlist_config(items)
+
+            from trading_cotrader.core.database.session import session_scope
+            with session_scope() as session:
+                count = cm.research.load_from_db(session)
+            if count:
+                logger.info(f"Research container loaded {count} entries from DB (cold start)")
+        except Exception as e:
+            logger.warning(f"Research DB load failed (non-blocking): {e}")
+
+    def _refresh_research_container(self):
+        """Refresh research container from market_regime library, then persist to DB."""
+        cm = self.container_manager
+        if cm is None:
+            return
+        try:
+            container = cm.research
+
+            # Ensure watchlist is loaded
+            if not container.watchlist_config:
+                from pathlib import Path
+                import yaml
+                config_path = Path(__file__).parent.parent / 'config' / 'market_watchlist.yaml'
+                if config_path.exists():
+                    with open(config_path, 'r') as f:
+                        cfg = yaml.safe_load(f)
+                    items = cfg.get('watchlist', [])
+                    container.load_watchlist_config(items)
+
+            tickers = container.symbols
+            if not tickers:
+                return
+
+            # Populate from library (this is the slow part)
+            from trading_cotrader.web.api_research import _populate_research_container
+            stats = _populate_research_container(container, tickers)
+            logger.info(f"Research container refreshed: {stats.get('regime', 0)} regime, "
+                        f"{stats.get('technicals', 0)} technicals, {stats.get('fundamentals', 0)} fundamentals")
+
+            # Persist to DB for next cold start
+            from trading_cotrader.core.database.session import session_scope
+            with session_scope() as session:
+                count = container.save_to_db(session)
+            if count:
+                logger.info(f"Research container persisted {count} entries to DB")
+
+        except Exception as e:
+            logger.warning(f"Research container refresh failed (non-blocking): {e}")
 
     # -----------------------------------------------------------------
     # Internal helpers

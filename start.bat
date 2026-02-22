@@ -95,4 +95,8 @@ echo ============================================================
 echo.
 
 ".venv\Scripts\python.exe" -m trading_cotrader.runners.run_workflow --paper --no-broker --web --port 8080
+echo.
+echo ============================================================
+echo   Server stopped. Check output above for errors.
+echo ============================================================
 pause

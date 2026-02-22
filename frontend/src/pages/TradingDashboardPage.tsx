@@ -8,6 +8,7 @@ import {
   useBookTrade,
 } from '../hooks/useTradingDashboard'
 import { Spinner } from '../components/common/Spinner'
+import { AgentBadge } from '../components/common/AgentBadge'
 import type {
   TradingDashboardPortfolio,
   TradingDashboardStrategy,
@@ -527,6 +528,11 @@ export function TradingDashboardPage() {
 
   return (
     <div className="space-y-1.5 pb-4">
+      {/* Agent ownership */}
+      <div className="flex items-center gap-1.5">
+        <AgentBadge agent="quant_research" />
+        <AgentBadge agent="risk" />
+      </div>
       {/* Toolbar: portfolio tabs + refresh */}
       <div className="flex items-center gap-2 flex-wrap">
         {realPortfolios.map((p) => (

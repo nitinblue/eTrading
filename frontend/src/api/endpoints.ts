@@ -81,6 +81,12 @@ export const endpoints = {
   addWhatIf: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/add-whatif`,
   bookTrade: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/book`,
 
+  // Research Container (unified research data)
+  research: `${V2}/research`,
+  researchTicker: (ticker: string) => `${V2}/research/${ticker}`,
+  researchRefresh: `${V2}/research/refresh`,
+  researchWatchlist: `${V2}/research/watchlist`,
+
   // Market Watchlist + Regime
   marketWatchlist: `${V2}/market/watchlist`,
   regime: (ticker: string) => `${V2}/regime/${ticker}`,

@@ -5,6 +5,7 @@ import { Spinner } from '../components/common/Spinner'
 import { showToast } from '../components/common/Toast'
 import { clsx } from 'clsx'
 import { Pause, Play, AlertTriangle } from 'lucide-react'
+import { AgentBadge } from '../components/common/AgentBadge'
 
 const STATES = [
   'idle', 'boot', 'macro_check', 'screening', 'recommendation_review',
@@ -95,6 +96,11 @@ export function WorkflowPage() {
 
   return (
     <div className="space-y-3">
+      {/* Agent ownership */}
+      <div className="flex items-center gap-1.5">
+        <AgentBadge agent="circuit_breaker" />
+        <AgentBadge agent="trade_discipline" />
+      </div>
       {/* State machine pipeline */}
       <div className="card">
         <div className="card-header">

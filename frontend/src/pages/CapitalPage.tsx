@@ -6,6 +6,7 @@ import { useCapitalData } from '../hooks/useCapital'
 import { Spinner } from '../components/common/Spinner'
 import { EmptyState } from '../components/common/EmptyState'
 import { clsx } from 'clsx'
+import { AgentBadge } from '../components/common/AgentBadge'
 
 const severityColors: Record<string, { bg: string; text: string; border: string }> = {
   ok: { bg: 'bg-green-900/30', text: 'text-green-400', border: 'border-green-800' },
@@ -63,6 +64,10 @@ export function CapitalPage() {
 
   return (
     <div className="space-y-3">
+      {/* Agent ownership */}
+      <div className="flex items-center gap-1.5">
+        <AgentBadge agent="risk" />
+      </div>
       {/* KPI strip */}
       {totals && (
         <div className="card">

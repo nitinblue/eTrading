@@ -3,6 +3,7 @@ import { clsx } from 'clsx'
 import { ArrowLeft } from 'lucide-react'
 import { useRegimeResearch, useRegimeChart, useTechnicals, useFundamentals } from '../hooks/useRegime'
 import { Spinner } from '../components/common/Spinner'
+import { AgentBadge } from '../components/common/AgentBadge'
 import type {
   FeatureZScore,
   TransitionRow,
@@ -82,6 +83,9 @@ export function ResearchPage() {
         </button>
         <span className="text-text-muted">|</span>
         <h1 className="text-base font-bold font-mono text-text-primary">{ticker?.toUpperCase()} Research</h1>
+        <div className="flex items-center gap-1 ml-auto">
+          <AgentBadge agent="quant_research" />
+        </div>
       </div>
 
       <FundamentalsSection ticker={ticker || ''} />

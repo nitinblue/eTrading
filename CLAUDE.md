@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 21, 2026 (session 29)
+# Last Updated: February 22, 2026 (session 31)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log s1-s26, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -86,7 +86,8 @@ Everything below EXISTS in the codebase. The job now is to wire each into the Tr
 |--------|-------------|-----------------|--------|
 | **Broker Positions** | `services/portfolio_sync.py`, `adapters/tastytrade_adapter.py` | Real positions from TastyTrade with live Greeks via DXLink | YES (engine.py boot+monitoring) |
 | **Technical Indicators** | `services/technical_analysis_service.py` | TechnicalSnapshot: price, RSI, Bollinger, VWAP, ATR, IV rank, regimes, MAs, volume | YES (template eval) |
-| **Market Data Container** | `containers/market_data_container.py` | Cross-portfolio cached indicators, change tracking | PARTIAL |
+| **Research Container** | `containers/research_container.py`, `web/api_research.py` | Unified per-symbol research: technicals + HMM regime + fundamentals + macro. Owns `config/market_watchlist.yaml`. DB-backed: instant cold start from `research_snapshots` table, engine refreshes + persists during boot/monitoring | YES (API + UI + DB) |
+| **Market Data Container** | `containers/market_data_container.py` | Cross-portfolio cached indicators, change tracking (legacy, superseded by ResearchContainer) | PARTIAL |
 | **Research Templates** | `config/research_templates.yaml`, `services/research/template_loader.py` | 7 templates with entry/exit conditions, strategy config, parameter variants | YES (evaluate endpoint) |
 | **Condition Evaluator** | `services/research/condition_evaluator.py` | 7 operators, reference comparisons, multipliers, AND/OR logic | YES (evaluate endpoint) |
 | **Probability Calculator** | `services/pricing/probability.py` | POP, EV, max profit/loss, breakevens for multi-leg trades | YES (compute_trade_payoff) |
@@ -114,7 +115,7 @@ Everything below EXISTS in the codebase. The job now is to wire each into the Tr
 | **Workflow Engine** | 12-state machine, APScheduler, state persistence, decision logging — WORKING |
 | **FastAPI Web Server** | Embedded in workflow engine via `--web` flag — WORKING |
 | **React Frontend** | Vite + React 18 + TS + Tailwind + AG Grid + Recharts — WORKING |
-| **SQLite DB** | 21 tables, ORM models, session_scope pattern — WORKING |
+| **SQLite DB** | 23 tables, ORM models, session_scope pattern — WORKING |
 | **Broker Adapters** | TastyTrade (API), Fidelity (manual), Zerodha (API stub), Stallion (read-only) — WORKING |
 | **270 unit tests** | All pass — WORKING |
 
@@ -177,6 +178,8 @@ RiskFactorsSection (table), TemplateEvalSection (dropdown + condition breakdown)
 
 | Area | Key files |
 |------|-----------|
+| **Research Container** | `containers/research_container.py` (ResearchEntry + MacroContext + DB bridge), `web/api_research.py` (3 endpoints), `repositories/research_snapshot.py` (DB persistence) |
+| **Research Frontend** | `frontend/src/pages/ResearchDashboardPage.tsx` (default "/" page), `frontend/src/hooks/useResearch.ts` |
 | **Trading Sheet API** | `web/api_trading_sheet.py` (4 endpoints — THE CENTRAL FILE) |
 | **Trading Sheet Frontend** | `frontend/src/pages/TradingSheetPage.tsx`, `frontend/src/hooks/useTradingSheet.ts` |
 | **Portfolio Fitness** | `services/portfolio_fitness.py` (PortfolioFitnessChecker) |
@@ -194,7 +197,7 @@ RiskFactorsSection (table), TemplateEvalSection (dropdown + condition breakdown)
 | **Performance** | `services/performance_metrics_service.py` |
 | **Trade Booking** | `services/trade_booking_service.py` |
 | **Broker Sync** | `services/portfolio_sync.py`, `services/position_sync.py` |
-| **DB/ORM** | `core/database/schema.py` (21 tables), `core/database/session.py`, `repositories/` |
+| **DB/ORM** | `core/database/schema.py` (23 tables), `core/database/session.py`, `repositories/` |
 | **Market Regime** | External lib `market_regime` (editable install from `../market_regime`). 4 API endpoints in `web/api_v2.py` (regime section). Frontend endpoints in `frontend/src/api/endpoints.ts` |
 | **Agent Intelligence** | `services/agent_brain.py` (AgentBrain — LLM via Claude API), 4 endpoints in `web/api_v2.py` (agent section), `frontend/src/hooks/useAgentBrain.ts` |
 | **Web Server** | `web/approval_api.py` (FastAPI factory), `web/api_v2.py`, `web/api_admin.py`, `web/api_reports.py`, `web/api_explorer.py`, `web/api_agents.py` |

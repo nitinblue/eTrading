@@ -1,19 +1,12 @@
 import { useParams, Link } from 'react-router-dom'
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { ChevronLeft, ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronDown, ChevronRight, Database, ShieldOff } from 'lucide-react'
 import { useAgentDetail } from '../hooks/useAgents'
 import { AgentRunTimeline } from '../components/agents/AgentRunTimeline'
 import { ObjectiveGradeChart } from '../components/agents/ObjectiveGradeChart'
+import { AGENT_ICONS, CATEGORY_CONFIG, type AgentCategory } from '../config/agentConfig'
 import type { AgentRun } from '../api/types'
-
-const categoryColors: Record<string, string> = {
-  safety: 'bg-red-500/20 text-red-400',
-  perception: 'bg-blue-500/20 text-blue-400',
-  analysis: 'bg-purple-500/20 text-purple-400',
-  execution: 'bg-green-500/20 text-green-400',
-  learning: 'bg-amber-500/20 text-amber-400',
-}
 
 // ---------------------------------------------------------------------------
 // Expandable JSON viewer
@@ -147,60 +140,122 @@ export function AgentDetailPage() {
       </Link>
 
       {/* Header */}
-      <div className="bg-bg-secondary rounded-lg border border-border-primary p-4">
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-lg font-bold text-text-primary">{agent.display_name}</h1>
-          <span className={clsx('text-[10px] px-1.5 py-0.5 rounded', categoryColors[agent.category] || 'bg-gray-500/20 text-gray-400')}>
-            {agent.category}
-          </span>
-        </div>
-        <p className="text-xs text-text-secondary mb-3">{agent.description}</p>
+      {(() => {
+        const cat = CATEGORY_CONFIG[agent.category as AgentCategory]
+        const AgentIcon = AGENT_ICONS[agent.name]
+        return (
+          <div className={clsx('bg-bg-secondary rounded-lg border overflow-hidden', cat?.border || 'border-border-primary')}>
+            {/* Colored top accent */}
+            <div className={clsx('h-1', cat?.dot || 'bg-gray-500')} />
+            <div className="p-4">
+              <div className="flex items-center gap-3 mb-2">
+                {AgentIcon && (
+                  <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center', cat?.bg)}>
+                    <AgentIcon size={22} className={cat?.color} />
+                  </div>
+                )}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-lg font-bold text-text-primary">{agent.display_name}</h1>
+                    <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border', cat?.bg, cat?.color, cat?.border)}>
+                      {agent.category}
+                    </span>
+                  </div>
+                  <span className={clsx('text-xs font-medium', cat?.color)}>{agent.role}</span>
+                </div>
+              </div>
 
-        {/* Responsibilities */}
-        <div className="flex flex-wrap gap-1 mb-3">
-          {agent.responsibilities.map((r) => (
-            <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-bg-tertiary text-text-secondary">
-              {r}
-            </span>
-          ))}
-        </div>
+              {/* Intro — self-description */}
+              {agent.intro && (
+                <p className="text-xs text-text-secondary leading-relaxed mt-2 mb-3 italic border-l-2 pl-3" style={{ borderColor: 'var(--border-secondary)' }}>
+                  "{agent.intro}"
+                </p>
+              )}
 
-        {/* Stats */}
-        <div className="flex items-center gap-6 text-xs">
-          <div>
-            <span className="text-text-muted">Total Runs: </span>
-            <span className="font-mono text-text-primary">{agent.stats.total_runs}</span>
-          </div>
-          <div>
-            <span className="text-text-muted">Avg Duration: </span>
-            <span className="font-mono text-text-primary">{Math.round(agent.stats.avg_duration_ms)}ms</span>
-          </div>
-          <div>
-            <span className="text-text-muted">Errors: </span>
-            <span className={clsx('font-mono', agent.stats.error_count > 0 ? 'text-red-400' : 'text-text-primary')}>
-              {agent.stats.error_count}
-            </span>
-          </div>
-          <div>
-            <span className="text-text-muted">Runs During: </span>
-            <span className="text-text-secondary">{agent.runs_during.join(', ')}</span>
-          </div>
-        </div>
+              <p className="text-xs text-text-secondary mb-3">{agent.description}</p>
 
-        {/* Capabilities */}
-        <div className="mt-3 flex flex-wrap gap-1">
-          {agent.capabilities_implemented.map((cap) => (
-            <span key={cap} className="text-[9px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400">
-              {cap}
-            </span>
-          ))}
-          {agent.capabilities_planned.map((cap) => (
-            <span key={cap} className="text-[9px] px-1.5 py-0.5 rounded bg-gray-500/10 text-text-muted">
-              {cap} (planned)
-            </span>
-          ))}
-        </div>
-      </div>
+              {/* Responsibilities */}
+              <div className="mb-3">
+                <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1 font-semibold">Responsibilities</div>
+                <div className="flex flex-wrap gap-1">
+                  {agent.responsibilities.map((r) => (
+                    <span key={r} className={clsx('text-[10px] px-1.5 py-0.5 rounded', cat?.bg, cat?.color)}>
+                      {r}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Datasources + Boundaries side by side */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
+                {agent.datasources && agent.datasources.length > 0 && (
+                  <div>
+                    <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1 font-semibold flex items-center gap-1">
+                      <Database size={10} /> Data Sources
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {agent.datasources.map((d) => (
+                        <span key={d} className="text-[10px] px-1.5 py-0.5 rounded bg-bg-tertiary text-text-secondary">{d}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {agent.boundaries && agent.boundaries.length > 0 && (
+                  <div>
+                    <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1 font-semibold flex items-center gap-1">
+                      <ShieldOff size={10} /> Boundaries
+                    </div>
+                    <ul className="text-[10px] text-text-muted space-y-0.5">
+                      {agent.boundaries.map((b) => (
+                        <li key={b} className="flex items-start gap-1">
+                          <span className="text-red-400 mt-0.5 text-[8px]">&#x2717;</span>
+                          <span>{b}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Stats */}
+              <div className="flex items-center gap-6 text-xs">
+                <div>
+                  <span className="text-text-muted">Total Runs: </span>
+                  <span className="font-mono text-text-primary">{agent.stats.total_runs}</span>
+                </div>
+                <div>
+                  <span className="text-text-muted">Avg Duration: </span>
+                  <span className="font-mono text-text-primary">{Math.round(agent.stats.avg_duration_ms)}ms</span>
+                </div>
+                <div>
+                  <span className="text-text-muted">Errors: </span>
+                  <span className={clsx('font-mono', agent.stats.error_count > 0 ? 'text-red-400' : 'text-text-primary')}>
+                    {agent.stats.error_count}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-text-muted">Runs During: </span>
+                  <span className="text-text-secondary">{agent.runs_during.join(', ')}</span>
+                </div>
+              </div>
+
+              {/* Capabilities */}
+              <div className="mt-3 flex flex-wrap gap-1">
+                {agent.capabilities_implemented.map((cap) => (
+                  <span key={cap} className="text-[9px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400">
+                    {cap}
+                  </span>
+                ))}
+                {agent.capabilities_planned.map((cap) => (
+                  <span key={cap} className="text-[9px] px-1.5 py-0.5 rounded bg-gray-500/10 text-text-muted">
+                    {cap} (planned)
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Today's Objective */}
       {todayObj && (
