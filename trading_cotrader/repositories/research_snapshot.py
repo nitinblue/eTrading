@@ -2,7 +2,7 @@
 Research Snapshot Repository — Upsert/load for DB-backed ResearchContainer.
 
 Persists ResearchEntry and MacroContext to research_snapshots / macro_snapshots
-tables. Enables instant cold start without calling market_regime library.
+tables. Enables instant cold start without calling market_analyzer library.
 """
 
 from datetime import date

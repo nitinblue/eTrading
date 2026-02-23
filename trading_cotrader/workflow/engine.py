@@ -29,25 +29,33 @@ from trading_cotrader.agents.protocol import AgentStatus
 from trading_cotrader.agents.messages import UserIntent, SystemResponse
 from trading_cotrader.config.workflow_config_loader import load_workflow_config, WorkflowConfig
 
-# Agents
+# Agents — only the 5 that matter
 from trading_cotrader.agents.safety.guardian import GuardianAgent
+from trading_cotrader.agents.analysis.risk import RiskAgent
+from trading_cotrader.agents.analysis.quant_research import QuantResearchAgent
+from trading_cotrader.agents.infrastructure.tech_architect import TechArchitectAgent
+from trading_cotrader.agents.learning.trade_discipline import TradeDisciplineAgent
+
+# Non-agent utilities still used by engine
+from trading_cotrader.agents.execution.broker_router import BrokerRouter
+from trading_cotrader.agents.decision.interaction import InteractionManager
+
+# Legacy agents kept temporarily — engine still calls them in state handlers.
+# These are NOT BaseAgent subclasses yet. They'll be absorbed into the 5 agents
+# or converted to services over time.
 from trading_cotrader.agents.perception.market_data import MarketDataAgent
 from trading_cotrader.agents.perception.portfolio_state import PortfolioStateAgent
 from trading_cotrader.agents.perception.calendar import CalendarAgent
 from trading_cotrader.agents.analysis.macro import MacroAgent
 from trading_cotrader.agents.analysis.screener import ScreenerAgent
 from trading_cotrader.agents.analysis.evaluator import EvaluatorAgent
-from trading_cotrader.agents.analysis.risk import RiskAgent
 from trading_cotrader.agents.execution.executor import ExecutorAgent
-from trading_cotrader.agents.execution.broker_router import BrokerRouter
 from trading_cotrader.agents.execution.notifier import NotifierAgent
 from trading_cotrader.agents.execution.reporter import ReporterAgent
 from trading_cotrader.agents.learning.accountability import AccountabilityAgent
 from trading_cotrader.agents.learning.session_objectives import SessionObjectivesAgent
 from trading_cotrader.agents.learning.qa_agent import QAAgent
 from trading_cotrader.agents.analysis.capital import CapitalUtilizationAgent
-from trading_cotrader.agents.analysis.quant_research import QuantResearchAgent
-from trading_cotrader.agents.decision.interaction import InteractionManager
 
 logger = logging.getLogger(__name__)
 
@@ -127,15 +135,21 @@ class WorkflowEngine:
         # Initialize ContainerManager so API endpoints have live data
         self._init_container_manager()
 
-        # Initialize all agents
-        self.guardian = GuardianAgent(self.config)
+        # Initialize the 5 core agents (BaseAgent subclasses)
+        research_container = self.container_manager.research if self.container_manager else None
+        self.guardian = GuardianAgent(config=self.config)
+        self.risk = RiskAgent()
+        self.quant_research = QuantResearchAgent(container=research_container, config=self.config)
+        self.tech_architect = TechArchitectAgent(config=self.config)
+        self.trade_discipline = TradeDisciplineAgent(config=self.config)
+
+        # Legacy agents — still called in state handlers, will be absorbed over time
         self.market_data = MarketDataAgent(broker, use_mock)
         self.portfolio_state = PortfolioStateAgent()
         self.calendar_agent = CalendarAgent(self.config)
         self.macro = MacroAgent(broker)
         self.screener = ScreenerAgent(broker)
         self.evaluator = EvaluatorAgent(broker)
-        self.risk = RiskAgent()
         self.executor = ExecutorAgent(broker, paper_mode, broker_router=self.broker_router)
         self.notifier = NotifierAgent(self.config)
         self.reporter = ReporterAgent()
@@ -143,7 +157,8 @@ class WorkflowEngine:
         self.capital_utilization = CapitalUtilizationAgent(self.config)
         self.session_objectives = SessionObjectivesAgent()
         self.qa_agent = QAAgent(self.config)
-        self.quant_research = QuantResearchAgent(self.config)
+
+        # Interaction manager (command router, not an agent)
         self.interaction = InteractionManager(self)
 
         # State machine — states are string values from WorkflowStates
@@ -236,8 +251,8 @@ class WorkflowEngine:
 
         self.check_macro()
 
-        # Refresh research container from library (background, non-blocking)
-        self._refresh_research_container()
+        # Refresh research container via agent.populate()
+        self._run_agent(self.quant_research, self.context, method='populate')
 
     def on_enter_macro_check(self, event):
         """Evaluate macro conditions."""
@@ -466,8 +481,8 @@ class WorkflowEngine:
         # Quant research pipeline (auto-book into research portfolios)
         self._run_agent(self.quant_research, self.context)
 
-        # Refresh research container from library + persist to DB
-        self._refresh_research_container()
+        # Refresh research container via agent.populate() + persist to DB
+        self._run_agent(self.quant_research, self.context, method='populate')
 
         # Trade management (rolls, adjustments, exits)
         self.manage_trades()
@@ -671,45 +686,6 @@ class WorkflowEngine:
                 logger.info(f"Research container loaded {count} entries from DB (cold start)")
         except Exception as e:
             logger.warning(f"Research DB load failed (non-blocking): {e}")
-
-    def _refresh_research_container(self):
-        """Refresh research container from market_regime library, then persist to DB."""
-        cm = self.container_manager
-        if cm is None:
-            return
-        try:
-            container = cm.research
-
-            # Ensure watchlist is loaded
-            if not container.watchlist_config:
-                from pathlib import Path
-                import yaml
-                config_path = Path(__file__).parent.parent / 'config' / 'market_watchlist.yaml'
-                if config_path.exists():
-                    with open(config_path, 'r') as f:
-                        cfg = yaml.safe_load(f)
-                    items = cfg.get('watchlist', [])
-                    container.load_watchlist_config(items)
-
-            tickers = container.symbols
-            if not tickers:
-                return
-
-            # Populate from library (this is the slow part)
-            from trading_cotrader.web.api_research import _populate_research_container
-            stats = _populate_research_container(container, tickers)
-            logger.info(f"Research container refreshed: {stats.get('regime', 0)} regime, "
-                        f"{stats.get('technicals', 0)} technicals, {stats.get('fundamentals', 0)} fundamentals")
-
-            # Persist to DB for next cold start
-            from trading_cotrader.core.database.session import session_scope
-            with session_scope() as session:
-                count = container.save_to_db(session)
-            if count:
-                logger.info(f"Research container persisted {count} entries to DB")
-
-        except Exception as e:
-            logger.warning(f"Research container refresh failed (non-blocking): {e}")
 
     # -----------------------------------------------------------------
     # Internal helpers

@@ -1,13 +1,8 @@
 """
 Research API Router — Serves unified research data from ResearchContainer.
 
-Single endpoint returns all watchlist symbols with technicals, regime,
-fundamentals, and macro context. Data is fetched from the market_regime
-library and cached in the ResearchContainer.
-
-The Research agent owns:
-- config/market_watchlist.yaml (symbol universe)
-- ResearchContainer (in ContainerManager)
+Data population is owned by QuantResearchAgent.populate().
+This router reads from the container and delegates refreshes to the agent.
 """
 
 from datetime import datetime
@@ -51,15 +46,6 @@ def _load_watchlist() -> list:
     return cfg.get('watchlist', [])
 
 
-def _get_regime_service():
-    """Lazy-init RegimeService singleton (reuses api_v2 holder if available)."""
-    from market_regime import RegimeService, DataService
-    if not hasattr(_get_regime_service, '_svc'):
-        data_svc = DataService()
-        _get_regime_service._svc = RegimeService(data_service=data_svc)
-    return _get_regime_service._svc
-
-
 def _save_container_to_db(container) -> None:
     """Persist container state to DB (fire-and-forget)."""
     try:
@@ -68,74 +54,6 @@ def _save_container_to_db(container) -> None:
             container.save_to_db(session)
     except Exception as e:
         logger.warning(f"Failed to persist research to DB: {e}")
-
-
-def _populate_research_container(container, tickers: list, skip_fundamentals: bool = False) -> dict:
-    """
-    Populate ResearchContainer from market_regime library for given tickers.
-
-    Returns summary dict with counts of what was populated.
-    """
-    svc = _get_regime_service()
-    stats = {'technicals': 0, 'regime': 0, 'fundamentals': 0, 'macro': False, 'errors': []}
-
-    # 1. Batch regime detection (fast — one call)
-    try:
-        results = svc.detect_batch(tickers=tickers)
-        for ticker_key, r in results.items():
-            # Also fetch strategy comment from research (cached)
-            strategy_comment = ''
-            try:
-                research = svc.research(ticker_key)
-                strategy_comment = research.strategy_comment
-            except Exception:
-                pass
-
-            container.update_regime(ticker_key, {
-                'regime': r.regime.value,
-                'regime_name': r.regime.name,
-                'confidence': r.confidence,
-                'trend_direction': r.trend_direction,
-                'strategy_comment': strategy_comment,
-            })
-            stats['regime'] += 1
-    except Exception as e:
-        logger.warning(f"Batch regime detection failed: {e}")
-        stats['errors'].append(f"regime: {e}")
-
-    # 2. Technicals per ticker
-    for ticker in tickers:
-        try:
-            snap = svc.get_technicals(ticker)
-            container.update_technicals(ticker, snap.model_dump(mode='json'))
-            stats['technicals'] += 1
-        except Exception as e:
-            logger.warning(f"Technicals failed for {ticker}: {e}")
-            stats['errors'].append(f"technicals({ticker}): {e}")
-
-    # 3. Fundamentals per ticker (slower — yfinance calls, but cached)
-    if not skip_fundamentals:
-        from market_regime import fetch_fundamentals
-        for ticker in tickers:
-            try:
-                fund = fetch_fundamentals(ticker)
-                container.update_fundamentals(ticker, fund.model_dump(mode='json'))
-                stats['fundamentals'] += 1
-            except Exception as e:
-                logger.warning(f"Fundamentals failed for {ticker}: {e}")
-                stats['errors'].append(f"fundamentals({ticker}): {e}")
-
-    # 4. Macro calendar (one call)
-    try:
-        from market_regime import get_macro_calendar
-        cal = get_macro_calendar(lookahead_days=90)
-        container.update_macro(cal.model_dump(mode='json'))
-        stats['macro'] = True
-    except Exception as e:
-        logger.warning(f"Macro calendar failed: {e}")
-        stats['errors'].append(f"macro: {e}")
-
-    return stats
 
 
 def create_research_router(engine: 'WorkflowEngine') -> APIRouter:
@@ -193,14 +111,15 @@ def create_research_router(engine: 'WorkflowEngine') -> APIRouter:
                 logger.warning(f"Research DB load failed: {e}")
 
         # Only block-populate on explicit ?refresh=true (user-initiated)
-        # Never block-populate on normal page load — engine handles background refresh
+        # Delegate to agent.populate() instead of old utility function
         populate_stats = None
         if refresh:
             try:
-                populate_stats = _populate_research_container(
-                    container, tickers, skip_fundamentals=skip_fundamentals,
-                )
-                _save_container_to_db(container)
+                agent = engine.quant_research
+                result = agent.populate({
+                    'skip_fundamentals': skip_fundamentals,
+                })
+                populate_stats = result.data if result else None
             except Exception as e:
                 logger.error(f"Research population failed: {e}")
                 populate_stats = {'error': str(e)}
@@ -231,10 +150,11 @@ def create_research_router(engine: 'WorkflowEngine') -> APIRouter:
         if entry and entry.timestamp and not container.is_stale:
             return entry.to_dict()
 
-        # Populate just this ticker
+        # Populate just this ticker via agent
         try:
-            _populate_research_container(container, [symbol])
-            _save_container_to_db(container)
+            agent = engine.quant_research
+            agent._populate_from_library([symbol])
+            agent._save_to_db()
         except Exception as e:
             logger.error(f"Research population failed for {symbol}: {e}")
             raise HTTPException(500, f"Research population failed: {e}")
@@ -274,11 +194,10 @@ def create_research_router(engine: 'WorkflowEngine') -> APIRouter:
         tickers = [t.upper() for t in tickers]
         skip_fund = (body or {}).get('skip_fundamentals', False)
 
-        stats = _populate_research_container(
-            container, tickers, skip_fundamentals=skip_fund,
-        )
-
-        _save_container_to_db(container)
+        # Delegate to agent
+        agent = engine.quant_research
+        stats = agent._populate_from_library(tickers, skip_fundamentals=skip_fund)
+        agent._save_to_db()
 
         return {
             'status': 'refreshed',

@@ -1,6 +1,6 @@
 """
-Guardian Agent — Safety layer that checks circuit breakers and trading constraints
-before any action is taken.
+Guardian Agent (Circuit Breaker) — Safety layer that checks circuit breakers
+and trading constraints before any action is taken.
 
 All thresholds come from workflow_rules.yaml, never hardcoded.
 
@@ -13,22 +13,49 @@ Usage:
 
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Optional
+from typing import ClassVar, List, Optional
 import logging
 
+from trading_cotrader.agents.base import BaseAgent
 from trading_cotrader.agents.protocol import AgentResult, AgentStatus
 from trading_cotrader.config.workflow_config_loader import WorkflowConfig
 
 logger = logging.getLogger(__name__)
 
 
-class GuardianAgent:
+class GuardianAgent(BaseAgent):
     """Checks circuit breakers and trading constraints before every action."""
 
-    name = "guardian"
+    # Class-level metadata
+    name: ClassVar[str] = "circuit_breaker"
+    display_name: ClassVar[str] = "Circuit Breaker"
+    category: ClassVar[str] = "safety"
+    role: ClassVar[str] = "Circuit breaker & kill switch"
+    intro: ClassVar[str] = (
+        "I am the emergency stop. Daily/weekly loss limits, VIX spikes, "
+        "no-trade tickers — when something is wrong, I halt everything. "
+        "Simple rules, no exceptions."
+    )
+    responsibilities: ClassVar[List[str]] = [
+        "Circuit breakers (daily/weekly loss)",
+        "VIX halt threshold",
+        "No-trade ticker list",
+        "Emergency halt",
+    ]
+    datasources: ClassVar[List[str]] = [
+        "workflow_rules.yaml",
+        "VIX feed",
+        "Daily P&L",
+    ]
+    boundaries: ClassVar[List[str]] = [
+        "Cannot override human halt decisions",
+        "Does not evaluate strategies or positions",
+        "Kill switch only",
+    ]
+    runs_during: ClassVar[List[str]] = ["booting", "monitoring", "execution"]
 
-    def __init__(self, config: WorkflowConfig):
-        self.config = config
+    def __init__(self, config: WorkflowConfig = None, container=None):
+        super().__init__(container=container, config=config)
 
     def safety_check(self, context: dict) -> tuple[bool, str]:
         """Pre-flight check — same as run() but returns tuple."""
@@ -49,6 +76,14 @@ class GuardianAgent:
             5. Consecutive losses (per strategy / per portfolio)
         """
         breakers_tripped: list[str] = []
+
+        if self.config is None:
+            return AgentResult(
+                agent_name=self.name,
+                status=AgentStatus.COMPLETED,
+                messages=["No config — skipping circuit breaker checks"],
+            )
+
         cb = self.config.circuit_breakers
 
         # 1. Daily loss
@@ -119,6 +154,9 @@ class GuardianAgent:
         Returns:
             (is_allowed, reason_if_blocked)
         """
+        if self.config is None:
+            return True, ""
+
         tc = self.config.constraints
 
         # Max trades per day

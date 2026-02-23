@@ -968,6 +968,8 @@ export interface ResearchEntry {
   bollinger_pct_b: number | null
   bollinger_bandwidth: number | null
   // MACD
+  macd_line: number | null
+  macd_signal_line: number | null
   macd_histogram: number | null
   macd_bullish_cross: boolean
   macd_bearish_cross: boolean
@@ -1030,6 +1032,36 @@ export interface ResearchEntry {
   vcp_above_sma_50: boolean
   vcp_above_sma_200: boolean
   vcp_description: string | null
+  // Smart Money
+  smart_money_score: number | null
+  smart_money_description: string | null
+  unfilled_fvg_count: number | null
+  active_ob_count: number | null
+  // Phase (enhanced from PhaseService)
+  phase_age_days: number | null
+  phase_prior: string | null
+  phase_cycle_completion: number | null
+  phase_strategy_comment: string | null
+  // Opportunities
+  opp_zero_dte_verdict: string | null
+  opp_zero_dte_confidence: number | null
+  opp_zero_dte_strategy: string | null
+  opp_zero_dte_summary: string | null
+  opp_leap_verdict: string | null
+  opp_leap_confidence: number | null
+  opp_leap_strategy: string | null
+  opp_leap_summary: string | null
+  opp_breakout_verdict: string | null
+  opp_breakout_confidence: number | null
+  opp_breakout_strategy: string | null
+  opp_breakout_type: string | null
+  opp_breakout_pivot: number | null
+  opp_breakout_summary: string | null
+  opp_momentum_verdict: string | null
+  opp_momentum_confidence: number | null
+  opp_momentum_strategy: string | null
+  opp_momentum_direction: string | null
+  opp_momentum_summary: string | null
   // Screening
   triggered_templates: string[]
 }
@@ -1140,7 +1172,7 @@ export interface TickerResearch {
 }
 
 // ---------------------------------------------------------------------------
-// Technicals Types (from market_regime library)
+// Technicals Types (from market_analyzer library)
 // ---------------------------------------------------------------------------
 
 export interface MovingAverages {
@@ -1214,7 +1246,7 @@ export interface TechnicalSnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// Fundamentals Types (from market_regime library)
+// Fundamentals Types (from market_analyzer library)
 // ---------------------------------------------------------------------------
 
 export interface BusinessInfo {
@@ -1315,7 +1347,7 @@ export interface FundamentalsSnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// Macro Calendar Types (from market_regime library)
+// Macro Calendar Types (from market_analyzer library)
 // ---------------------------------------------------------------------------
 
 export interface MacroEvent {

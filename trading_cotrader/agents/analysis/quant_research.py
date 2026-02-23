@@ -1,5 +1,11 @@
 """
-Quant Research Agent — Evaluates research templates, auto-books into research portfolios.
+Quant Research Agent — Domain agent that owns the ResearchContainer.
+
+Responsibilities:
+  1. populate(): Fill ResearchContainer from market_analyzer library (regime, technicals,
+     fundamentals, macro). Replaces _populate_research_container() from api_research.py.
+  2. run(): Evaluate research templates against container data, auto-book triggered
+     hypotheses into research portfolios.
 
 Uses config/research_templates.yaml for all hypothesis definitions:
   - Entry conditions evaluated via ConditionEvaluator (generic, config-driven)
@@ -8,20 +14,21 @@ Uses config/research_templates.yaml for all hypothesis definitions:
   - Parameter variants tagged with variant_id for A/B comparison
 
 Every MONITORING cycle:
-  1. Load enabled research templates from YAML
-  2. Build global context (VIX, earnings calendar)
-  3. For each template → for each symbol in universe → evaluate entry conditions
-  4. If triggered → build Recommendation → auto-book into target_portfolio
-  5. Track results in context for reporting
+  1. populate() — refresh container from market_analyzer library
+  2. run() — evaluate templates, auto-book triggered ones
 """
 
 import copy
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, ClassVar, Dict, List, Optional, Tuple, TYPE_CHECKING
 import calendar
 
+import yaml
+
+from trading_cotrader.agents.base import BaseAgent
 from trading_cotrader.agents.protocol import AgentResult, AgentStatus
 from trading_cotrader.services.research.condition_evaluator import (
     ConditionEvaluator, Condition,
@@ -30,6 +37,9 @@ from trading_cotrader.services.research.template_loader import (
     ResearchTemplate, StrategyVariant, ParameterVariant,
     get_enabled_templates,
 )
+
+if TYPE_CHECKING:
+    from trading_cotrader.containers.research_container import ResearchContainer, ResearchEntry
 
 logger = logging.getLogger(__name__)
 
@@ -77,28 +87,301 @@ def _get_nearest_monthly_expiration(dte_target: int = 45) -> str:
     return third_friday.strftime('%y%m%d')
 
 
-class QuantResearchAgent:
+# ---------------------------------------------------------------------------
+# ResearchEntry → ConditionEvaluator adapter
+# ---------------------------------------------------------------------------
+
+class _ResearchEntryAdapter:
     """
-    Evaluates research templates, auto-books triggered hypotheses into research portfolios.
+    Adapts ResearchEntry to the snapshot interface expected by ConditionEvaluator.
+
+    ConditionEvaluator's _SNAPSHOT_FIELDS maps indicator names to snapshot attributes.
+    ResearchEntry uses slightly different names. This adapter bridges the gap.
+    """
+
+    def __init__(self, entry: 'ResearchEntry'):
+        self.symbol = entry.symbol
+        self.current_price = Decimal(str(entry.current_price)) if entry.current_price else Decimal('0')
+        # ConditionEvaluator maps 'sma_20' → 'bollinger_middle'
+        self.bollinger_middle = entry.sma_20
+        self.sma_50 = entry.sma_50
+        self.sma_200 = entry.sma_200
+        self.ema_20 = entry.ema_21                  # closest available (21 vs 20)
+        self.ema_50 = entry.sma_50                  # fallback
+        self.rsi_14 = entry.rsi_14
+        self.atr_percent = entry.atr_pct
+        self.atr_14 = entry.atr
+        self.iv_rank = None                         # broker-only, not in ResearchEntry
+        self.iv_percentile = None
+        self.pct_from_52w_high = entry.pct_from_52w_high
+        self.bollinger_upper = entry.bollinger_upper
+        self.bollinger_lower = entry.bollinger_lower
+        self.bollinger_width = entry.bollinger_bandwidth
+        self.vwap = entry.vwma_20                   # closest available
+        self.high_52w = None
+        self.low_52w = None
+        self.nearest_support = entry.support
+        self.nearest_resistance = entry.resistance
+        self.volume = None
+        self.avg_volume_20 = None
+        self.directional_regime = None
+        self.volatility_regime = None
+
+
+# ---------------------------------------------------------------------------
+# QuantResearchAgent
+# ---------------------------------------------------------------------------
+
+class QuantResearchAgent(BaseAgent):
+    """
+    Domain agent that owns the ResearchContainer.
+
+    populate(): Fills container from market_analyzer library (regime, technicals,
+                fundamentals, macro). Replaces the old _populate_research_container()
+                utility function that lived in api_research.py.
+
+    run(): Evaluates research templates against container data (or falls back to
+           TechnicalAnalysisService when container is None), auto-books triggered
+           hypotheses into research portfolios.
 
     Behavior is fully driven by config/research_templates.yaml:
     - Which templates to evaluate (enabled flag)
     - Universe, entry/exit conditions, strategies, variants per template
     - Target research portfolio per template
-
-    The agent does NOT make autonomous decisions. It evaluates conditions
-    faithfully and tracks outcomes for ML training.
     """
 
-    name = "quant_research"
+    # Class-level metadata (replaces AGENT_REGISTRY entry in api_agents.py)
+    name: ClassVar[str] = "quant_research"
+    display_name: ClassVar[str] = "Quant Research"
+    category: ClassVar[str] = "domain"
+    role: ClassVar[str] = "Research pipeline executor"
+    intro: ClassVar[str] = (
+        "I run scenario-based research. 7 templates, parameter variants, "
+        "auto-booking into research portfolios. I own the ResearchContainer "
+        "and populate it from market data sources."
+    )
+    responsibilities: ClassVar[List[str]] = [
+        "Watchlist data population",
+        "Scenario screening",
+        "Auto-booking",
+        "Parameter variants",
+        "Research trade tracking",
+    ]
+    datasources: ClassVar[List[str]] = [
+        "market_analyzer library",
+        "research_templates.yaml",
+        "ConditionEvaluator",
+        "ResearchContainer",
+    ]
+    boundaries: ClassVar[List[str]] = [
+        "Books into research portfolios only (not live)",
+        "Cannot modify templates",
+        "Auto-accept only for research",
+    ]
+    runs_during: ClassVar[List[str]] = ["monitoring"]
 
-    def __init__(self, config=None):
-        self.config = config
+    def __init__(self, container: 'ResearchContainer' = None, config=None):
+        super().__init__(container=container, config=config)
         self._evaluator = ConditionEvaluator()
 
     def safety_check(self, context: dict) -> tuple[bool, str]:
         """Research pipeline is always safe — no real capital involved."""
         return True, ""
+
+    # -----------------------------------------------------------------
+    # populate() — Fill ResearchContainer from market_analyzer library
+    # -----------------------------------------------------------------
+
+    def populate(self, context: dict) -> AgentResult:
+        """
+        Fill ResearchContainer from market_analyzer library.
+
+        Steps:
+          1. Load watchlist if not loaded
+          2. Batch regime detection
+          3. Per-ticker technicals
+          4. Per-ticker fundamentals (unless skip_fundamentals=True)
+          5. Macro calendar
+          6. Persist to DB
+
+        Returns AgentResult with populate stats.
+        """
+        if self.container is None:
+            return AgentResult(
+                agent_name=self.name,
+                status=AgentStatus.ERROR,
+                messages=["No container — cannot populate"],
+            )
+
+        # Ensure watchlist is loaded
+        if not self.container.watchlist_config:
+            self._load_watchlist()
+
+        tickers = self.container.symbols
+        if not tickers:
+            return AgentResult(
+                agent_name=self.name,
+                status=AgentStatus.COMPLETED,
+                data={'tickers': 0},
+                messages=["No tickers in watchlist — nothing to populate"],
+            )
+
+        skip_fundamentals = context.get('skip_fundamentals', False)
+        stats = self._populate_from_library(tickers, skip_fundamentals=skip_fundamentals)
+
+        # Persist to DB
+        self._save_to_db()
+
+        msg = (
+            f"Research populated: {stats.get('regime', 0)} regime, "
+            f"{stats.get('technicals', 0)} technicals, "
+            f"{stats.get('phase', 0)} phase, "
+            f"{stats.get('opportunities', 0)} opportunities, "
+            f"{stats.get('fundamentals', 0)} fundamentals"
+        )
+        errors = stats.get('errors', [])
+        messages = [msg]
+        if errors:
+            messages.append(f"{len(errors)} errors: {'; '.join(str(e) for e in errors[:3])}")
+
+        return AgentResult(
+            agent_name=self.name,
+            status=AgentStatus.COMPLETED,
+            data=stats,
+            messages=messages,
+        )
+
+    def _populate_from_library(self, tickers: List[str], skip_fundamentals: bool = False) -> dict:
+        """
+        Populate ResearchContainer from market_analyzer library for given tickers.
+
+        Returns summary dict with counts of what was populated.
+        """
+        ma = self._get_market_analyzer()
+        container = self.container
+        stats = {
+            'technicals': 0, 'regime': 0, 'fundamentals': 0,
+            'phase': 0, 'opportunities': 0, 'macro': False, 'errors': [],
+        }
+
+        # 1. Batch regime detection (fast — one call)
+        try:
+            results = ma.regime.detect_batch(tickers=tickers)
+            for ticker_key, r in results.items():
+                strategy_comment = ''
+                try:
+                    research = ma.regime.research(ticker_key)
+                    strategy_comment = research.strategy_comment
+                except Exception:
+                    pass
+
+                container.update_regime(ticker_key, {
+                    'regime': r.regime.value,
+                    'regime_name': r.regime.name,
+                    'confidence': r.confidence,
+                    'trend_direction': r.trend_direction,
+                    'strategy_comment': strategy_comment,
+                })
+                stats['regime'] += 1
+        except Exception as e:
+            logger.warning(f"Batch regime detection failed: {e}")
+            stats['errors'].append(f"regime: {e}")
+
+        # 2. Technicals per ticker (includes smart money + MACD line/signal)
+        for ticker in tickers:
+            try:
+                snap = ma.technicals.snapshot(ticker)
+                container.update_technicals(ticker, snap.model_dump(mode='json'))
+                stats['technicals'] += 1
+            except Exception as e:
+                logger.warning(f"Technicals failed for {ticker}: {e}")
+                stats['errors'].append(f"technicals({ticker}): {e}")
+
+        # 3. Phase per ticker (enhanced Wyckoff from PhaseService)
+        for ticker in tickers:
+            try:
+                phase_result = ma.phase.detect(ticker)
+                container.update_phase(ticker, phase_result.model_dump(mode='json'))
+                stats['phase'] += 1
+            except Exception as e:
+                logger.warning(f"Phase detection failed for {ticker}: {e}")
+                stats['errors'].append(f"phase({ticker}): {e}")
+
+        # 4. Opportunities per ticker (4 horizons)
+        for ticker in tickers:
+            opps = {}
+            try:
+                opps['zero_dte'] = ma.opportunity.assess_zero_dte(ticker).model_dump(mode='json')
+            except Exception as e:
+                logger.debug(f"0DTE opportunity failed for {ticker}: {e}")
+            try:
+                opps['leap'] = ma.opportunity.assess_leap(ticker).model_dump(mode='json')
+            except Exception as e:
+                logger.debug(f"LEAP opportunity failed for {ticker}: {e}")
+            try:
+                opps['breakout'] = ma.opportunity.assess_breakout(ticker).model_dump(mode='json')
+            except Exception as e:
+                logger.debug(f"Breakout opportunity failed for {ticker}: {e}")
+            try:
+                opps['momentum'] = ma.opportunity.assess_momentum(ticker).model_dump(mode='json')
+            except Exception as e:
+                logger.debug(f"Momentum opportunity failed for {ticker}: {e}")
+
+            if opps:
+                container.update_opportunities(ticker, opps)
+                stats['opportunities'] += 1
+
+        # 5. Fundamentals per ticker (slower — yfinance calls, but cached)
+        if not skip_fundamentals:
+            for ticker in tickers:
+                try:
+                    fund = ma.fundamentals.get(ticker)
+                    container.update_fundamentals(ticker, fund.model_dump(mode='json'))
+                    stats['fundamentals'] += 1
+                except Exception as e:
+                    logger.warning(f"Fundamentals failed for {ticker}: {e}")
+                    stats['errors'].append(f"fundamentals({ticker}): {e}")
+
+        # 6. Macro calendar (one call)
+        try:
+            cal_data = ma.macro.calendar(lookahead_days=90)
+            container.update_macro(cal_data.model_dump(mode='json'))
+            stats['macro'] = True
+        except Exception as e:
+            logger.warning(f"Macro calendar failed: {e}")
+            stats['errors'].append(f"macro: {e}")
+
+        return stats
+
+    def _get_market_analyzer(self):
+        """Lazy-init MarketAnalyzer facade singleton."""
+        if not hasattr(self, '_market_analyzer'):
+            from market_analyzer import MarketAnalyzer
+            self._market_analyzer = MarketAnalyzer()
+        return self._market_analyzer
+
+    def _load_watchlist(self) -> None:
+        """Load market_watchlist.yaml into container."""
+        config_path = Path(__file__).parent.parent.parent / 'config' / 'market_watchlist.yaml'
+        if not config_path.exists():
+            return
+        with open(config_path, 'r') as f:
+            cfg = yaml.safe_load(f)
+        items = cfg.get('watchlist', [])
+        self.container.load_watchlist_config(items)
+
+    def _save_to_db(self) -> None:
+        """Persist container state to DB (fire-and-forget)."""
+        try:
+            from trading_cotrader.core.database.session import session_scope
+            with session_scope() as session:
+                self.container.save_to_db(session)
+        except Exception as e:
+            logger.warning(f"Failed to persist research to DB: {e}")
+
+    # -----------------------------------------------------------------
+    # run() — Evaluate research templates
+    # -----------------------------------------------------------------
 
     def run(self, context: dict) -> AgentResult:
         """
@@ -202,8 +485,6 @@ class QuantResearchAgent:
     def _is_research_enabled(self) -> bool:
         """Check if research is enabled in workflow_rules.yaml."""
         try:
-            import yaml
-            from pathlib import Path
             config_path = Path(__file__).parent.parent.parent / 'config' / 'workflow_rules.yaml'
             with open(config_path) as f:
                 raw = yaml.safe_load(f)
@@ -217,7 +498,13 @@ class QuantResearchAgent:
         """Build global context dict with VIX and earnings data."""
         ctx: Dict[str, Any] = {}
 
-        # VIX — try mock/yfinance
+        # VIX — try from container first, then fallback to TechnicalAnalysisService
+        if self.container is not None:
+            vix_entry = self.container.get('^VIX')
+            if vix_entry and vix_entry.current_price:
+                ctx['vix'] = float(vix_entry.current_price)
+                return ctx
+
         try:
             ta = self._get_technical_service()
             if ta:
@@ -238,6 +525,15 @@ class QuantResearchAgent:
             return self._get_earnings_symbols()
 
         return []
+
+    def _get_snapshot_from_container(self, symbol: str):
+        """Get a ConditionEvaluator-compatible snapshot from the container."""
+        if self.container is None:
+            return None
+        entry = self.container.get(symbol)
+        if entry is None or entry.timestamp is None:
+            return None
+        return _ResearchEntryAdapter(entry)
 
     def _evaluate_template_variant(
         self,
@@ -261,14 +557,15 @@ class QuantResearchAgent:
         booked_count = 0
         failed_count = 0
 
-        ta = self._get_technical_service()
-
         with session_scope() as session:
             svc = RecommendationService(session, broker=None)
 
             for symbol in symbols:
-                # Get technical snapshot
-                snap = ta.get_snapshot(symbol) if ta else None
+                # Get technical snapshot — prefer container, fallback to service
+                snap = self._get_snapshot_from_container(symbol)
+                if snap is None:
+                    ta = self._get_technical_service()
+                    snap = ta.get_snapshot(symbol) if ta else None
 
                 # Build per-symbol context (earnings days, etc.)
                 sym_ctx = dict(global_ctx)
@@ -413,15 +710,15 @@ class QuantResearchAgent:
         # Build market context
         market_ctx = MarketSnapshot(underlying_price=price)
         if snap:
-            market_ctx.iv_rank = Decimal(str(snap.iv_rank)) if snap.iv_rank else None
-            market_ctx.rsi = Decimal(str(snap.rsi_14)) if snap.rsi_14 else None
-            market_ctx.ema_20 = snap.ema_20
-            market_ctx.ema_50 = snap.ema_50
-            market_ctx.sma_200 = snap.sma_200
-            market_ctx.atr_percent = snap.atr_percent
-            market_ctx.directional_regime = snap.directional_regime
-            market_ctx.volatility_regime = snap.volatility_regime
-            market_ctx.pct_from_52w_high = snap.pct_from_52w_high
+            market_ctx.iv_rank = Decimal(str(snap.iv_rank)) if getattr(snap, 'iv_rank', None) else None
+            market_ctx.rsi = Decimal(str(snap.rsi_14)) if getattr(snap, 'rsi_14', None) else None
+            market_ctx.ema_20 = getattr(snap, 'ema_20', None)
+            market_ctx.ema_50 = getattr(snap, 'ema_50', None)
+            market_ctx.sma_200 = getattr(snap, 'sma_200', None)
+            market_ctx.atr_percent = getattr(snap, 'atr_percent', None)
+            market_ctx.directional_regime = getattr(snap, 'directional_regime', None)
+            market_ctx.volatility_regime = getattr(snap, 'volatility_regime', None)
+            market_ctx.pct_from_52w_high = getattr(snap, 'pct_from_52w_high', None)
 
         # Build legs based on instrument type
         if template.trade_strategy.instrument == 'equity':
@@ -663,7 +960,7 @@ class QuantResearchAgent:
         return legs
 
     def _get_technical_service(self):
-        """Get or create TechnicalAnalysisService (cached)."""
+        """Get or create TechnicalAnalysisService (cached). Fallback for when container is None."""
         if not hasattr(self, '_technical_service'):
             try:
                 from trading_cotrader.services.technical_analysis_service import TechnicalAnalysisService

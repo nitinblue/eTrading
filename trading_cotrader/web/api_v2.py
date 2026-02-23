@@ -1225,19 +1225,18 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         return {'metrics': {}}
 
     # ------------------------------------------------------------------
-    # Market Regime (HMM-based regime detection via market_regime library)
+    # MarketAnalyzer facade (lazy singleton — exposes regime, technicals,
+    # phase, opportunity, fundamentals, macro services)
     # ------------------------------------------------------------------
 
-    # Lazy-init singletons — created on first request, reused after
-    _regime_svc_holder: dict = {}
+    _ma_holder: dict = {}
 
-    def _get_regime_service():
-        """Get or create RegimeService singleton."""
-        if 'svc' not in _regime_svc_holder:
-            from market_regime import RegimeService, DataService
-            data_svc = DataService()
-            _regime_svc_holder['svc'] = RegimeService(data_service=data_svc)
-        return _regime_svc_holder['svc']
+    def _get_market_analyzer():
+        """Get or create MarketAnalyzer facade singleton."""
+        if 'ma' not in _ma_holder:
+            from market_analyzer import MarketAnalyzer
+            _ma_holder['ma'] = MarketAnalyzer()
+        return _ma_holder['ma']
 
     # ------------------------------------------------------------------
     # Market Watchlist (configurable watchlist + regime detection)
@@ -1290,8 +1289,8 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
 
         if missing_tickers:
             try:
-                svc = _get_regime_service()
-                results = svc.detect_batch(tickers=missing_tickers)
+                ma = _get_market_analyzer()
+                results = ma.regime.detect_batch(tickers=missing_tickers)
                 for ticker_key, r in results.items():
                     regime_map[ticker_key] = {
                         'regime': r.regime.value,
@@ -1304,10 +1303,10 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
 
             # Strategy comments for missing tickers
             try:
-                svc = _get_regime_service()
+                ma = _get_market_analyzer()
                 for t in missing_tickers:
                     try:
-                        research = svc.research(t)
+                        research = ma.regime.research(t)
                         strategy_map[t] = research.strategy_comment
                     except Exception:
                         strategy_map[t] = ''
@@ -1346,7 +1345,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         return result
 
     # ------------------------------------------------------------------
-    # Market Regime (HMM-based regime detection via market_regime library)
+    # Market Regime (HMM-based regime detection via market_analyzer library)
     # ------------------------------------------------------------------
 
     @router.get("/regime/{ticker}")
@@ -1358,8 +1357,8 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         and probability distribution across all regimes.
         """
         try:
-            svc = _get_regime_service()
-            result = svc.detect(ticker.upper())
+            ma = _get_market_analyzer()
+            result = ma.regime.detect(ticker.upper())
             return {
                 'ticker': result.ticker,
                 'regime': result.regime.value,
@@ -1388,8 +1387,8 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             raise HTTPException(400, "tickers list is required")
 
         try:
-            svc = _get_regime_service()
-            results = svc.detect_batch(tickers=[t.upper() for t in tickers])
+            ma = _get_market_analyzer()
+            results = ma.regime.detect_batch(tickers=[t.upper() for t in tickers])
             return {
                 'results': {
                     ticker: {
@@ -1419,8 +1418,8 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         recent history (20 days), regime distribution, strategy comment.
         """
         try:
-            svc = _get_regime_service()
-            r = svc.research(ticker.upper())
+            ma = _get_market_analyzer()
+            r = ma.regime.research(ticker.upper())
             return r.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Regime research failed for {ticker}: {e}")
@@ -1431,18 +1430,18 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """
         Return regime detection chart as PNG image.
 
-        Uses market_regime plot_ticker() to generate a two-panel chart:
+        Uses market_analyzer plot_ticker() to generate a two-panel chart:
         top = price with colored regime bands, bottom = confidence bars.
         """
         import io
         import base64
         try:
-            svc = _get_regime_service()
-            explanation = svc.explain(ticker.upper())
-            ohlcv = svc.data_service.get_ohlcv(ticker.upper())
+            ma = _get_market_analyzer()
+            explanation = ma.regime.explain(ticker.upper())
+            ohlcv = ma.data.get_ohlcv(ticker.upper())
 
             # Generate chart to BytesIO
-            from market_regime.cli.plot import plot_ticker as _plot_ticker
+            from market_analyzer.cli.plot import plot_ticker as _plot_ticker
             import matplotlib
             matplotlib.use('Agg')  # non-interactive backend
             import matplotlib.pyplot as _plt
@@ -1451,8 +1450,8 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             buf = io.BytesIO()
 
             # Replicate plot_ticker but save to buffer
-            from market_regime.config import get_settings as _get_settings
-            from market_regime.models.regime import RegimeID as _RegimeID
+            from market_analyzer.config import get_settings as _get_settings
+            from market_analyzer.models.regime import RegimeID as _RegimeID
             import matplotlib.dates as _mdates
             import numpy as _np
 
@@ -1566,15 +1565,15 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             raise HTTPException(400, "tickers list is required")
 
         try:
-            svc = _get_regime_service()
-            report = svc.research_batch(tickers=[t.upper() for t in tickers])
+            ma = _get_market_analyzer()
+            report = ma.regime.research_batch(tickers=[t.upper() for t in tickers])
             return report.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Batch regime research failed: {e}")
             raise HTTPException(500, f"Batch regime research failed: {e}")
 
     # ------------------------------------------------------------------
-    # Technicals (via market_regime library)
+    # Technicals (via market_analyzer library)
     # ------------------------------------------------------------------
 
     @router.get("/technicals/{ticker}")
@@ -1586,41 +1585,104 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         support/resistance, and actionable signals.
         """
         try:
-            svc = _get_regime_service()
-            snapshot = svc.get_technicals(ticker.upper())
+            ma = _get_market_analyzer()
+            snapshot = ma.technicals.snapshot(ticker.upper())
             return snapshot.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Technicals failed for {ticker}: {e}")
             raise HTTPException(500, f"Technicals failed: {e}")
 
     # ------------------------------------------------------------------
-    # Fundamentals (via market_regime library)
+    # Fundamentals (via market_analyzer library)
     # ------------------------------------------------------------------
 
     @router.get("/fundamentals/{ticker}")
     async def get_fundamentals(ticker: str):
         """Stock fundamentals: valuation, earnings, margins, cash, debt, dividends, 52w range."""
         try:
-            from market_regime import fetch_fundamentals
-            snapshot = fetch_fundamentals(ticker.upper())
+            ma = _get_market_analyzer()
+            snapshot = ma.fundamentals.get(ticker.upper())
             return snapshot.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Fundamentals failed for {ticker}: {e}")
             raise HTTPException(500, f"Fundamentals failed: {e}")
 
     # ------------------------------------------------------------------
-    # Macro Calendar (via market_regime library)
+    # Macro Calendar (via market_analyzer library)
     # ------------------------------------------------------------------
 
     @router.get("/macro/calendar")
     async def get_macro_calendar(lookahead_days: int = 90):
         """Macro economic calendar: FOMC, CPI, NFP, PCE, GDP events."""
         try:
-            from market_regime import get_macro_calendar as _get_macro_cal
-            cal = _get_macro_cal(lookahead_days=lookahead_days)
+            ma = _get_market_analyzer()
+            cal = ma.macro.calendar(lookahead_days=lookahead_days)
             return cal.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Macro calendar failed: {e}")
             raise HTTPException(500, f"Macro calendar failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Phase Detection (Wyckoff via market_analyzer PhaseService)
+    # ------------------------------------------------------------------
+
+    @router.get("/phase/{ticker}")
+    async def get_phase(ticker: str):
+        """Wyckoff phase detection: accumulation/markup/distribution/markdown."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.phase.detect(ticker.upper())
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Phase detection failed for {ticker}: {e}")
+            raise HTTPException(500, f"Phase detection failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Opportunity Assessments (via market_analyzer OpportunityService)
+    # ------------------------------------------------------------------
+
+    @router.get("/opportunity/zero-dte/{ticker}")
+    async def get_opportunity_zero_dte(ticker: str):
+        """0DTE opportunity assessment: verdict, strategy, signals."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.opportunity.assess_zero_dte(ticker.upper())
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"0DTE opportunity failed for {ticker}: {e}")
+            raise HTTPException(500, f"0DTE opportunity assessment failed: {e}")
+
+    @router.get("/opportunity/leap/{ticker}")
+    async def get_opportunity_leap(ticker: str):
+        """LEAP opportunity assessment: verdict, strategy, fundamental score."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.opportunity.assess_leap(ticker.upper())
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"LEAP opportunity failed for {ticker}: {e}")
+            raise HTTPException(500, f"LEAP opportunity assessment failed: {e}")
+
+    @router.get("/opportunity/breakout/{ticker}")
+    async def get_opportunity_breakout(ticker: str):
+        """Breakout opportunity assessment: VCP, squeeze, pivot."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.opportunity.assess_breakout(ticker.upper())
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Breakout opportunity failed for {ticker}: {e}")
+            raise HTTPException(500, f"Breakout opportunity assessment failed: {e}")
+
+    @router.get("/opportunity/momentum/{ticker}")
+    async def get_opportunity_momentum(ticker: str):
+        """Momentum opportunity assessment: trend continuation, pullback."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.opportunity.assess_momentum(ticker.upper())
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Momentum opportunity failed for {ticker}: {e}")
+            raise HTTPException(500, f"Momentum opportunity assessment failed: {e}")
 
     return router

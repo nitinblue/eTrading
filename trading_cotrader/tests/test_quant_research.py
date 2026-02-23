@@ -251,9 +251,23 @@ class TestAgentRegistry:
     def test_registry_entry_has_required_fields(self):
         from trading_cotrader.web.api_agents import AGENT_REGISTRY
         entry = AGENT_REGISTRY['quant_research']
-        assert entry['category'] == 'analysis'
+        assert entry['category'] == 'domain'
         assert 'monitoring' in entry['runs_during']
         assert 'Auto-booking' in entry['responsibilities']
+
+    def test_agent_class_metadata(self):
+        """Test metadata comes from BaseAgent.get_metadata() classmethod."""
+        meta = QuantResearchAgent.get_metadata()
+        assert meta['name'] == 'quant_research'
+        assert meta['display_name'] == 'Quant Research'
+        assert meta['category'] == 'domain'
+        assert 'monitoring' in meta['runs_during']
+
+    def test_agent_is_base_agent(self):
+        """Test QuantResearchAgent extends BaseAgent."""
+        from trading_cotrader.agents.base import BaseAgent
+        agent = QuantResearchAgent()
+        assert isinstance(agent, BaseAgent)
 
 
 class TestWorkflowEngineWiring:

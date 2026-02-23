@@ -2,7 +2,7 @@
 Research Container — Unified per-symbol research data store.
 
 Superset of MarketDataContainer. Aggregates:
-- Technical indicators (from market_regime library)
+- Technical indicators (from market_analyzer library)
 - HMM regime detection (R1-R4)
 - Fundamentals summary
 - Macro context (global, shared across all symbols)
@@ -56,6 +56,8 @@ class ResearchEntry:
     bollinger_bandwidth: Optional[float] = None
 
     # MACD
+    macd_line: Optional[float] = None
+    macd_signal_line: Optional[float] = None
     macd_histogram: Optional[float] = None
     macd_bullish_cross: bool = False
     macd_bearish_cross: bool = False
@@ -126,6 +128,42 @@ class ResearchEntry:
     vcp_above_sma_200: bool = False
     vcp_description: Optional[str] = None
 
+    # --- Smart Money ---
+    smart_money_score: Optional[float] = None       # 0-1 composite confluence
+    smart_money_description: Optional[str] = None
+    unfilled_fvg_count: Optional[int] = None
+    active_ob_count: Optional[int] = None
+
+    # --- Phase (enhanced from PhaseService) ---
+    phase_age_days: Optional[int] = None
+    phase_prior: Optional[str] = None
+    phase_cycle_completion: Optional[float] = None  # 0-1
+    phase_strategy_comment: Optional[str] = None
+
+    # --- Opportunities (4 horizons) ---
+    opp_zero_dte_verdict: Optional[str] = None      # go/caution/no_go
+    opp_zero_dte_confidence: Optional[float] = None
+    opp_zero_dte_strategy: Optional[str] = None
+    opp_zero_dte_summary: Optional[str] = None
+
+    opp_leap_verdict: Optional[str] = None
+    opp_leap_confidence: Optional[float] = None
+    opp_leap_strategy: Optional[str] = None
+    opp_leap_summary: Optional[str] = None
+
+    opp_breakout_verdict: Optional[str] = None
+    opp_breakout_confidence: Optional[float] = None
+    opp_breakout_strategy: Optional[str] = None
+    opp_breakout_type: Optional[str] = None         # bullish/bearish
+    opp_breakout_pivot: Optional[float] = None
+    opp_breakout_summary: Optional[str] = None
+
+    opp_momentum_verdict: Optional[str] = None
+    opp_momentum_confidence: Optional[float] = None
+    opp_momentum_strategy: Optional[str] = None
+    opp_momentum_direction: Optional[str] = None    # bullish/bearish
+    opp_momentum_summary: Optional[str] = None
+
     # --- Screening ---
     triggered_templates: List[str] = field(default_factory=list)
 
@@ -158,6 +196,8 @@ class ResearchEntry:
             'bollinger_pct_b': self.bollinger_pct_b,
             'bollinger_bandwidth': self.bollinger_bandwidth,
             # MACD
+            'macd_line': self.macd_line,
+            'macd_signal_line': self.macd_signal_line,
             'macd_histogram': self.macd_histogram,
             'macd_bullish_cross': self.macd_bullish_cross,
             'macd_bearish_cross': self.macd_bearish_cross,
@@ -220,6 +260,36 @@ class ResearchEntry:
             'vcp_above_sma_50': self.vcp_above_sma_50,
             'vcp_above_sma_200': self.vcp_above_sma_200,
             'vcp_description': self.vcp_description,
+            # Smart Money
+            'smart_money_score': self.smart_money_score,
+            'smart_money_description': self.smart_money_description,
+            'unfilled_fvg_count': self.unfilled_fvg_count,
+            'active_ob_count': self.active_ob_count,
+            # Phase (enhanced)
+            'phase_age_days': self.phase_age_days,
+            'phase_prior': self.phase_prior,
+            'phase_cycle_completion': self.phase_cycle_completion,
+            'phase_strategy_comment': self.phase_strategy_comment,
+            # Opportunities
+            'opp_zero_dte_verdict': self.opp_zero_dte_verdict,
+            'opp_zero_dte_confidence': self.opp_zero_dte_confidence,
+            'opp_zero_dte_strategy': self.opp_zero_dte_strategy,
+            'opp_zero_dte_summary': self.opp_zero_dte_summary,
+            'opp_leap_verdict': self.opp_leap_verdict,
+            'opp_leap_confidence': self.opp_leap_confidence,
+            'opp_leap_strategy': self.opp_leap_strategy,
+            'opp_leap_summary': self.opp_leap_summary,
+            'opp_breakout_verdict': self.opp_breakout_verdict,
+            'opp_breakout_confidence': self.opp_breakout_confidence,
+            'opp_breakout_strategy': self.opp_breakout_strategy,
+            'opp_breakout_type': self.opp_breakout_type,
+            'opp_breakout_pivot': self.opp_breakout_pivot,
+            'opp_breakout_summary': self.opp_breakout_summary,
+            'opp_momentum_verdict': self.opp_momentum_verdict,
+            'opp_momentum_confidence': self.opp_momentum_confidence,
+            'opp_momentum_strategy': self.opp_momentum_strategy,
+            'opp_momentum_direction': self.opp_momentum_direction,
+            'opp_momentum_summary': self.opp_momentum_summary,
             # Screening
             'triggered_templates': self.triggered_templates,
         }
@@ -295,12 +365,12 @@ class ResearchContainer:
         return self._watchlist_config
 
     # -----------------------------------------------------------------
-    # Technicals update (from market_regime TechnicalSnapshot)
+    # Technicals update (from market_analyzer TechnicalSnapshot)
     # -----------------------------------------------------------------
 
     def update_technicals(self, symbol: str, tech: dict) -> None:
         """
-        Update from market_regime TechnicalSnapshot (already model_dump'd to dict).
+        Update from market_analyzer TechnicalSnapshot (already model_dump'd to dict).
         """
         entry = self._get_or_create(symbol)
 
@@ -335,6 +405,8 @@ class ResearchContainer:
 
         # MACD
         macd = tech.get('macd', {})
+        entry.macd_line = macd.get('macd_line')
+        entry.macd_signal_line = macd.get('signal_line')
         entry.macd_histogram = macd.get('histogram')
         entry.macd_bullish_cross = macd.get('is_bullish_crossover', False)
         entry.macd_bearish_cross = macd.get('is_bearish_crossover', False)
@@ -383,13 +455,21 @@ class ResearchContainer:
             entry.vcp_above_sma_200 = vcp.get('above_sma_200', False)
             entry.vcp_description = vcp.get('description')
 
+        # Smart Money (order blocks + fair value gaps)
+        sm = tech.get('smart_money')
+        if sm and isinstance(sm, dict):
+            entry.smart_money_score = sm.get('score')
+            entry.smart_money_description = sm.get('description')
+            entry.unfilled_fvg_count = sm.get('unfilled_fvg_count')
+            entry.active_ob_count = sm.get('active_ob_count')
+
         # Signals
         entry.signals = tech.get('signals', [])
 
         entry.timestamp = datetime.utcnow()
 
     # -----------------------------------------------------------------
-    # Regime update (from market_regime detect)
+    # Regime update (from market_analyzer detect)
     # -----------------------------------------------------------------
 
     def update_regime(self, symbol: str, regime_data: dict) -> None:
@@ -407,7 +487,7 @@ class ResearchContainer:
         entry.timestamp = datetime.utcnow()
 
     # -----------------------------------------------------------------
-    # Fundamentals update (from market_regime fetch_fundamentals)
+    # Fundamentals update (from market_analyzer fetch_fundamentals)
     # -----------------------------------------------------------------
 
     def update_fundamentals(self, symbol: str, fund: dict) -> None:
@@ -480,6 +560,95 @@ class ResearchContainer:
 
         self._macro.events_7d = macro_data.get('events_next_7_days', [])
         self._macro.events_30d = macro_data.get('events_next_30_days', [])
+
+    # -----------------------------------------------------------------
+    # Phase update (from PhaseService.detect)
+    # -----------------------------------------------------------------
+
+    def update_phase(self, symbol: str, phase_data: dict) -> None:
+        """
+        Update enhanced phase fields from PhaseService.detect() model_dump'd dict.
+
+        Overlays richer data onto the basic phase from TechnicalSnapshot.
+        """
+        entry = self._get_or_create(symbol)
+
+        # PhaseResult fields
+        entry.phase_name = phase_data.get('phase_name') or phase_data.get('phase')
+        entry.phase_confidence = phase_data.get('confidence')
+        entry.phase_age_days = phase_data.get('phase_age_days')
+        entry.phase_strategy_comment = phase_data.get('strategy_comment')
+        entry.phase_cycle_completion = phase_data.get('cycle_completion')
+
+        # prior_phase may be an int (PhaseID enum) or string
+        prior = phase_data.get('prior_phase')
+        if prior is not None:
+            entry.phase_prior = str(prior) if not isinstance(prior, str) else prior
+
+        # Price structure from PhaseResult
+        ps = phase_data.get('price_structure')
+        if ps and isinstance(ps, dict):
+            entry.phase_higher_highs = ps.get('higher_highs', False)
+            entry.phase_higher_lows = ps.get('higher_lows', False)
+            entry.phase_lower_highs = ps.get('lower_highs', False)
+            entry.phase_lower_lows = ps.get('lower_lows', False)
+
+        # Evidence
+        ev = phase_data.get('evidence')
+        if ev and isinstance(ev, dict):
+            entry.phase_range_compression = ev.get('range_compression')
+            entry.phase_volume_trend = ev.get('volume_trend')
+
+        entry.timestamp = datetime.utcnow()
+
+    # -----------------------------------------------------------------
+    # Opportunity update (from OpportunityService.assess_*)
+    # -----------------------------------------------------------------
+
+    def update_opportunities(self, symbol: str, opps: dict) -> None:
+        """
+        Update opportunity fields from OpportunityService assess results.
+
+        Expected keys: zero_dte, leap, breakout, momentum — each a model_dump'd dict.
+        """
+        entry = self._get_or_create(symbol)
+
+        zd = opps.get('zero_dte')
+        if zd and isinstance(zd, dict):
+            entry.opp_zero_dte_verdict = zd.get('verdict')
+            entry.opp_zero_dte_confidence = zd.get('confidence')
+            strat = zd.get('strategy') or {}
+            entry.opp_zero_dte_strategy = strat.get('name') if isinstance(strat, dict) else str(strat) if strat else None
+            entry.opp_zero_dte_summary = zd.get('summary')
+
+        lp = opps.get('leap')
+        if lp and isinstance(lp, dict):
+            entry.opp_leap_verdict = lp.get('verdict')
+            entry.opp_leap_confidence = lp.get('confidence')
+            strat = lp.get('strategy') or {}
+            entry.opp_leap_strategy = strat.get('name') if isinstance(strat, dict) else str(strat) if strat else None
+            entry.opp_leap_summary = lp.get('summary')
+
+        bo = opps.get('breakout')
+        if bo and isinstance(bo, dict):
+            entry.opp_breakout_verdict = bo.get('verdict')
+            entry.opp_breakout_confidence = bo.get('confidence')
+            strat = bo.get('strategy') or {}
+            entry.opp_breakout_strategy = strat.get('name') if isinstance(strat, dict) else str(strat) if strat else None
+            entry.opp_breakout_type = bo.get('breakout_type')
+            entry.opp_breakout_pivot = bo.get('pivot_price')
+            entry.opp_breakout_summary = bo.get('summary')
+
+        mo = opps.get('momentum')
+        if mo and isinstance(mo, dict):
+            entry.opp_momentum_verdict = mo.get('verdict')
+            entry.opp_momentum_confidence = mo.get('confidence')
+            strat = mo.get('strategy') or {}
+            entry.opp_momentum_strategy = strat.get('name') if isinstance(strat, dict) else str(strat) if strat else None
+            entry.opp_momentum_direction = mo.get('momentum_direction')
+            entry.opp_momentum_summary = mo.get('summary')
+
+        entry.timestamp = datetime.utcnow()
 
     # -----------------------------------------------------------------
     # Screening update
@@ -595,14 +764,20 @@ class ResearchContainer:
             'rsi_14', 'sma_20', 'sma_50', 'sma_200', 'ema_9', 'ema_21',
             'price_vs_sma_20_pct', 'price_vs_sma_50_pct', 'price_vs_sma_200_pct',
             'bollinger_upper', 'bollinger_lower', 'bollinger_pct_b', 'bollinger_bandwidth',
-            'macd_histogram', 'stochastic_k', 'stochastic_d',
+            'macd_line', 'macd_signal_line', 'macd_histogram',
+            'stochastic_k', 'stochastic_d',
             'support', 'resistance', 'price_vs_support_pct', 'price_vs_resistance_pct',
             'hmm_confidence', 'market_cap', 'beta', 'pe_ratio', 'forward_pe',
             'peg_ratio', 'earnings_growth', 'revenue_growth', 'dividend_yield',
             'profit_margins', 'pct_from_52w_high', 'pct_from_52w_low',
             'phase_confidence', 'phase_range_compression', 'phase_price_vs_sma_50_pct',
+            'phase_cycle_completion',
             'vcp_score', 'vcp_current_range_pct', 'vcp_range_compression',
             'vcp_pivot_price', 'vcp_pivot_distance_pct',
+            'smart_money_score',
+            'opp_zero_dte_confidence', 'opp_leap_confidence',
+            'opp_breakout_confidence', 'opp_breakout_pivot',
+            'opp_momentum_confidence',
         ]
         _BOOL_FIELDS = [
             'rsi_overbought', 'rsi_oversold',
@@ -617,10 +792,20 @@ class ResearchContainer:
             'hmm_strategy_comment', 'long_name', 'sector', 'industry',
             'next_earnings_date',
             'phase_name', 'phase_description', 'phase_volume_trend',
+            'phase_prior', 'phase_strategy_comment',
             'vcp_stage', 'vcp_volume_trend', 'vcp_description',
+            'smart_money_description',
+            'opp_zero_dte_verdict', 'opp_zero_dte_strategy', 'opp_zero_dte_summary',
+            'opp_leap_verdict', 'opp_leap_strategy', 'opp_leap_summary',
+            'opp_breakout_verdict', 'opp_breakout_strategy', 'opp_breakout_type',
+            'opp_breakout_summary',
+            'opp_momentum_verdict', 'opp_momentum_strategy', 'opp_momentum_direction',
+            'opp_momentum_summary',
         ]
         _INT_FIELDS = ['hmm_regime_id', 'days_to_earnings',
-                        'vcp_contraction_count', 'vcp_days_in_base']
+                        'vcp_contraction_count', 'vcp_days_in_base',
+                        'unfilled_fvg_count', 'active_ob_count',
+                        'phase_age_days']
 
         for snap_orm in snapshots:
             symbol = snap_orm.symbol
@@ -711,6 +896,8 @@ class ResearchContainer:
                 'bollinger_lower': entry.bollinger_lower,
                 'bollinger_pct_b': entry.bollinger_pct_b,
                 'bollinger_bandwidth': entry.bollinger_bandwidth,
+                'macd_line': entry.macd_line,
+                'macd_signal_line': entry.macd_signal_line,
                 'macd_histogram': entry.macd_histogram,
                 'macd_bullish_cross': entry.macd_bullish_cross,
                 'macd_bearish_cross': entry.macd_bearish_cross,
@@ -768,6 +955,36 @@ class ResearchContainer:
                 'vcp_above_sma_50': entry.vcp_above_sma_50,
                 'vcp_above_sma_200': entry.vcp_above_sma_200,
                 'vcp_description': entry.vcp_description,
+                # Smart Money
+                'smart_money_score': entry.smart_money_score,
+                'smart_money_description': entry.smart_money_description,
+                'unfilled_fvg_count': entry.unfilled_fvg_count,
+                'active_ob_count': entry.active_ob_count,
+                # Phase (enhanced)
+                'phase_age_days': entry.phase_age_days,
+                'phase_prior': entry.phase_prior,
+                'phase_cycle_completion': entry.phase_cycle_completion,
+                'phase_strategy_comment': entry.phase_strategy_comment,
+                # Opportunities
+                'opp_zero_dte_verdict': entry.opp_zero_dte_verdict,
+                'opp_zero_dte_confidence': entry.opp_zero_dte_confidence,
+                'opp_zero_dte_strategy': entry.opp_zero_dte_strategy,
+                'opp_zero_dte_summary': entry.opp_zero_dte_summary,
+                'opp_leap_verdict': entry.opp_leap_verdict,
+                'opp_leap_confidence': entry.opp_leap_confidence,
+                'opp_leap_strategy': entry.opp_leap_strategy,
+                'opp_leap_summary': entry.opp_leap_summary,
+                'opp_breakout_verdict': entry.opp_breakout_verdict,
+                'opp_breakout_confidence': entry.opp_breakout_confidence,
+                'opp_breakout_strategy': entry.opp_breakout_strategy,
+                'opp_breakout_type': entry.opp_breakout_type,
+                'opp_breakout_pivot': entry.opp_breakout_pivot,
+                'opp_breakout_summary': entry.opp_breakout_summary,
+                'opp_momentum_verdict': entry.opp_momentum_verdict,
+                'opp_momentum_confidence': entry.opp_momentum_confidence,
+                'opp_momentum_strategy': entry.opp_momentum_strategy,
+                'opp_momentum_direction': entry.opp_momentum_direction,
+                'opp_momentum_summary': entry.opp_momentum_summary,
                 # Screening
                 'triggered_templates': entry.triggered_templates,
             }

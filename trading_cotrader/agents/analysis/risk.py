@@ -8,19 +8,52 @@ Enriches context with:
 """
 
 import logging
+from typing import ClassVar, List
 
+from trading_cotrader.agents.base import BaseAgent
 from trading_cotrader.agents.protocol import AgentResult, AgentStatus
 
 logger = logging.getLogger(__name__)
 
 
-class RiskAgent:
+class RiskAgent(BaseAgent):
     """Calculates current portfolio risk metrics."""
 
-    name = "risk"
+    # Class-level metadata
+    name: ClassVar[str] = "risk"
+    display_name: ClassVar[str] = "Risk Manager"
+    category: ClassVar[str] = "domain"
+    role: ClassVar[str] = "Risk & execution gatekeeper"
+    intro: ClassVar[str] = (
+        "I quantify risk and gate every trade. VaR, concentration, fitness checks, "
+        "WhatIf booking, order preview — nothing gets through without my approval."
+    )
+    responsibilities: ClassVar[List[str]] = [
+        "Parametric VaR",
+        "Historical VaR",
+        "Concentration",
+        "Margin",
+        "Portfolio fitness",
+        "WhatIf booking",
+        "Trade execution gate",
+    ]
+    datasources: ClassVar[List[str]] = [
+        "PortfolioORM",
+        "PositionORM",
+        "yfinance (price history)",
+        "CorrelationAnalyzer",
+        "Broker adapters",
+        "TradeBookingService",
+    ]
+    boundaries: ClassVar[List[str]] = [
+        "LIMIT orders only (no market orders)",
+        "Requires explicit approval for execution",
+        "Reports risk metrics, gates trades",
+    ]
+    runs_during: ClassVar[List[str]] = ["screening", "monitoring"]
 
-    def safety_check(self, context: dict) -> tuple[bool, str]:
-        return True, ""
+    def __init__(self, container=None, config=None):
+        super().__init__(container=container, config=config)
 
     def run(self, context: dict) -> AgentResult:
         """

@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 22, 2026 (session 31)
+# Last Updated: February 22, 2026 (session 33)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log s1-s26, file structure, tech stack)
 
 ## STANDING INSTRUCTIONS
@@ -86,7 +86,7 @@ Everything below EXISTS in the codebase. The job now is to wire each into the Tr
 |--------|-------------|-----------------|--------|
 | **Broker Positions** | `services/portfolio_sync.py`, `adapters/tastytrade_adapter.py` | Real positions from TastyTrade with live Greeks via DXLink | YES (engine.py boot+monitoring) |
 | **Technical Indicators** | `services/technical_analysis_service.py` | TechnicalSnapshot: price, RSI, Bollinger, VWAP, ATR, IV rank, regimes, MAs, volume | YES (template eval) |
-| **Research Container** | `containers/research_container.py`, `web/api_research.py` | Unified per-symbol research: technicals + HMM regime + fundamentals + macro. Owns `config/market_watchlist.yaml`. DB-backed: instant cold start from `research_snapshots` table, engine refreshes + persists during boot/monitoring | YES (API + UI + DB) |
+| **Research Container** | `containers/research_container.py`, `web/api_research.py` | Unified per-symbol research: technicals + HMM regime + fundamentals + macro + **phase + opportunities + smart money** (s33). Owns `config/market_watchlist.yaml`. DB-backed: instant cold start from `research_snapshots` table (111 cols), engine refreshes + persists during boot/monitoring | YES (API + UI + DB) |
 | **Market Data Container** | `containers/market_data_container.py` | Cross-portfolio cached indicators, change tracking (legacy, superseded by ResearchContainer) | PARTIAL |
 | **Research Templates** | `config/research_templates.yaml`, `services/research/template_loader.py` | 7 templates with entry/exit conditions, strategy config, parameter variants | YES (evaluate endpoint) |
 | **Condition Evaluator** | `services/research/condition_evaluator.py` | 7 operators, reference comparisons, multipliers, AND/OR logic | YES (evaluate endpoint) |
@@ -98,7 +98,7 @@ Everything below EXISTS in the codebase. The job now is to wire each into the Tr
 | **Portfolio Evaluation** | `services/portfolio_evaluation_service.py` | Exit rules: take profit, stop loss, DTE, delta breach, roll, adjust | NOT YET |
 | **Screeners** | `services/screeners/` (7 screeners) | VIX regime, IV rank, LEAPS, correction, earnings, black swan, arbitrage | VIA TEMPLATES |
 | **QuantResearchAgent** | `agents/analysis/quant_research.py` | Auto-evaluates templates, books into research portfolios | NOT YET |
-| **Market Regime (HMM)** | `market_regime` library (external), 4 endpoints in `web/api_v2.py` | HMM-based regime detection (R1-R4), research with transition matrices, feature z-scores, strategy comments | YES (api_v2.py, no UI yet) |
+| **Market Analyzer** | `market_analyzer` library (external, renamed from `market_regime`), 9 endpoints in `web/api_v2.py` | MarketAnalyzer facade: regime (R1-R4), technicals, phase (Wyckoff), opportunities (0DTE/LEAP/breakout/momentum), fundamentals, macro | YES (api_v2.py + ResearchDashboard UI) |
 | **Macro Context** | `services/macro_context_service.py`, `config/daily_macro.yaml` | VIX regime, macro outlook, expected vol — gates all recommendations | NOT YET |
 | **Earnings Calendar** | `services/earnings_calendar_service.py` | yfinance earnings dates, 24h cache | NOT YET |
 | **Performance Metrics** | `services/performance_metrics_service.py` | Win rate, Sharpe, drawdown, expectancy, profit factor, CAGR | NOT YET |
@@ -133,13 +133,18 @@ Everything below EXISTS in the codebase. The job now is to wire each into the Tr
 | POST | `/api/v2/trading-sheet/{portfolio}/add-whatif` | Add proposed trade to WhatIf | v1 DONE |
 | POST | `/api/v2/trading-sheet/{portfolio}/book` | Convert WhatIf to paper trade | v1 DONE |
 
-### Market Regime Endpoints (in api_v2.py)
+### Market Analyzer Endpoints (in api_v2.py)
 | Method | Path | What It Does | Status |
 |--------|------|-------------|--------|
 | GET | `/api/v2/regime/{ticker}` | Tier 1: regime label (R1-R4), confidence, trend, probabilities | DONE |
 | POST | `/api/v2/regime/batch` | Tier 1 batch: multiple tickers `{"tickers": [...]}` | DONE |
 | GET | `/api/v2/regime/{ticker}/research` | Tier 2: full research — transition matrix, features, history, strategy | DONE |
 | POST | `/api/v2/regime/research` | Tier 2 batch: multi-ticker research + cross-comparison | DONE |
+| GET | `/api/v2/phase/{ticker}` | Wyckoff phase detection (PhaseService) | DONE (s33) |
+| GET | `/api/v2/opportunity/zero-dte/{ticker}` | 0DTE opportunity assessment (GO/CAUTION/NO_GO) | DONE (s33) |
+| GET | `/api/v2/opportunity/leap/{ticker}` | LEAP opportunity assessment | DONE (s33) |
+| GET | `/api/v2/opportunity/breakout/{ticker}` | Breakout opportunity assessment | DONE (s33) |
+| GET | `/api/v2/opportunity/momentum/{ticker}` | Momentum opportunity assessment | DONE (s33) |
 
 ### What GET /trading-sheet returns today
 ```
@@ -184,7 +189,7 @@ RiskFactorsSection (table), TemplateEvalSection (dropdown + condition breakdown)
 | **Trading Sheet Frontend** | `frontend/src/pages/TradingSheetPage.tsx`, `frontend/src/hooks/useTradingSheet.ts` |
 | **Portfolio Fitness** | `services/portfolio_fitness.py` (PortfolioFitnessChecker) |
 | **Workflow Engine** | `workflow/engine.py` (orchestrator + ContainerManager + broker sync), `workflow/states.py`, `workflow/scheduler.py`, `runners/run_workflow.py` |
-| **Agents** | `agents/protocol.py` (Agent/AgentResult), 16 agents in `agents/` subdirs |
+| **Agents (5 active)** | `agents/base.py` (BaseAgent ABC), `agents/protocol.py` (AgentResult). Active: `safety/guardian.py` (GuardianAgent/circuit_breaker), `analysis/risk.py` (RiskAgent), `analysis/quant_research.py` (QuantResearchAgent — exemplar, owns ResearchContainer), `infrastructure/tech_architect.py` (TechArchitectAgent skeleton), `learning/trade_discipline.py` (TradeDisciplineAgent skeleton). **11 legacy agent files still imported by engine.py — see CLEANUP below** |
 | **Safety** | `agents/safety/guardian.py`, `config/workflow_rules.yaml` |
 | **Broker Adapters** | `adapters/base.py` (ABC), `adapters/factory.py`, `adapters/tastytrade_adapter.py` |
 | **Containers** | `containers/container_manager.py`, `containers/portfolio_bundle.py`, `containers/market_data_container.py` |
@@ -198,7 +203,7 @@ RiskFactorsSection (table), TemplateEvalSection (dropdown + condition breakdown)
 | **Trade Booking** | `services/trade_booking_service.py` |
 | **Broker Sync** | `services/portfolio_sync.py`, `services/position_sync.py` |
 | **DB/ORM** | `core/database/schema.py` (23 tables), `core/database/session.py`, `repositories/` |
-| **Market Regime** | External lib `market_regime` (editable install from `../market_regime`). 4 API endpoints in `web/api_v2.py` (regime section). Frontend endpoints in `frontend/src/api/endpoints.ts` |
+| **Market Analyzer** | External lib `market_analyzer` (editable install from `../market_analyzer`, renamed from `market_regime` s33). MarketAnalyzer facade in `web/api_v2.py` (9 endpoints: regime, phase, opportunities). QuantResearchAgent uses facade for populate(). Frontend endpoints in `frontend/src/api/endpoints.ts` |
 | **Agent Intelligence** | `services/agent_brain.py` (AgentBrain — LLM via Claude API), 4 endpoints in `web/api_v2.py` (agent section), `frontend/src/hooks/useAgentBrain.ts` |
 | **Web Server** | `web/approval_api.py` (FastAPI factory), `web/api_v2.py`, `web/api_admin.py`, `web/api_reports.py`, `web/api_explorer.py`, `web/api_agents.py` |
 | **Config** | `config/risk_config.yaml` (15 portfolios), `config/brokers.yaml` (4 brokers), `config/workflow_rules.yaml`, `config/research_templates.yaml` |
@@ -218,6 +223,15 @@ RiskFactorsSection (table), TemplateEvalSection (dropdown + condition breakdown)
 - Import order: stdlib → third-party → local (`trading_cotrader.`)
 - DB pattern: `with session_scope() as session: repo = SomeRepository(session)`
 - Schema change: ORM in `schema.py` → domain in `domain.py` → `setup_database.py`
+
+### ZERO DEAD CODE POLICY (Nitin mandate, s31)
+- **NEVER create code that is not immediately used end-to-end.** Every file, class, function must be imported and called by something that runs.
+- **NEVER create placeholder/stub agents, services, or files** "for future use." Build it when it's needed, not before.
+- **Before creating a new file:** Verify it will be imported and used. If not, don't create it.
+- **Before deleting functionality from UI:** Delete the corresponding backend code too. UI-only consolidation is cosmetic debt.
+- **Agent = decision authority.** If it doesn't make autonomous decisions, it's a service, not an agent. Services live in `services/`, agents live in `agents/`.
+- **Metadata lives WITH the code.** Agent descriptions, icons, boundaries belong in the agent class, not in a separate web file.
+- **After every change:** Run `pytest` + `pnpm build`. If imports break, fix them immediately — don't leave orphans.
 
 ---
 
@@ -252,6 +266,48 @@ python -m trading_cotrader.harness.runner --skip-sync
 
 ---
 
+## [CLAUDE OWNS] AGENT FRAMEWORK REFACTOR — Status (s32-33)
+
+**Done (s32):**
+- `agents/base.py` — BaseAgent ABC with `populate()`, `run()`, `analyze()`, `safety_check()`, `get_metadata()` classmethod
+- QuantResearchAgent — exemplar: extends BaseAgent, owns ResearchContainer, has `populate()` that replaces `_populate_research_container()` from api_research.py, `_ResearchEntryAdapter` for ConditionEvaluator compatibility
+- GuardianAgent, RiskAgent — extend BaseAgent with class-level metadata
+- TechArchitectAgent (skeleton), TradeDisciplineAgent (skeleton) — extend BaseAgent
+- `api_agents.py` — `_build_registry(engine)` reads metadata dynamically from agent classes, fallback to static AGENT_REGISTRY
+- `api_research.py` — delegates populate calls to `engine.quant_research.populate()` instead of old utility function
+- `engine.py` — passes ResearchContainer to QuantResearchAgent, calls `agent.populate()` instead of `_refresh_research_container()`, deletes `_refresh_research_container()` method
+
+**Still TODO (legacy agents in engine.py):**
+Engine still imports and calls 11 legacy agents that aren't BaseAgent subclasses yet. They're called in state handlers (booting, screening, execution, reporting). To fully delete them, their logic must be absorbed into the 5 core agents or converted to standalone services called by those agents.
+
+### Files still to absorb into core agents:
+| Legacy File | Used By | Absorb Into |
+|-------------|---------|-------------|
+| `perception/market_data.py` | booting, monitoring | quant_research.populate() or service |
+| `perception/portfolio_state.py` | booting, monitoring, execution | risk agent |
+| `perception/calendar.py` | booting | service call in engine |
+| `analysis/macro.py` | macro_check | service call in engine |
+| `analysis/screener.py` | screening | quant_research |
+| `analysis/evaluator.py` | trade_management, eod | risk agent |
+| `analysis/capital.py` | booting, monitoring | risk agent |
+| `execution/executor.py` | execution | tech_architect |
+| `execution/notifier.py` | various | tech_architect |
+| `execution/reporter.py` | reporting | tech_architect |
+| `learning/accountability.py` | reporting | trade_discipline |
+| `learning/session_objectives.py` | booting, reporting | trade_discipline |
+| `learning/qa_agent.py` | reporting | tech_architect |
+
+### Final 5 agents:
+| ID | Class | File | Category | Status |
+|----|-------|------|----------|--------|
+| circuit_breaker | GuardianAgent | `agents/safety/guardian.py` | safety | BaseAgent (s32) |
+| risk | RiskAgent | `agents/analysis/risk.py` | domain | BaseAgent (s32) |
+| quant_research | QuantResearchAgent | `agents/analysis/quant_research.py` | domain | BaseAgent + populate() (s32) |
+| tech_architect | TechArchitectAgent | `agents/infrastructure/tech_architect.py` | infrastructure | Skeleton (s32) |
+| trade_discipline | TradeDisciplineAgent | `agents/learning/trade_discipline.py` | learning | Skeleton (s32) |
+
+---
+
 ## [CLAUDE OWNS] OPEN ITEMS
 
 ### Agent Intelligence (Dashboard) — Unfinished
@@ -261,13 +317,13 @@ python -m trading_cotrader.harness.runner --skip-sync
 4. Data source gap — brief uses raw broker adapter data, not processed container data with corrected P&L/risk
 5. Requires `ANTHROPIC_API_KEY` in `.env` to function
 
-### Market Regime — API Done, UI Pending
-- 4 endpoints live in `api_v2.py`, Pydantic models serialize cleanly
-- Frontend endpoint constants added to `endpoints.ts`
-- Nitin will provide detailed UI integration plan
+### Market Analyzer — Full Integration Done (s33)
+- `market_regime` renamed to `market_analyzer` with MarketAnalyzer facade
+- 9 endpoints in `api_v2.py` (regime + phase + 4 opportunities)
+- ResearchContainer stores ~30 new fields (phase, smart money, opportunities)
+- ResearchDashboard UI: Opportunities + Smart Money column groups with verdict badges
+- QuantResearchAgent uses MarketAnalyzer facade for populate()
 
 ## [CLAUDE OWNS] OPEN QUESTIONS
 
-| # | Question | Context |
-|---|----------|---------|
-| 1 | Market regime UI integration plan | Nitin to provide detailed plan for where/how regime data appears in UI |
+(None currently)

@@ -39,7 +39,7 @@ joblib==1.5.3
 kiwisolver==1.4.9
 korean-lunar-calendar==0.3.1
 Mako==1.3.10
-market_regime @ git+https://github.com/nitinblue/market_regime.git@main
+market_analyzer @ git+https://github.com/nitinblue/market_analyzer.git@main
 MarkupSafe==3.0.3
 matplotlib==3.10.8
 multidict==6.7.1

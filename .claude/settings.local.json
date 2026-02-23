@@ -74,7 +74,11 @@
       "Bash(cd /c/Users/nitin/PythonProjects/market_regime && ./.venv/Scripts/python.exe -c \"\nfrom market_regime.models.regime import \\(\n    RegimeTimeSeries, RegimeTimeSeriesEntry, RegimeConfig,\n    LabelAlignment\n\\)\nfrom market_regime.models.phase import \\(\n    SwingPoint, PriceStructure, PhaseEvidence, PhaseTransition\n\\)\n\nfor ModelClass in [RegimeTimeSeries, RegimeTimeSeriesEntry, RegimeConfig,\n                    LabelAlignment, SwingPoint, PriceStructure, \n                    PhaseEvidence, PhaseTransition]:\n    print\\(f'=== {ModelClass.__name__} ==='\\)\n    fields = list\\(ModelClass.model_fields.keys\\(\\)\\)\n    print\\(f'Fields: {fields}'\\)\n    print\\(\\)\n\" 2>&1)",
       "Bash(cd /c/Users/nitin/PythonProjects/market_regime && ./.venv/Scripts/python.exe -c \"\nfrom market_regime.models.features import FeatureConfig, FeatureVector\n\nfor ModelClass in [FeatureConfig, FeatureVector]:\n    print\\(f'=== {ModelClass.__name__} ==='\\)\n    fields = list\\(ModelClass.model_fields.keys\\(\\)\\)\n    print\\(f'Fields: {fields}'\\)\n    print\\(\\)\n\" 2>&1)",
       "Bash(cd:*)",
-      "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/pip.exe install --force-reinstall --no-deps \"market_regime @ git+https://github.com/nitinblue/market_regime.git@main\" 2>&1)"
+      "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/pip.exe install --force-reinstall --no-deps \"market_regime @ git+https://github.com/nitinblue/market_regime.git@main\" 2>&1)",
+      "Bash(/c/Users/nitin/PythonProjects/eTrading/.venv/Scripts/pip.exe uninstall:*)",
+      "Bash(cd /c/Users/nitin/PythonProjects && git clone https://github.com/nitinblue/market_analyzer.git 2>&1)",
+      "Bash(/c/Users/nitin/PythonProjects/eTrading/.venv/Scripts/pip.exe install:*)",
+      "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/python.exe -m trading_cotrader.scripts.setup_database 2>&1)"
     ]
   }
 }

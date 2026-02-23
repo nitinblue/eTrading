@@ -98,6 +98,15 @@ export const endpoints = {
   fundamentals: (ticker: string) => `${V2}/fundamentals/${ticker}`,
   macroCalendar: `${V2}/macro/calendar`,
 
+  // Phase Detection
+  phase: (ticker: string) => `${V2}/phase/${ticker}`,
+
+  // Opportunity Assessments
+  opportunityZeroDte: (ticker: string) => `${V2}/opportunity/zero-dte/${ticker}`,
+  opportunityLeap: (ticker: string) => `${V2}/opportunity/leap/${ticker}`,
+  opportunityBreakout: (ticker: string) => `${V2}/opportunity/breakout/${ticker}`,
+  opportunityMomentum: (ticker: string) => `${V2}/opportunity/momentum/${ticker}`,
+
   // WebSocket
   ws: '/ws',
 } as const

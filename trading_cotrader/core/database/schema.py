@@ -1006,7 +1006,7 @@ class ResearchSnapshotORM(Base):
     Persisted ResearchEntry — one row per (symbol, snapshot_date).
 
     Enables instant cold start: engine loads from DB instead of
-    calling market_regime library on every restart.
+    calling market_analyzer library on every restart.
     """
     __tablename__ = 'research_snapshots'
 
@@ -1052,6 +1052,8 @@ class ResearchSnapshotORM(Base):
     bollinger_bandwidth = Column(Numeric(10, 4))
 
     # MACD
+    macd_line = Column(Numeric(10, 4))
+    macd_signal_line = Column(Numeric(10, 4))
     macd_histogram = Column(Numeric(10, 4))
     macd_bullish_cross = Column(Boolean, default=False)
     macd_bearish_cross = Column(Boolean, default=False)
@@ -1121,6 +1123,42 @@ class ResearchSnapshotORM(Base):
     vcp_above_sma_50 = Column(Boolean, default=False)
     vcp_above_sma_200 = Column(Boolean, default=False)
     vcp_description = Column(Text)
+
+    # --- Smart Money ---
+    smart_money_score = Column(Numeric(5, 4))
+    smart_money_description = Column(Text)
+    unfilled_fvg_count = Column(Integer)
+    active_ob_count = Column(Integer)
+
+    # --- Phase (enhanced from PhaseService) ---
+    phase_age_days = Column(Integer)
+    phase_prior = Column(String(30))
+    phase_cycle_completion = Column(Numeric(5, 4))
+    phase_strategy_comment = Column(Text)
+
+    # --- Opportunities ---
+    opp_zero_dte_verdict = Column(String(20))
+    opp_zero_dte_confidence = Column(Numeric(5, 4))
+    opp_zero_dte_strategy = Column(String(100))
+    opp_zero_dte_summary = Column(Text)
+
+    opp_leap_verdict = Column(String(20))
+    opp_leap_confidence = Column(Numeric(5, 4))
+    opp_leap_strategy = Column(String(100))
+    opp_leap_summary = Column(Text)
+
+    opp_breakout_verdict = Column(String(20))
+    opp_breakout_confidence = Column(Numeric(5, 4))
+    opp_breakout_strategy = Column(String(100))
+    opp_breakout_type = Column(String(20))
+    opp_breakout_pivot = Column(Numeric(10, 4))
+    opp_breakout_summary = Column(Text)
+
+    opp_momentum_verdict = Column(String(20))
+    opp_momentum_confidence = Column(Numeric(5, 4))
+    opp_momentum_strategy = Column(String(100))
+    opp_momentum_direction = Column(String(20))
+    opp_momentum_summary = Column(Text)
 
     # --- Screening ---
     triggered_templates = Column(JSON)

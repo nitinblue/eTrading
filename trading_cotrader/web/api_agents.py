@@ -33,74 +33,78 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Static agent registry — metadata for all 15 agents
+# Agent registry — built dynamically from BaseAgent.get_metadata()
 # ---------------------------------------------------------------------------
 
+def _build_registry(engine) -> dict:
+    """Build agent registry from class metadata on BaseAgent subclasses."""
+    from trading_cotrader.agents.base import BaseAgent
+
+    registry = {}
+    for attr_name in ['guardian', 'risk', 'quant_research', 'tech_architect', 'trade_discipline']:
+        agent = getattr(engine, attr_name, None)
+        if agent and isinstance(agent, BaseAgent):
+            meta = agent.get_metadata()
+            registry[meta['name']] = meta
+    return registry
+
+
+# Fallback static registry for when engine hasn't initialized yet
 AGENT_REGISTRY: dict[str, dict] = {
     'circuit_breaker': {
         'display_name': 'Circuit Breaker',
         'category': 'safety',
         'role': 'Circuit breaker & kill switch',
-        'intro': 'I am the emergency stop. Daily/weekly loss limits, VIX spikes, no-trade tickers — when something is wrong, I halt everything. Simple rules, no exceptions.',
-        'description': 'Circuit breakers and no-trade enforcement. Everything else is Risk Manager\'s job.',
+        'intro': 'I am the emergency stop. Daily/weekly loss limits, VIX spikes, no-trade tickers — when something is wrong, I halt everything.',
+        'description': 'Circuit breakers and no-trade enforcement.',
         'responsibilities': ['Circuit breakers (daily/weekly loss)', 'VIX halt threshold', 'No-trade ticker list', 'Emergency halt'],
         'datasources': ['workflow_rules.yaml', 'VIX feed', 'Daily P&L'],
         'boundaries': ['Cannot override human halt decisions', 'Does not evaluate strategies or positions', 'Kill switch only'],
         'runs_during': ['booting', 'monitoring', 'execution'],
-        'capabilities_implemented': ['Daily loss circuit breaker', 'Weekly loss circuit breaker', 'VIX halt', 'No-trade tickers'],
-        'capabilities_planned': ['Dynamic thresholds', 'ML anomaly detection'],
     },
     'risk': {
         'display_name': 'Risk Manager',
-        'category': 'analysis',
+        'category': 'domain',
         'role': 'Risk & execution gatekeeper',
-        'intro': 'I quantify risk and gate every trade. VaR, concentration, fitness checks, WhatIf booking, order preview — nothing gets through without my approval.',
-        'description': 'Computes VaR, portfolio fitness, concentration. Gates trade execution: WhatIf booking, risk checks, order preview.',
+        'intro': 'I quantify risk and gate every trade. VaR, concentration, fitness checks, WhatIf booking, order preview.',
+        'description': 'Computes VaR, portfolio fitness, concentration. Gates trade execution.',
         'responsibilities': ['Parametric VaR', 'Historical VaR', 'Concentration', 'Margin', 'Portfolio fitness', 'WhatIf booking', 'Trade execution gate'],
         'datasources': ['PortfolioORM', 'PositionORM', 'yfinance (price history)', 'CorrelationAnalyzer', 'Broker adapters', 'TradeBookingService'],
         'boundaries': ['LIMIT orders only (no market orders)', 'Requires explicit approval for execution', 'Reports risk metrics, gates trades'],
-        'runs_during': ['screening', 'execution'],
-        'capabilities_implemented': ['VaR (parametric/historical)', 'Correlation', 'Expected shortfall', 'WhatIf booking', 'Fitness checks'],
-        'capabilities_planned': ['Monte Carlo VaR', 'Stress testing', 'Smart order routing'],
+        'runs_during': ['screening', 'monitoring'],
     },
     'tech_architect': {
         'display_name': 'Tech Architect',
-        'category': 'execution',
+        'category': 'infrastructure',
         'role': 'Infrastructure, ops & QA',
-        'intro': 'I handle the plumbing. Broker routing, notifications, reports, test health, performance tracking — the operational backbone that keeps everything running and verified.',
+        'intro': 'I handle the plumbing. Broker routing, notifications, reports, test health, performance tracking.',
         'description': 'Consolidated infrastructure: broker routing, notifications, reporting, QA, and performance.',
         'responsibilities': ['Broker routing', 'Order routing', 'Notifications', 'Daily reports', 'Performance reports', 'Test suite health', 'Coverage analysis'],
         'datasources': ['config/brokers.yaml', 'Broker adapters', 'PortfolioORM', 'TradeORM', 'PerformanceMetricsService', 'pytest runner'],
         'boundaries': ['Cannot make trading decisions', 'Infrastructure and reporting only', 'Does not evaluate strategies'],
         'runs_during': ['execution', 'recommendation_review', 'trade_review', 'reporting'],
-        'capabilities_implemented': ['API/manual broker routing', 'Console + email notifications', 'Daily report', 'Performance metrics', 'Pytest runner', 'Coverage check'],
-        'capabilities_planned': ['Slack/SMS alerts', 'HTML/PDF reports', 'Best execution routing', 'Auto test generation'],
     },
     'trade_discipline': {
         'display_name': 'Trade Discipline',
         'category': 'learning',
         'role': 'Trading workflow & accountability',
-        'intro': 'I enforce process discipline. Morning objectives, decision tracking, time-to-action, ignored recs, EOD grading — I make sure the trading workflow stays honest.',
-        'description': 'Trading workflow manager: session objectives, decision tracking, accountability, and performance grading.',
+        'intro': 'I enforce process discipline. Morning objectives, decision tracking, time-to-action, EOD grading.',
+        'description': 'Trading workflow manager: session objectives, decision tracking, accountability.',
         'responsibilities': ['Session objectives', 'Decision tracking', 'Time-to-decision', 'Rec expiry', 'EOD grading', 'Gap analysis', 'Corrective plans'],
         'datasources': ['DecisionLogORM', 'RecommendationORM', 'AgentObjectiveORM', 'Agent run history', 'Portfolio performance'],
         'boundaries': ['Cannot force decisions', 'Observes and grades only', 'No trading authority'],
         'runs_during': ['booting', 'reporting'],
-        'capabilities_implemented': ['Decision log', 'TTD tracking', 'Capital deployment', 'A/B/C/F grading', 'Corrective plan'],
-        'capabilities_planned': ['Behavioral scoring', 'Decision quality ML', 'Trend analysis'],
     },
     'quant_research': {
         'display_name': 'Quant Research',
-        'category': 'analysis',
+        'category': 'domain',
         'role': 'Research pipeline executor',
-        'intro': 'I run scenario-based research. 7 templates, parameter variants, auto-booking into research portfolios. I generate the training data for future ML models.',
-        'description': 'Runs user-configured scenario screeners, auto-books into research portfolios for ML training data.',
-        'responsibilities': ['Scenario screening', 'Auto-booking', 'Parameter variants', 'Research trade tracking'],
-        'datasources': ['research_templates.yaml', 'ConditionEvaluator', 'TechnicalAnalysisService', 'ResearchContainer'],
+        'intro': 'I run scenario-based research. 7 templates, parameter variants, auto-booking into research portfolios.',
+        'description': 'Owns ResearchContainer. Populates from market_analyzer library, evaluates templates, auto-books.',
+        'responsibilities': ['Watchlist data population', 'Scenario screening', 'Auto-booking', 'Parameter variants', 'Research trade tracking'],
+        'datasources': ['market_analyzer library', 'research_templates.yaml', 'ConditionEvaluator', 'ResearchContainer'],
         'boundaries': ['Books into research portfolios only (not live)', 'Cannot modify templates', 'Auto-accept only for research'],
         'runs_during': ['monitoring'],
-        'capabilities_implemented': ['4 scenario screeners', 'Parameter variant A/B', 'Auto-accept', 'Research portfolios'],
-        'capabilities_planned': ['Template health monitor', 'Win rate tracking', 'Auto-disable underperformers'],
     },
 }
 
@@ -134,9 +138,11 @@ def create_agents_router(engine: 'WorkflowEngine') -> APIRouter:
     # ------------------------------------------------------------------
     @router.get("/agents")
     async def list_agents():
+        # Try dynamic registry from agent classes, fall back to static
+        registry = _build_registry(engine) or AGENT_REGISTRY
         agents = []
         with session_scope() as session:
-            for name, meta in AGENT_REGISTRY.items():
+            for name, meta in registry.items():
                 # Latest run
                 latest_run = (
                     session.query(AgentRunORM)
@@ -222,7 +228,7 @@ def create_agents_router(engine: 'WorkflowEngine') -> APIRouter:
             grade_dist = {g: c for g, c in grades}
 
             return {
-                'total_agents': len(AGENT_REGISTRY),
+                'total_agents': len(_build_registry(engine) or AGENT_REGISTRY),
                 'today_runs': total_runs,
                 'today_errors': error_count,
                 'avg_duration_ms': round(avg_duration, 1),
@@ -238,7 +244,7 @@ def create_agents_router(engine: 'WorkflowEngine') -> APIRouter:
     async def latest_runs():
         results = []
         with session_scope() as session:
-            for name in AGENT_REGISTRY:
+            for name in (_build_registry(engine) or AGENT_REGISTRY):
                 run = (
                     session.query(AgentRunORM)
                     .filter(AgentRunORM.agent_name == name)
@@ -381,10 +387,11 @@ def create_agents_router(engine: 'WorkflowEngine') -> APIRouter:
     # ------------------------------------------------------------------
     @router.get("/agents/{name}")
     async def agent_detail(name: str):
-        if name not in AGENT_REGISTRY:
+        registry = _build_registry(engine) or AGENT_REGISTRY
+        if name not in registry:
             raise HTTPException(404, f"Agent '{name}' not found")
 
-        meta = AGENT_REGISTRY[name]
+        meta = registry[name]
 
         with session_scope() as session:
             # Recent runs (last 20)
@@ -476,7 +483,8 @@ def create_agents_router(engine: 'WorkflowEngine') -> APIRouter:
         limit: int = Query(50, ge=1, le=500),
         offset: int = Query(0, ge=0),
     ):
-        if name not in AGENT_REGISTRY:
+        registry = _build_registry(engine) or AGENT_REGISTRY
+        if name not in registry:
             raise HTTPException(404, f"Agent '{name}' not found")
 
         with session_scope() as session:
@@ -528,7 +536,8 @@ def create_agents_router(engine: 'WorkflowEngine') -> APIRouter:
         name: str,
         days: int = Query(30, ge=1, le=365),
     ):
-        if name not in AGENT_REGISTRY:
+        registry = _build_registry(engine) or AGENT_REGISTRY
+        if name not in registry:
             raise HTTPException(404, f"Agent '{name}' not found")
 
         cutoff = date.today() - timedelta(days=days)

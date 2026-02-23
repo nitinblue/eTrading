@@ -88,6 +88,47 @@ function ConfBar({ value }: { value: number | null }) {
   )
 }
 
+const VERDICT_STYLE: Record<string, { bg: string; text: string; border: string }> = {
+  go: { bg: 'bg-green-900/30', text: 'text-green-400', border: 'border-green-700' },
+  caution: { bg: 'bg-amber-900/30', text: 'text-amber-400', border: 'border-amber-700' },
+  no_go: { bg: 'bg-red-900/30', text: 'text-red-400', border: 'border-red-700' },
+}
+
+function VerdictBadge({ verdict, strategy, confidence }: { verdict: string | null; strategy: string | null; confidence: number | null }) {
+  if (!verdict) return <span className="text-text-muted text-2xs">--</span>
+  const v = verdict.toLowerCase()
+  const s = VERDICT_STYLE[v] || VERDICT_STYLE.no_go
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1">
+        <span className={clsx('px-1 py-0.5 rounded text-2xs font-semibold border uppercase', s.bg, s.text, s.border)}>
+          {v === 'no_go' ? 'NO' : v}
+        </span>
+        {confidence != null && (
+          <div className="w-6 h-1 bg-bg-tertiary rounded-full overflow-hidden">
+            <div className={clsx('h-full rounded-full', v === 'go' ? 'bg-green-500' : v === 'caution' ? 'bg-amber-500' : 'bg-red-500')} style={{ width: `${Math.round(confidence * 100)}%` }} />
+          </div>
+        )}
+      </div>
+      {strategy && <span className="text-text-muted text-2xs truncate max-w-[80px]" title={strategy}>{strategy}</span>}
+    </div>
+  )
+}
+
+function SmScoreBar({ value }: { value: number | null }) {
+  if (value == null) return <span className="text-text-muted text-2xs">--</span>
+  const pct = Math.round(value * 100)
+  const c = pct >= 60 ? 'bg-green-500' : pct >= 30 ? 'bg-amber-500' : 'bg-red-500'
+  return (
+    <div className="flex items-center gap-1">
+      <div className="w-10 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+        <div className={clsx('h-full rounded-full', c)} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="font-mono text-2xs text-text-secondary">{pct}%</span>
+    </div>
+  )
+}
+
 function PctCell({ value }: { value: number | null }) {
   if (value == null) return <span className="text-text-muted">--</span>
   const v = value > 1 || value < -1 ? value : value * 100  // handle both 0.05 and 5.0 formats
@@ -119,12 +160,14 @@ function daysFromNow(dateStr: string): number {
 // Column groups for toggling
 // ---------------------------------------------------------------------------
 
-type ColGroup = 'core' | 'regime' | 'phase' | 'technicals' | 'fundamentals' | 'momentum' | 'vcp'
+type ColGroup = 'core' | 'regime' | 'phase' | 'technicals' | 'fundamentals' | 'momentum' | 'vcp' | 'opportunities' | 'smartmoney'
 
 const COL_GROUPS: { key: ColGroup; label: string }[] = [
   { key: 'core', label: 'Core' },
   { key: 'regime', label: 'Regime' },
   { key: 'phase', label: 'Phase' },
+  { key: 'opportunities', label: 'Opportunities' },
+  { key: 'smartmoney', label: 'Smart Money' },
   { key: 'technicals', label: 'Technicals' },
   { key: 'momentum', label: 'Momentum' },
   { key: 'vcp', label: 'VCP' },
@@ -236,9 +279,21 @@ export function ResearchDashboardPage() {
                   {activeGroups.has('phase') && <>
                     <th className="py-1.5 px-2">Phase</th>
                     <th className="py-1.5 px-2">Conf</th>
+                    <th className="py-1.5 px-2 text-right">Age</th>
+                    <th className="py-1.5 px-2 text-right">Cycle</th>
                     <th className="py-1.5 px-2">Structure</th>
-                    <th className="py-1.5 px-2 text-right">Range</th>
-                    <th className="py-1.5 px-2">Vol</th>
+                    <th className="py-1.5 px-2">Strategy</th>
+                  </>}
+                  {activeGroups.has('opportunities') && <>
+                    <th className="py-1.5 px-2">0DTE</th>
+                    <th className="py-1.5 px-2">LEAP</th>
+                    <th className="py-1.5 px-2">Breakout</th>
+                    <th className="py-1.5 px-2">Momentum</th>
+                  </>}
+                  {activeGroups.has('smartmoney') && <>
+                    <th className="py-1.5 px-2">SM Score</th>
+                    <th className="py-1.5 px-2 text-right">OBs</th>
+                    <th className="py-1.5 px-2 text-right">FVGs</th>
                   </>}
                   {activeGroups.has('technicals') && <>
                     <th className="py-1.5 px-2">RSI</th>
@@ -334,7 +389,7 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
         <td className="py-1.5 px-2 text-text-secondary text-2xs max-w-[200px] truncate">{r.hmm_strategy_comment || '--'}</td>
       </>}
 
-      {/* Phase */}
+      {/* Phase (enhanced) */}
       {activeGroups.has('phase') && <>
         <td className="py-1.5 px-2">
           {r.phase_name ? (
@@ -350,6 +405,19 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
           ) : <span className="text-text-muted text-2xs">--</span>}
         </td>
         <td className="py-1.5 px-2"><ConfBar value={r.phase_confidence} /></td>
+        <td className="py-1.5 px-2 text-right font-mono text-text-secondary text-2xs">
+          {r.phase_age_days != null ? `${r.phase_age_days}d` : '--'}
+        </td>
+        <td className="py-1.5 px-2 text-right">
+          {r.phase_cycle_completion != null ? (
+            <div className="flex items-center gap-1">
+              <div className="w-8 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-accent-blue" style={{ width: `${Math.round(r.phase_cycle_completion * 100)}%` }} />
+              </div>
+              <span className="font-mono text-2xs text-text-muted">{Math.round(r.phase_cycle_completion * 100)}%</span>
+            </div>
+          ) : <span className="text-text-muted text-2xs">--</span>}
+        </td>
         <td className="py-1.5 px-2">
           <div className="flex gap-0.5 text-2xs font-mono">
             {r.phase_higher_highs && <span className="text-green-400" title="Higher Highs">HH</span>}
@@ -359,22 +427,49 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             {!r.phase_higher_highs && !r.phase_higher_lows && !r.phase_lower_highs && !r.phase_lower_lows && <span className="text-text-muted">--</span>}
           </div>
         </td>
-        <td className="py-1.5 px-2 text-right">
-          {r.phase_range_compression != null ? (
-            <span className={clsx('font-mono text-2xs', r.phase_range_compression > 0 ? 'text-amber-400' : 'text-blue-400')}>
-              {r.phase_range_compression > 0 ? 'Comp' : 'Exp'} {Math.abs(r.phase_range_compression).toFixed(2)}
-            </span>
-          ) : <span className="text-text-muted text-2xs">--</span>}
+        <td className="py-1.5 px-2 text-text-secondary text-2xs max-w-[150px] truncate" title={r.phase_strategy_comment || ''}>
+          {r.phase_strategy_comment || '--'}
+        </td>
+      </>}
+
+      {/* Opportunities */}
+      {activeGroups.has('opportunities') && <>
+        <td className="py-1.5 px-2">
+          <VerdictBadge verdict={r.opp_zero_dte_verdict} strategy={r.opp_zero_dte_strategy} confidence={r.opp_zero_dte_confidence} />
         </td>
         <td className="py-1.5 px-2">
-          {r.phase_volume_trend ? (
-            <span className={clsx('text-2xs',
-              r.phase_volume_trend === 'rising' ? 'text-green-400' :
-              r.phase_volume_trend === 'declining' ? 'text-red-400' : 'text-text-muted',
-            )}>
-              {r.phase_volume_trend}
-            </span>
-          ) : <span className="text-text-muted text-2xs">--</span>}
+          <VerdictBadge verdict={r.opp_leap_verdict} strategy={r.opp_leap_strategy} confidence={r.opp_leap_confidence} />
+        </td>
+        <td className="py-1.5 px-2">
+          <div className="flex flex-col gap-0.5">
+            <VerdictBadge verdict={r.opp_breakout_verdict} strategy={r.opp_breakout_strategy} confidence={r.opp_breakout_confidence} />
+            {r.opp_breakout_type && (
+              <span className={clsx('text-2xs', r.opp_breakout_type === 'BULLISH' ? 'text-green-400' : 'text-red-400')}>
+                {r.opp_breakout_type === 'BULLISH' ? '\u25B2' : '\u25BC'} {r.opp_breakout_pivot != null ? `$${r.opp_breakout_pivot.toFixed(0)}` : ''}
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="py-1.5 px-2">
+          <div className="flex flex-col gap-0.5">
+            <VerdictBadge verdict={r.opp_momentum_verdict} strategy={r.opp_momentum_strategy} confidence={r.opp_momentum_confidence} />
+            {r.opp_momentum_direction && (
+              <span className={clsx('text-2xs', r.opp_momentum_direction === 'BULLISH' ? 'text-green-400' : 'text-red-400')}>
+                {r.opp_momentum_direction === 'BULLISH' ? '\u25B2' : '\u25BC'}
+              </span>
+            )}
+          </div>
+        </td>
+      </>}
+
+      {/* Smart Money */}
+      {activeGroups.has('smartmoney') && <>
+        <td className="py-1.5 px-2"><SmScoreBar value={r.smart_money_score} /></td>
+        <td className="py-1.5 px-2 text-right font-mono text-text-secondary text-2xs">
+          {r.active_ob_count != null ? r.active_ob_count : '--'}
+        </td>
+        <td className="py-1.5 px-2 text-right font-mono text-text-secondary text-2xs">
+          {r.unfilled_fvg_count != null ? r.unfilled_fvg_count : '--'}
         </td>
       </>}
 

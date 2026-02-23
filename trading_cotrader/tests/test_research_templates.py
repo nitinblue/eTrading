@@ -374,7 +374,7 @@ class TestAgentRegistry:
     def test_registry_entry_has_required_fields(self):
         from trading_cotrader.web.api_agents import AGENT_REGISTRY
         entry = AGENT_REGISTRY['quant_research']
-        assert entry['category'] == 'analysis'
+        assert entry['category'] == 'domain'
         assert 'monitoring' in entry['runs_during']
 
 
