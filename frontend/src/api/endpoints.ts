@@ -80,12 +80,15 @@ export const endpoints = {
   evaluateTemplate: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/evaluate`,
   addWhatIf: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/add-whatif`,
   bookTrade: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/book`,
+  deleteWhatIf: (portfolio: string, tradeId: string) => `${V2}/trading-dashboard/${portfolio}/whatif/${tradeId}`,
 
   // Research Container (unified research data)
   research: `${V2}/research`,
   researchTicker: (ticker: string) => `${V2}/research/${ticker}`,
+  researchStrategies: (ticker: string) => `${V2}/research/${ticker}/strategies`,
   researchRefresh: `${V2}/research/refresh`,
   researchWatchlist: `${V2}/research/watchlist`,
+  researchWatchlistTicker: (ticker: string) => `${V2}/research/watchlist/${ticker}`,
 
   // Market Watchlist + Regime
   marketWatchlist: `${V2}/market/watchlist`,

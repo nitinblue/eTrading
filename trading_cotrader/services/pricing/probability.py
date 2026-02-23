@@ -24,12 +24,16 @@ class ProbabilityResult:
     probability_max_profit: float
     probability_max_loss: float
     probability_breakeven: float
-    
+
     expected_value: float
     expected_return_percent: float
-    
+
     # Breakeven points
     breakeven_prices: List[float]
+
+    # Max profit / loss (positive numbers; inf for undefined risk)
+    max_profit: float = 0.0
+    max_loss: float = 0.0
 
 
 class ProbabilityCalculator:
@@ -290,7 +294,9 @@ class ProbabilityCalculator:
             probability_breakeven=0.5,  # By definition at breakeven
             expected_value=ev,
             expected_return_percent=(ev / max_loss * 100) if max_loss > 0 else 0,
-            breakeven_prices=[breakeven]
+            breakeven_prices=[breakeven],
+            max_profit=max_profit,
+            max_loss=max_loss,
         )
     
     def probability_of_profit_iron_condor(
@@ -343,7 +349,9 @@ class ProbabilityCalculator:
             probability_breakeven=0.5,
             expected_value=ev,
             expected_return_percent=(ev / max_loss * 100) if max_loss > 0 else 0,
-            breakeven_prices=[lower_breakeven, upper_breakeven]
+            breakeven_prices=[lower_breakeven, upper_breakeven],
+            max_profit=max_profit,
+            max_loss=max_loss,
         )
     
     def compute_trade_payoff(
@@ -490,6 +498,8 @@ class ProbabilityCalculator:
             expected_value=ev,
             expected_return_percent=(ev / max_loss * 100) if max_loss and max_loss != float('inf') else 0,
             breakeven_prices=[breakeven],
+            max_profit=max_profit,
+            max_loss=max_loss,
         )
 
     def _payoff_strangle(
@@ -525,6 +535,8 @@ class ProbabilityCalculator:
             expected_value=ev,
             expected_return_percent=(ev / max_loss * 100) if max_loss and max_loss != float('inf') else 0,
             breakeven_prices=[lower_be, upper_be],
+            max_profit=max_profit,
+            max_loss=max_loss,
         )
 
     def _payoff_fallback(
@@ -554,6 +566,8 @@ class ProbabilityCalculator:
             expected_value=ev,
             expected_return_percent=(ev / max_loss * 100) if max_loss > 0 else 0,
             breakeven_prices=[strikes[0] + est_premium, strikes[-1] - est_premium],
+            max_profit=max_profit,
+            max_loss=max_loss,
         )
 
     def _norm_cdf(self, x: float) -> float:

@@ -298,6 +298,7 @@ class MarginConfig:
     margin_warning_percent: float = 70
     margin_critical_percent: float = 85
     max_single_trade_margin_percent: float = 10
+    margin_buffer_multiplier: float = 2
 
 
 @dataclass

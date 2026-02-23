@@ -1,6 +1,6 @@
 @echo off
 echo ============================================================
-echo   Trading CoTrader — Startup
+echo   Trading CoTrader - Startup
 echo ============================================================
 echo.
 
@@ -10,7 +10,7 @@ REM Step 1: Check Python venv exists
 if not exist ".venv\Scripts\python.exe" (
     echo [ERROR] Python venv not found at .venv\Scripts\python.exe
     echo.
-    echo To fix: You need Python 3.12 (NOT 3.13 or 3.14 — hmmlearn won't build).
+    echo To fix: You need Python 3.12 (NOT 3.13 or 3.14 - hmmlearn won't build).
     echo   1. Download Python 3.12 from https://www.python.org/downloads/release/python-3127/
     echo   2. Install it (check "Add to PATH" is optional, just note the install path)
     echo   3. Open a terminal here and run:
@@ -27,7 +27,7 @@ echo Python version: %PYVER%
 echo %PYVER% | findstr /b "3.12" >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo [ERROR] Python %PYVER% detected — this project requires Python 3.12.x
+    echo [ERROR] Python %PYVER% detected - this project requires Python 3.12.x
     echo         Python 3.13+ and 3.14+ cannot build hmmlearn (C extension wheels missing).
     echo.
     echo To fix:

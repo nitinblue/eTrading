@@ -873,6 +873,9 @@ export interface TradingDashboardPosition {
   total_pnl: number
   broker_pnl: number
   pnl_pct: number
+  // WhatIf markers (optional — only present on whatif_positions)
+  trade_type?: string
+  trade_id?: string
 }
 
 export interface TradingDashboardRiskFactor {
@@ -886,6 +889,7 @@ export interface TradingDashboardRiskFactor {
   concentration_pct: number
   count: number
   pnl: number
+  trade_type?: string
 }
 
 export interface TradingDashboardData {
@@ -893,6 +897,8 @@ export interface TradingDashboardData {
   strategies: TradingDashboardStrategy[]
   positions: TradingDashboardPosition[]
   whatif_trades: TradingDashboardStrategy[]
+  whatif_positions: TradingDashboardPosition[]
+  whatif_risk_factors: TradingDashboardRiskFactor[]
   risk_factors: TradingDashboardRiskFactor[]
 }
 
@@ -1408,6 +1414,79 @@ export interface MacroCalendar {
   days_to_next_fomc: number | null
   events_next_7_days: MacroEvent[]
   events_next_30_days: MacroEvent[]
+}
+
+// ---------------------------------------------------------------------------
+// Strategy Proposal Types (from strategy_builder.py)
+// ---------------------------------------------------------------------------
+
+export interface StrategyProposalLeg {
+  option_type: string
+  strike: number
+  quantity: number
+  side: string
+  expiration: string
+}
+
+export interface StrategyProposalPayoff {
+  pop: number
+  ev: number
+  max_profit: number | null
+  max_loss: number | null
+  breakevens: number[]
+}
+
+export interface StrategyProposalLevels {
+  stop_price: number | null
+  stop_distance_pct: number | null
+  best_target_price: number | null
+  best_target_rr: number | null
+}
+
+export interface StrategyProposalFitness {
+  fits_portfolio: boolean
+  fitness_reasons: string[]
+  fitness_warnings: string[]
+  portfolio_delta_after: number
+}
+
+export interface StrategyProposal {
+  rank: number
+  strategy_type: string
+  display_name: string
+  source: string
+  dte: number
+  legs: StrategyProposalLeg[]
+  payoff: StrategyProposalPayoff
+  levels: StrategyProposalLevels
+  fitness: StrategyProposalFitness
+  score: number
+}
+
+export interface StrategyProposalsResponse {
+  ticker: string
+  spot: number
+  iv: number
+  regime: string | null
+  direction: string | null
+  strategy_count: number
+  strategies: StrategyProposal[]
+  diagnostics: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Watchlist Management Types
+// ---------------------------------------------------------------------------
+
+export interface WatchlistItem {
+  name: string
+  ticker: string
+  asset_class: string
+}
+
+export interface WatchlistResponse {
+  watchlist: WatchlistItem[]
+  count: number
 }
 
 // WebSocket message types

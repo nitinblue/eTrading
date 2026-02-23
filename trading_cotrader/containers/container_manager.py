@@ -271,7 +271,7 @@ class ContainerManager:
         Returns event with all changes.
         """
         from trading_cotrader.repositories.portfolio import PortfolioRepository
-        from trading_cotrader.core.database.schema import PositionORM, PortfolioORM
+        from trading_cotrader.core.database.schema import PositionORM, PortfolioORM, TradeORM
 
         target_name = portfolio_name or self._default_bundle
         bundle = self.get_bundle(target_name) if target_name else self._default
@@ -339,6 +339,53 @@ class ContainerManager:
                     old_value=change.get('old'),
                     new_value=change.get('new'),
                 ))
+
+        # Load trades (real + whatif) for this bundle
+        if bundle.portfolio_ids:
+            trades_orm = session.query(TradeORM).filter(
+                TradeORM.portfolio_id.in_(bundle.portfolio_ids),
+                TradeORM.is_open == True,
+            ).all()
+        else:
+            trades_orm = []
+
+        if trades_orm:
+            trade_changes = bundle.trades.load_from_orm_list(trades_orm)
+            for tid, changes in trade_changes.items():
+                for field_name, change in changes.items():
+                    if field_name.startswith('_'):
+                        continue
+                    all_cell_updates.append(CellUpdate(
+                        grid_type='trades',
+                        row_id=tid,
+                        column=field_name,
+                        old_value=change.get('old'),
+                        new_value=change.get('new'),
+                    ))
+
+        # Also load trades from the paired whatif portfolio
+        real_name = bundle.config_name
+        for whatif_name, paired_real in self._whatif_to_real.items():
+            if paired_real == real_name:
+                # Find whatif portfolio ID
+                from trading_cotrader.core.database.schema import PortfolioORM as PO
+                whatif_portfolio = session.query(PO).filter(
+                    PO.portfolio_type == 'what_if',
+                ).all()
+                whatif_ids = [wp.id for wp in whatif_portfolio
+                              if wp.id not in bundle.portfolio_ids]
+                if whatif_ids:
+                    whatif_trades_orm = session.query(TradeORM).filter(
+                        TradeORM.portfolio_id.in_(whatif_ids),
+                        TradeORM.is_open == True,
+                    ).all()
+                    if whatif_trades_orm:
+                        # Add to same trade container (trade_type distinguishes them)
+                        for t in whatif_trades_orm:
+                            if t.id not in {to.id for to in trades_orm}:
+                                trades_orm.append(t)
+                        bundle.trades.load_from_orm_list(trades_orm)
+                break
 
         # Aggregate risk factors from filtered positions
         rf_changes = bundle.risk_factors.aggregate_from_positions(bundle.positions)

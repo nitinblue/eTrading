@@ -122,6 +122,171 @@ def _strategy_label(trade: TradeORM) -> str:
 
 
 # ---------------------------------------------------------------------------
+# WhatIf: live Greeks + quotes from TastyTrade DXLink
+# ---------------------------------------------------------------------------
+
+def _leg_streamer_symbol(underlying: str, leg: LegORM) -> Optional[str]:
+    """Build TastyTrade DXLink streamer symbol from a WhatIf leg.
+
+    Format: .{TICKER}{YYMMDD}{C/P}{STRIKE_INT}
+    Example: .META260408P609
+    """
+    sym = leg.symbol
+    if not sym or not sym.expiration or not sym.strike or not sym.option_type:
+        return None
+    try:
+        exp = sym.expiration
+        if isinstance(exp, datetime):
+            exp = exp.date()
+        elif isinstance(exp, str):
+            exp = datetime.fromisoformat(exp).date()
+        yymmdd = exp.strftime('%y%m%d')
+        cp = 'C' if sym.option_type.lower() == 'call' else 'P'
+        strike_int = int(float(sym.strike))
+        return f".{underlying}{yymmdd}{cp}{strike_int}"
+    except (ValueError, TypeError, AttributeError) as e:
+        logger.warning(f"Could not build streamer symbol for leg {leg.id}: {e}")
+        return None
+
+
+def _refresh_whatif_greeks_from_broker(
+    whatif_trades: List[TradeORM],
+    engine: 'WorkflowEngine',
+    session,
+) -> None:
+    """Fetch live Greeks + quotes from TastyTrade DXLink for all WhatIf legs.
+
+    Constructs streamer symbols, batch-fetches Greeks and quotes,
+    updates LegORM + TradeORM in-place and persists to DB.
+    """
+    adapter = engine._adapters.get('tastytrade') if hasattr(engine, '_adapters') else None
+    if not adapter:
+        logger.debug("No TastyTrade adapter — WhatIf Greeks not refreshed")
+        return
+
+    # Collect all streamer symbols across all trades
+    streamer_to_legs: Dict[str, List[tuple]] = {}  # sym -> [(trade, leg), ...]
+    all_symbols: List[str] = []
+
+    for trade in whatif_trades:
+        underlying = trade.underlying_symbol or ''
+        if not underlying or not trade.legs:
+            continue
+        for leg in trade.legs:
+            ss = _leg_streamer_symbol(underlying, leg)
+            if ss:
+                streamer_to_legs.setdefault(ss, []).append((trade, leg))
+                if ss not in streamer_to_legs or len(streamer_to_legs[ss]) == 1:
+                    all_symbols.append(ss)
+
+    if not all_symbols:
+        return
+
+    # Batch fetch from broker
+    broker_greeks: Dict = {}
+    broker_quotes: Dict = {}
+    try:
+        logger.info(f"WhatIf refresh: fetching Greeks for {len(all_symbols)} symbols")
+        broker_greeks = adapter.get_greeks(all_symbols)
+        logger.info(f"WhatIf refresh: got Greeks for {len(broker_greeks)}/{len(all_symbols)}")
+    except Exception as e:
+        logger.warning(f"WhatIf Greeks fetch failed: {e}")
+
+    try:
+        broker_quotes = adapter.get_quotes(all_symbols)
+        logger.info(f"WhatIf refresh: got quotes for {len(broker_quotes)}/{len(all_symbols)}")
+    except Exception as e:
+        logger.warning(f"WhatIf quotes fetch failed: {e}")
+
+    if not broker_greeks and not broker_quotes:
+        return
+
+    # Apply to ORM objects and aggregate at trade level
+    trade_greeks: Dict[str, Dict[str, float]] = {}  # trade_id -> {delta, gamma, ...}
+
+    for ss, pairs in streamer_to_legs.items():
+        greeks = broker_greeks.get(ss)
+        quote = broker_quotes.get(ss)
+
+        for trade, leg in pairs:
+            qty = leg.quantity or 0
+            multiplier = 100
+
+            # Update leg Greeks from live broker data
+            if greeks:
+                per_d = float(greeks.delta)
+                per_g = float(greeks.gamma)
+                per_t = float(greeks.theta)
+                per_v = float(greeks.vega)
+
+                pos_d = per_d * qty * multiplier
+                pos_g = per_g * abs(qty) * multiplier
+                pos_t = per_t * qty * multiplier
+                pos_v = per_v * qty * multiplier
+
+                leg.delta = Decimal(str(round(pos_d, 4)))
+                leg.gamma = Decimal(str(round(pos_g, 6)))
+                leg.theta = Decimal(str(round(pos_t, 4)))
+                leg.vega = Decimal(str(round(pos_v, 4)))
+
+                # Accumulate for trade-level
+                tid = trade.id
+                if tid not in trade_greeks:
+                    trade_greeks[tid] = {'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
+                trade_greeks[tid]['delta'] += pos_d
+                trade_greeks[tid]['gamma'] += pos_g
+                trade_greeks[tid]['theta'] += pos_t
+                trade_greeks[tid]['vega'] += pos_v
+
+            # Update leg price from live quotes (mid price)
+            if quote:
+                bid = quote.get('bid', 0)
+                ask = quote.get('ask', 0)
+                mid = (bid + ask) / 2 if bid and ask else bid or ask
+                if mid > 0:
+                    leg.current_price = Decimal(str(round(mid, 4)))
+
+    # Apply trade-level aggregated Greeks
+    for trade in whatif_trades:
+        tg = trade_greeks.get(trade.id)
+        if tg:
+            trade.current_delta = Decimal(str(round(tg['delta'], 4)))
+            trade.current_gamma = Decimal(str(round(tg['gamma'], 6)))
+            trade.current_theta = Decimal(str(round(tg['theta'], 4)))
+            trade.current_vega = Decimal(str(round(tg['vega'], 4)))
+
+        # Compute entry_price from leg mid prices if not set or stale
+        if trade.legs:
+            net_premium = 0.0
+            for leg in trade.legs:
+                price = _dec(leg.current_price or leg.entry_price)
+                net_premium += price * (leg.quantity or 0)
+            if net_premium != 0:
+                trade.entry_price = Decimal(str(round(net_premium, 4)))
+
+        # Compute max_risk from leg structure (spread width * multiplier - premium)
+        if trade.legs:
+            strikes = sorted(
+                [float(l.symbol.strike) for l in trade.legs if l.symbol and l.symbol.strike],
+            )
+            if len(strikes) >= 2:
+                # Width of widest spread wing
+                width = max(
+                    strikes[i + 1] - strikes[i] for i in range(len(strikes) - 1)
+                )
+                net_credit = abs(_dec(trade.entry_price)) * 100
+                max_loss = width * 100 - net_credit
+                if max_loss > 0:
+                    trade.max_risk = Decimal(str(round(max_loss, 2)))
+
+    # Persist updated values
+    try:
+        session.flush()
+    except Exception as e:
+        logger.warning(f"WhatIf Greeks DB flush: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Table 1: Strategy-level rows — grouped from broker PositionORM
 # ---------------------------------------------------------------------------
 
@@ -272,6 +437,91 @@ def _group_positions_into_strategies(
 
     strategies.sort(key=lambda s: abs(s['max_risk']), reverse=True)
     return strategies
+
+
+def _build_whatif_position_rows(trade: TradeORM) -> List[Dict]:
+    """Build position-like rows from WhatIf trade legs (for merged positions table)."""
+    rows = []
+    for leg in (trade.legs or []):
+        sym = leg.symbol
+        delta = _dec(leg.delta or leg.entry_delta)
+        gamma = _dec(leg.gamma or leg.entry_gamma)
+        theta = _dec(leg.theta or leg.entry_theta)
+        vega = _dec(leg.vega or leg.entry_vega)
+        rows.append({
+            'id': leg.id,
+            'symbol': sym.ticker if sym else '',
+            'underlying': trade.underlying_symbol or '',
+            'option_type': sym.option_type if sym else None,
+            'strike': float(sym.strike) if sym and sym.strike else None,
+            'expiry': _iso(sym.expiration) if sym else None,
+            'dte': _dte_from_expiry(sym.expiration) if sym and sym.expiration else None,
+            'quantity': leg.quantity or 0,
+            'side': 'long' if (leg.quantity or 0) > 0 else 'short',
+            'entry_price': _dec(leg.entry_price),
+            'entry_delta': _dec(leg.entry_delta),
+            'entry_gamma': _dec(leg.entry_gamma),
+            'entry_theta': _dec(leg.entry_theta),
+            'entry_vega': _dec(leg.entry_vega),
+            'entry_iv': _dec(leg.entry_iv),
+            'current_price': _dec(leg.current_price or leg.entry_price),
+            'delta': delta,
+            'gamma': gamma,
+            'theta': theta,
+            'vega': vega,
+            'iv': _dec(leg.current_iv or leg.entry_iv),
+            'pnl_delta': 0.0, 'pnl_gamma': 0.0, 'pnl_theta': 0.0,
+            'pnl_vega': 0.0, 'pnl_unexplained': 0.0,
+            'total_pnl': 0.0, 'broker_pnl': 0.0, 'pnl_pct': 0.0,
+            # WhatIf markers
+            'trade_type': 'what_if',
+            'trade_id': trade.id,
+        })
+    return rows
+
+
+def _build_whatif_risk_factors(
+    whatif_strategies: List[Dict],
+    spot_by_underlying: Optional[Dict[str, float]] = None,
+) -> List[Dict]:
+    """Build risk factor rows from WhatIf strategy-level data."""
+    spots = spot_by_underlying or {}
+    factors: Dict[str, Dict] = {}
+    for t in whatif_strategies:
+        underlying = t.get('underlying', '')
+        if not underlying:
+            continue
+        if underlying not in factors:
+            factors[underlying] = {
+                'underlying': underlying,
+                'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0,
+                'count': 0, 'pnl': 0.0,
+            }
+        f = factors[underlying]
+        f['delta'] += t.get('net_delta', 0)
+        f['gamma'] += t.get('net_gamma', 0)
+        f['theta'] += t.get('net_theta', 0)
+        f['vega'] += t.get('net_vega', 0)
+        f['count'] += 1
+        f['pnl'] += t.get('total_pnl', 0)
+
+    result = []
+    for f in factors.values():
+        spot = spots.get(f['underlying'], 0.0)
+        delta_dollars = round(f['delta'] * spot, 2) if spot else 0.0
+        result.append({
+            'underlying': f['underlying'],
+            'spot': spot,
+            'delta': round(f['delta'], 4),
+            'gamma': round(f['gamma'], 6),
+            'theta': round(f['theta'], 4),
+            'vega': round(f['vega'], 4),
+            'delta_dollars': delta_dollars,
+            'concentration_pct': 0.0,
+            'count': f['count'],
+            'pnl': round(f['pnl'], 2),
+        })
+    return result
 
 
 def _build_whatif_strategy_row(trade: TradeORM, total_equity: float, total_bp: float) -> Dict:
@@ -435,6 +685,8 @@ class AddWhatIfRequest(BaseModel):
     strategy_type: str
     legs: List[Dict]
     notes: str = ""
+    entry_price: Optional[float] = None
+    max_risk: Optional[float] = None
 
 
 class BookTradeRequest(BaseModel):
@@ -488,9 +740,11 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
                 positions, equity, buying_power,
             )
 
-            # --- WhatIf trades from TradeORM ---
+            # --- WhatIf trades from TradeORM (eager-load legs + symbols) ---
+            from sqlalchemy.orm import joinedload
             whatif_orm = (
                 session.query(TradeORM)
+                .options(joinedload(TradeORM.legs).joinedload(LegORM.symbol))
                 .filter(
                     TradeORM.portfolio_id == portfolio.id,
                     TradeORM.is_open == True,
@@ -498,17 +752,36 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
                 )
                 .all()
             )
+
+            # Refresh Greeks + quotes from TastyTrade DXLink (live broker data)
+            if whatif_orm:
+                try:
+                    _refresh_whatif_greeks_from_broker(whatif_orm, engine, session)
+                except Exception as e:
+                    logger.warning(f"WhatIf broker refresh failed: {e}")
+
             whatif_trades = [
                 _build_whatif_strategy_row(t, equity, buying_power)
                 for t in whatif_orm
             ]
 
+            # WhatIf position rows (leg-level, for merged positions table)
+            whatif_position_rows: List[Dict] = []
+            for t in whatif_orm:
+                whatif_position_rows.extend(_build_whatif_position_rows(t))
+
+            # Risk factors (real positions — build first to extract spot prices)
+            risk_factor_rows = _build_risk_factors(positions)
+
+            # Build spot lookup from real risk factors for WhatIf
+            spot_by_udl = {r['underlying']: r['spot'] for r in risk_factor_rows if r.get('spot')}
+
+            # WhatIf risk factors (aggregated from strategy-level data, with spots)
+            whatif_risk_factor_rows = _build_whatif_risk_factors(whatif_trades, spot_by_udl)
+
             # WhatIf Greeks impact
             whatif_delta = sum(w['net_delta'] for w in whatif_trades)
             whatif_theta = sum(w['net_theta'] for w in whatif_trades)
-
-            # Risk factors
-            risk_factor_rows = _build_risk_factors(positions)
 
             # VaR
             var_95 = _dec(portfolio.var_1d_95)
@@ -544,6 +817,8 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
                 'strategies': real_strategies,
                 'positions': position_rows,
                 'whatif_trades': whatif_trades,
+                'whatif_positions': whatif_position_rows,
+                'whatif_risk_factors': whatif_risk_factor_rows,
                 'risk_factors': risk_factor_rows,
             }
 
@@ -699,7 +974,12 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
     # -----------------------------------------------------------------------
     @router.post("/trading-dashboard/{portfolio_name}/add-whatif")
     async def add_whatif(portfolio_name: str, body: AddWhatIfRequest):
-        """Add a proposed trade to WhatIf."""
+        """Add a proposed trade to WhatIf.
+
+        Constructs TastyTrade DXLink streamer symbols for each leg,
+        fetches live Greeks and quotes from the broker, and stores
+        them on the LegORM / TradeORM.
+        """
         with session_scope() as session:
             portfolio = session.query(PortfolioORM).filter(PortfolioORM.name == portfolio_name).first()
             if not portfolio:
@@ -713,41 +993,227 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
                 is_open=True, notes=body.notes or 'Added from Trading Dashboard',
             )
 
-            total_delta = total_gamma = total_theta = total_vega = 0.0
+            # --- Build legs and construct streamer symbols ---
+            legs: List[LegORM] = []
+            streamer_to_leg: Dict[str, LegORM] = {}
+            streamer_symbols: List[str] = []
+
             for leg_data in body.legs:
-                sym_id = str(uuid.uuid4())
-                symbol = SymbolORM(
-                    id=sym_id,
-                    ticker=f"{body.underlying} {leg_data.get('expiration', '')} "
-                           f"{leg_data.get('strike', '')} {leg_data.get('option_type', '')}".strip(),
-                    asset_type='option',
-                    option_type=leg_data.get('option_type'),
-                    strike=Decimal(str(leg_data.get('strike', 0))),
-                    expiration=datetime.fromisoformat(leg_data['expiration']) if leg_data.get('expiration') else None,
-                )
-                session.add(symbol)
+                strike_val = leg_data.get('strike', 0)
+                opt_type = leg_data.get('option_type', '')
+                exp_str = leg_data.get('expiration', '')
+                ticker_str = f"{body.underlying} {exp_str} {strike_val} {opt_type}".strip()
+                strike_dec = Decimal(str(strike_val))
+                exp_dt = datetime.fromisoformat(exp_str) if exp_str else None
+
+                # Reuse existing symbol if one matches (unique constraint)
+                symbol = session.query(SymbolORM).filter(
+                    SymbolORM.ticker == ticker_str,
+                    SymbolORM.asset_type == 'option',
+                    SymbolORM.option_type == opt_type,
+                    SymbolORM.strike == strike_dec,
+                    SymbolORM.expiration == exp_dt,
+                ).first()
+                if not symbol:
+                    symbol = SymbolORM(
+                        id=str(uuid.uuid4()),
+                        ticker=ticker_str,
+                        asset_type='option',
+                        option_type=opt_type,
+                        strike=strike_dec,
+                        expiration=exp_dt,
+                    )
+                    session.add(symbol)
+                    session.flush()  # ensure symbol.id is assigned
+
+                sym_id = symbol.id
+
                 leg = LegORM(
                     id=str(uuid.uuid4()), trade_id=trade_id, symbol_id=sym_id,
                     quantity=leg_data.get('quantity', 0), side=leg_data.get('side', 'buy'),
                 )
                 session.add(leg)
-                total_delta += float(leg_data.get('delta', 0))
-                total_gamma += float(leg_data.get('gamma', 0))
-                total_theta += float(leg_data.get('theta', 0))
-                total_vega += float(leg_data.get('vega', 0))
+                legs.append(leg)
 
-            trade.entry_delta = Decimal(str(total_delta))
-            trade.entry_gamma = Decimal(str(total_gamma))
-            trade.entry_theta = Decimal(str(total_theta))
-            trade.entry_vega = Decimal(str(total_vega))
+                # Construct TastyTrade DXLink streamer symbol:
+                # Format: .{TICKER}{YYMMDD}{C/P}{STRIKE_INT}
+                if exp_str and strike_val and opt_type:
+                    try:
+                        exp_dt = datetime.fromisoformat(exp_str)
+                        yymmdd = exp_dt.strftime('%y%m%d')
+                        cp = 'C' if opt_type.lower() == 'call' else 'P'
+                        strike_int = int(float(strike_val))
+                        streamer_sym = f".{body.underlying}{yymmdd}{cp}{strike_int}"
+                        streamer_symbols.append(streamer_sym)
+                        streamer_to_leg[streamer_sym] = leg
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Could not build streamer symbol for leg: {e}")
+
+            # --- Fetch live Greeks + quotes from TastyTrade DXLink ---
+            broker_greeks: Dict = {}
+            broker_quotes: Dict = {}
+            adapter = engine._adapters.get('tastytrade') if hasattr(engine, '_adapters') else None
+
+            if adapter and streamer_symbols:
+                try:
+                    logger.info(f"WhatIf: fetching Greeks for {streamer_symbols}")
+                    broker_greeks = adapter.get_greeks(streamer_symbols)
+                    logger.info(f"WhatIf: got Greeks for {len(broker_greeks)}/{len(streamer_symbols)} symbols")
+                except Exception as e:
+                    logger.warning(f"WhatIf Greeks fetch failed: {e}")
+
+                try:
+                    broker_quotes = adapter.get_quotes(streamer_symbols)
+                    logger.info(f"WhatIf: got quotes for {len(broker_quotes)}/{len(streamer_symbols)} symbols")
+                except Exception as e:
+                    logger.warning(f"WhatIf quotes fetch failed: {e}")
+            elif not adapter:
+                logger.warning("WhatIf: no TastyTrade adapter available - Greeks will be 0")
+
+            # --- Apply broker data to legs and aggregate ---
+            total_delta = total_gamma = total_theta = total_vega = 0.0
+
+            for streamer_sym, leg in streamer_to_leg.items():
+                qty = leg.quantity or 0
+                multiplier = 100  # standard option multiplier
+
+                # Greeks from DXLink (per-contract, decimal form)
+                greeks = broker_greeks.get(streamer_sym)
+                if greeks:
+                    # Per-contract Greeks from broker
+                    per_delta = float(greeks.delta)
+                    per_gamma = float(greeks.gamma)
+                    per_theta = float(greeks.theta)
+                    per_vega = float(greeks.vega)
+
+                    # Position Greeks = per_contract * signed_qty * multiplier
+                    pos_delta = per_delta * qty * multiplier
+                    pos_gamma = per_gamma * abs(qty) * multiplier
+                    pos_theta = per_theta * qty * multiplier
+                    pos_vega = per_vega * qty * multiplier
+
+                    leg.entry_delta = Decimal(str(round(pos_delta, 4)))
+                    leg.entry_gamma = Decimal(str(round(pos_gamma, 6)))
+                    leg.entry_theta = Decimal(str(round(pos_theta, 4)))
+                    leg.entry_vega = Decimal(str(round(pos_vega, 4)))
+                    leg.delta = leg.entry_delta
+                    leg.gamma = leg.entry_gamma
+                    leg.theta = leg.entry_theta
+                    leg.vega = leg.entry_vega
+
+                    total_delta += pos_delta
+                    total_gamma += pos_gamma
+                    total_theta += pos_theta
+                    total_vega += pos_vega
+
+                    logger.info(
+                        f"  WhatIf leg {streamer_sym}: qty={qty}, "
+                        f"per_contract_delta={per_delta:.4f}, pos_delta={pos_delta:.2f}"
+                    )
+
+                # Quote from DXLink (bid/ask -> mid for current price)
+                quote = broker_quotes.get(streamer_sym)
+                if quote:
+                    bid = quote.get('bid', 0)
+                    ask = quote.get('ask', 0)
+                    mid = (bid + ask) / 2 if bid and ask else bid or ask
+                    leg.entry_price = Decimal(str(round(mid, 4)))
+                    leg.current_price = leg.entry_price
+                    leg.entry_iv = None  # IV not in quote, comes from Greeks event
+
+            trade.entry_delta = Decimal(str(round(total_delta, 4)))
+            trade.entry_gamma = Decimal(str(round(total_gamma, 6)))
+            trade.entry_theta = Decimal(str(round(total_theta, 4)))
+            trade.entry_vega = Decimal(str(round(total_vega, 4)))
             trade.current_delta = trade.entry_delta
             trade.current_gamma = trade.entry_gamma
             trade.current_theta = trade.entry_theta
             trade.current_vega = trade.entry_vega
+
+            # Compute entry_price as net credit/debit from leg quotes
+            if body.entry_price is not None:
+                trade.entry_price = Decimal(str(body.entry_price))
+            else:
+                net_premium = Decimal('0')
+                for leg in legs:
+                    if leg.entry_price and leg.quantity:
+                        # Sell (negative qty) = credit, buy (positive qty) = debit
+                        net_premium += (leg.entry_price or Decimal('0')) * leg.quantity
+                    trade.entry_price = Decimal(str(round(float(net_premium), 4)))
+
+            # max_risk from body or payoff computation
+            if body.max_risk is not None:
+                trade.max_risk = Decimal(str(body.max_risk))
+            else:
+                try:
+                    spot = 0.0
+                    # Try to get spot from existing positions
+                    positions = session.query(PositionORM).filter(
+                        PositionORM.portfolio_id == portfolio.id,
+                    ).all()
+                    for p in positions:
+                        if p.symbol and p.symbol.ticker and p.symbol.ticker.startswith(body.underlying):
+                            if p.current_underlying_price:
+                                spot = float(p.current_underlying_price)
+                                break
+                    if spot <= 0:
+                        strikes = [float(l.get('strike', 0)) for l in body.legs if l.get('strike')]
+                        if strikes:
+                            spot = sum(strikes) / len(strikes)
+                    if spot > 0:
+                        dte = 45
+                        for l in body.legs:
+                            if l.get('expiration'):
+                                try:
+                                    exp = datetime.fromisoformat(l['expiration']).date()
+                                    d = (exp - date_cls.today()).days
+                                    if d > 0:
+                                        dte = d
+                                        break
+                                except (ValueError, TypeError):
+                                    pass
+                        iv = 0.20
+                        payoff = _prob_calc.compute_trade_payoff(
+                            legs=body.legs, spot=spot, iv=iv, dte=dte,
+                        )
+                        ml = payoff.max_loss if payoff.max_loss != float('inf') else 0
+                        trade.max_risk = Decimal(str(round(ml, 2)))
+                except Exception as e:
+                    logger.warning(f"Payoff computation for WhatIf: {e}")
+
             session.add(trade)
             session.flush()
 
-            return {'success': True, 'trade_id': trade_id}
+        # Refresh containers so WhatIf trade is reflected in-memory
+        try:
+            engine._refresh_containers()
+        except Exception as e:
+            logger.warning(f"Container refresh after add-whatif: {e}")
+
+        return {'success': True, 'trade_id': trade_id}
+
+    # -----------------------------------------------------------------------
+    # DELETE /trading-dashboard/{portfolio_name}/whatif/{trade_id}
+    # -----------------------------------------------------------------------
+    @router.delete("/trading-dashboard/{portfolio_name}/whatif/{trade_id}")
+    async def delete_whatif(portfolio_name: str, trade_id: str):
+        """Delete a WhatIf trade."""
+        with session_scope() as session:
+            trade = session.query(TradeORM).get(trade_id)
+            if not trade or trade.trade_type != 'what_if':
+                raise HTTPException(404, "WhatIf trade not found")
+            portfolio = session.query(PortfolioORM).get(trade.portfolio_id)
+            if not portfolio or portfolio.name != portfolio_name:
+                raise HTTPException(400, "Trade does not belong to this portfolio")
+            session.delete(trade)
+
+        # Refresh containers so deletion is reflected in-memory
+        try:
+            engine._refresh_containers()
+        except Exception as e:
+            logger.warning(f"Container refresh after delete-whatif: {e}")
+
+        return {'status': 'deleted', 'trade_id': trade_id}
 
     # -----------------------------------------------------------------------
     # POST /trading-dashboard/{portfolio_name}/book
@@ -768,7 +1234,14 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
             trade.trade_type = 'paper'
             trade.trade_status = 'pending'
             trade.notes = (trade.notes or '') + ' | Booked from Trading Dashboard'
-            return {'success': True, 'trade_id': trade.id}
+
+        # Refresh containers so booking is reflected in-memory
+        try:
+            engine._refresh_containers()
+        except Exception as e:
+            logger.warning(f"Container refresh after book-trade: {e}")
+
+        return {'success': True, 'trade_id': body.whatif_trade_id}
 
     return router
 

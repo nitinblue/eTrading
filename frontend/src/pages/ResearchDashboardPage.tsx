@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { RefreshCw } from 'lucide-react'
-import { useResearch, useRefreshResearch } from '../hooks/useResearch'
+import { RefreshCw, Plus, X, Settings, ChevronDown } from 'lucide-react'
+import { useResearch, useRefreshResearch, useWatchlist, useAddWatchlistTicker, useRemoveWatchlistTicker } from '../hooks/useResearch'
 import { Spinner } from '../components/common/Spinner'
 import { AgentBadge } from '../components/common/AgentBadge'
 import type { ResearchEntry, ResearchMacroContext, MacroEvent } from '../api/types'
@@ -184,6 +184,7 @@ export function ResearchDashboardPage() {
   const refreshMutation = useRefreshResearch()
   const navigate = useNavigate()
   const [activeGroups, setActiveGroups] = useState<Set<ColGroup>>(new Set(['core', 'regime', 'technicals']))
+  const [showWatchlistManager, setShowWatchlistManager] = useState(false)
 
   const toggle = (g: ColGroup) => {
     setActiveGroups(prev => {
@@ -229,6 +230,16 @@ export function ResearchDashboardPage() {
             ))}
           </div>
           <button
+            onClick={() => setShowWatchlistManager(v => !v)}
+            className={clsx(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-bg-hover',
+              showWatchlistManager ? 'text-accent-blue bg-accent-blue/10' : 'text-text-secondary',
+            )}
+          >
+            <Settings size={12} />
+            Watchlist
+          </button>
+          <button
             onClick={() => refreshMutation.mutate(undefined)}
             disabled={refreshMutation.isPending}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs text-accent-blue hover:bg-bg-hover disabled:opacity-50"
@@ -244,6 +255,9 @@ export function ResearchDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Watchlist manager */}
+      {showWatchlistManager && <WatchlistManager onClose={() => setShowWatchlistManager(false)} />}
 
       {/* Macro strip */}
       {macro && <MacroStrip macro={macro} />}
@@ -355,6 +369,133 @@ export function ResearchDashboardPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Watchlist Manager
+// ---------------------------------------------------------------------------
+
+const ASSET_CLASSES = ['equity', 'equity_index', 'commodity', 'currency', 'tech', 'copper_mining', 'etf', 'crypto']
+
+function WatchlistManager({ onClose }: { onClose: () => void }) {
+  const { data: wl, isLoading } = useWatchlist()
+  const addMutation = useAddWatchlistTicker()
+  const removeMutation = useRemoveWatchlistTicker()
+  const [ticker, setTicker] = useState('')
+  const [name, setName] = useState('')
+  const [assetClass, setAssetClass] = useState('equity')
+  const [addError, setAddError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleAdd = () => {
+    const t = ticker.trim().toUpperCase()
+    if (!t) return
+    setAddError(null)
+    addMutation.mutate(
+      { ticker: t, name: name.trim() || t, asset_class: assetClass },
+      {
+        onSuccess: () => {
+          setTicker('')
+          setName('')
+          setAssetClass('equity')
+          inputRef.current?.focus()
+        },
+        onError: (err: unknown) => {
+          const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to add ticker'
+          setAddError(msg)
+        },
+      },
+    )
+  }
+
+  const handleRemove = (t: string) => {
+    removeMutation.mutate(t)
+  }
+
+  const items = wl?.watchlist || []
+
+  return (
+    <div className="card">
+      <div className="card-body py-2 px-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-text-primary">Manage Watchlist</span>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary">
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Add form */}
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={ticker}
+            onChange={e => { setTicker(e.target.value.toUpperCase()); setAddError(null) }}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="TICKER"
+            className="w-20 px-2 py-1 rounded bg-bg-tertiary border border-border-secondary text-xs text-text-primary font-mono uppercase placeholder:text-text-muted focus:outline-none focus:border-accent-blue"
+          />
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="Display name (optional)"
+            className="flex-1 min-w-0 px-2 py-1 rounded bg-bg-tertiary border border-border-secondary text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue"
+          />
+          <select
+            value={assetClass}
+            onChange={e => setAssetClass(e.target.value)}
+            className="px-2 py-1 rounded bg-bg-tertiary border border-border-secondary text-xs text-text-primary focus:outline-none focus:border-accent-blue"
+          >
+            {ASSET_CLASSES.map(ac => (
+              <option key={ac} value={ac}>{ac}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleAdd}
+            disabled={!ticker.trim() || addMutation.isPending}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-accent-blue/20 text-accent-blue hover:bg-accent-blue/30 disabled:opacity-50"
+          >
+            <Plus size={12} />
+            Add
+          </button>
+        </div>
+        {addError && <span className="text-2xs text-accent-red">{addError}</span>}
+
+        {/* Current watchlist */}
+        {isLoading ? (
+          <div className="flex items-center gap-1 py-1">
+            <Spinner size="sm" />
+            <span className="text-2xs text-text-muted">Loading...</span>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {items.map(item => (
+              <div
+                key={item.ticker}
+                className="group flex items-center gap-1 px-2 py-0.5 rounded bg-bg-tertiary border border-border-secondary text-xs"
+              >
+                <span className="font-mono font-bold text-accent-blue">{item.ticker}</span>
+                <span className="text-text-muted text-2xs">{item.name}</span>
+                <span className="text-text-muted text-2xs">({item.asset_class})</span>
+                <button
+                  onClick={() => handleRemove(item.ticker)}
+                  disabled={removeMutation.isPending}
+                  className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-accent-red transition-opacity ml-0.5"
+                  title={`Remove ${item.ticker}`}
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="text-2xs text-text-muted">{items.length} tickers in watchlist</div>
+      </div>
     </div>
   )
 }

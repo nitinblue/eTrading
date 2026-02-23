@@ -73,7 +73,22 @@ export function useBookTrade(portfolio: string) {
       return data
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['trading-dashboard', portfolio] })
+      qc.invalidateQueries({ queryKey: ['trading-dashboard'] })
+    },
+  })
+}
+
+export function useDeleteWhatIf(portfolio: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (tradeId: string) => {
+      const { data } = await api.delete(
+        endpoints.deleteWhatIf(portfolio, tradeId),
+      )
+      return data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['trading-dashboard'] })
     },
   })
 }

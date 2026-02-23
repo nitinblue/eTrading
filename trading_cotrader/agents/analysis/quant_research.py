@@ -385,6 +385,9 @@ class QuantResearchAgent(BaseAgent):
 
     def _save_to_db(self) -> None:
         """Persist container state to DB (fire-and-forget)."""
+        if self.container is None:
+            logger.warning("_save_to_db: no container — skipping")
+            return
         try:
             from trading_cotrader.core.database.session import session_scope
             with session_scope() as session:

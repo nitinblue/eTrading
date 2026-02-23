@@ -31,6 +31,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/', icon: TrendingUp, label: 'Research', phase: 1 },
+  { to: '/blotter', icon: ArrowLeftRight, label: 'Trade Blotter', phase: 1 },
   { to: '/portfolio', icon: Briefcase, label: 'Portfolio', phase: 1 },
   { to: '/recommendations', icon: ListChecks, label: 'Recommendations', phase: 1 },
   { to: '/workflow', icon: Activity, label: 'Workflow', phase: 1 },
@@ -53,7 +54,6 @@ const navItems: NavItem[] = [
   { to: '/funds', icon: Landmark, label: 'Funds', phase: 1 },
   { to: '/reports', icon: FileText, label: 'Reports', phase: 1 },
   { to: '/data', icon: Database, label: 'Data Explorer', phase: 1 },
-  { to: '/trading', icon: ArrowLeftRight, label: 'Trading', phase: 1 },
 ]
 
 export function Sidebar() {
