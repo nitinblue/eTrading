@@ -1235,7 +1235,8 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Get or create MarketAnalyzer facade singleton."""
         if 'ma' not in _ma_holder:
             from market_analyzer import MarketAnalyzer
-            _ma_holder['ma'] = MarketAnalyzer()
+            from market_analyzer.data import DataService
+            _ma_holder['ma'] = MarketAnalyzer(data_service=DataService())
         return _ma_holder['ma']
 
     # ------------------------------------------------------------------
@@ -1621,6 +1622,35 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         except Exception as e:
             logger.error(f"Macro calendar failed: {e}")
             raise HTTPException(500, f"Macro calendar failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Levels Analysis (support/resistance, stop loss, targets)
+    # ------------------------------------------------------------------
+
+    @router.get("/levels/{ticker}")
+    async def get_levels(
+        ticker: str,
+        direction: Optional[str] = Query(None, description="Override auto-detected direction: long or short"),
+        entry_price: Optional[float] = Query(None, description="Override entry price"),
+    ):
+        """
+        Synthesized price levels: ranked S/R with confluence, stop loss, targets, R:R.
+
+        Uses LevelsService which combines swing S/R, MAs, Bollinger, VCP pivot,
+        order blocks, FVGs, ORB, and VWAP into actionable levels.
+        """
+        try:
+            ma = _get_market_analyzer()
+            kwargs = {}
+            if direction:
+                kwargs['direction'] = direction
+            if entry_price is not None:
+                kwargs['entry_price'] = entry_price
+            result = ma.levels.analyze(ticker.upper(), **kwargs)
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Levels analysis failed for {ticker}: {e}")
+            raise HTTPException(500, f"Levels analysis failed: {e}")
 
     # ------------------------------------------------------------------
     # Phase Detection (Wyckoff via market_analyzer PhaseService)

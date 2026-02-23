@@ -160,7 +160,7 @@ function daysFromNow(dateStr: string): number {
 // Column groups for toggling
 // ---------------------------------------------------------------------------
 
-type ColGroup = 'core' | 'regime' | 'phase' | 'technicals' | 'fundamentals' | 'momentum' | 'vcp' | 'opportunities' | 'smartmoney'
+type ColGroup = 'core' | 'regime' | 'phase' | 'technicals' | 'fundamentals' | 'momentum' | 'vcp' | 'opportunities' | 'smartmoney' | 'levels'
 
 const COL_GROUPS: { key: ColGroup; label: string }[] = [
   { key: 'core', label: 'Core' },
@@ -168,6 +168,7 @@ const COL_GROUPS: { key: ColGroup; label: string }[] = [
   { key: 'phase', label: 'Phase' },
   { key: 'opportunities', label: 'Opportunities' },
   { key: 'smartmoney', label: 'Smart Money' },
+  { key: 'levels', label: 'Levels' },
   { key: 'technicals', label: 'Technicals' },
   { key: 'momentum', label: 'Momentum' },
   { key: 'vcp', label: 'VCP' },
@@ -294,6 +295,16 @@ export function ResearchDashboardPage() {
                     <th className="py-1.5 px-2">SM Score</th>
                     <th className="py-1.5 px-2 text-right">OBs</th>
                     <th className="py-1.5 px-2 text-right">FVGs</th>
+                  </>}
+                  {activeGroups.has('levels') && <>
+                    <th className="py-1.5 px-2">Dir</th>
+                    <th className="py-1.5 px-2 text-right">Stop</th>
+                    <th className="py-1.5 px-2 text-right">Target</th>
+                    <th className="py-1.5 px-2 text-right">S1</th>
+                    <th className="py-1.5 px-2 text-right">S2</th>
+                    <th className="py-1.5 px-2 text-right">R1</th>
+                    <th className="py-1.5 px-2 text-right">R2</th>
+                    <th className="py-1.5 px-2">Summary</th>
                   </>}
                   {activeGroups.has('technicals') && <>
                     <th className="py-1.5 px-2">RSI</th>
@@ -470,6 +481,68 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
         </td>
         <td className="py-1.5 px-2 text-right font-mono text-text-secondary text-2xs">
           {r.unfilled_fvg_count != null ? r.unfilled_fvg_count : '--'}
+        </td>
+      </>}
+
+      {/* Levels */}
+      {activeGroups.has('levels') && <>
+        <td className="py-1.5 px-2">
+          {r.levels_direction ? (
+            <span className={clsx('font-mono font-bold text-2xs', r.levels_direction === 'long' ? 'text-green-400' : 'text-red-400')}>
+              {r.levels_direction === 'long' ? '\u25B2 LONG' : '\u25BC SHORT'}
+            </span>
+          ) : <span className="text-text-muted text-2xs">--</span>}
+        </td>
+        <td className="py-1.5 px-2 text-right">
+          {r.levels_stop_price != null ? (
+            <div className="flex flex-col items-end">
+              <span className="font-mono text-red-400">${r.levels_stop_price.toFixed(2)}</span>
+              {r.levels_stop_distance_pct != null && <span className="text-2xs text-red-400/70">({r.levels_stop_distance_pct.toFixed(1)}%)</span>}
+            </div>
+          ) : <span className="text-text-muted">--</span>}
+        </td>
+        <td className="py-1.5 px-2 text-right">
+          {r.levels_best_target_price != null ? (
+            <div className="flex flex-col items-end">
+              <span className="font-mono text-green-400">${r.levels_best_target_price.toFixed(2)}</span>
+              {r.levels_best_target_rr != null && <span className="text-2xs text-green-400/70">R:R={r.levels_best_target_rr.toFixed(1)}</span>}
+            </div>
+          ) : <span className="text-text-muted">--</span>}
+        </td>
+        <td className="py-1.5 px-2 text-right">
+          {r.levels_s1_price != null ? (
+            <div className="flex flex-col items-end">
+              <span className="font-mono text-text-secondary">${r.levels_s1_price.toFixed(2)}</span>
+              {r.levels_s1_sources && <span className="text-2xs text-text-muted truncate max-w-[60px]" title={r.levels_s1_sources}>{r.levels_s1_sources}</span>}
+            </div>
+          ) : <span className="text-text-muted">--</span>}
+        </td>
+        <td className="py-1.5 px-2 text-right">
+          {r.levels_s2_price != null ? (
+            <div className="flex flex-col items-end">
+              <span className="font-mono text-text-secondary">${r.levels_s2_price.toFixed(2)}</span>
+              {r.levels_s2_sources && <span className="text-2xs text-text-muted truncate max-w-[60px]" title={r.levels_s2_sources}>{r.levels_s2_sources}</span>}
+            </div>
+          ) : <span className="text-text-muted">--</span>}
+        </td>
+        <td className="py-1.5 px-2 text-right">
+          {r.levels_r1_price != null ? (
+            <div className="flex flex-col items-end">
+              <span className="font-mono text-text-secondary">${r.levels_r1_price.toFixed(2)}</span>
+              {r.levels_r1_sources && <span className="text-2xs text-text-muted truncate max-w-[60px]" title={r.levels_r1_sources}>{r.levels_r1_sources}</span>}
+            </div>
+          ) : <span className="text-text-muted">--</span>}
+        </td>
+        <td className="py-1.5 px-2 text-right">
+          {r.levels_r2_price != null ? (
+            <div className="flex flex-col items-end">
+              <span className="font-mono text-text-secondary">${r.levels_r2_price.toFixed(2)}</span>
+              {r.levels_r2_sources && <span className="text-2xs text-text-muted truncate max-w-[60px]" title={r.levels_r2_sources}>{r.levels_r2_sources}</span>}
+            </div>
+          ) : <span className="text-text-muted">--</span>}
+        </td>
+        <td className="py-1.5 px-2 text-text-secondary text-2xs max-w-[250px] truncate" title={r.levels_summary || ''}>
+          {r.levels_summary || '--'}
         </td>
       </>}
 

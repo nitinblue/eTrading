@@ -98,6 +98,9 @@ export const endpoints = {
   fundamentals: (ticker: string) => `${V2}/fundamentals/${ticker}`,
   macroCalendar: `${V2}/macro/calendar`,
 
+  // Levels Analysis
+  levels: (ticker: string) => `${V2}/levels/${ticker}`,
+
   // Phase Detection
   phase: (ticker: string) => `${V2}/phase/${ticker}`,
 

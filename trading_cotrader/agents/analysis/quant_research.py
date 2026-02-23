@@ -237,6 +237,7 @@ class QuantResearchAgent(BaseAgent):
             f"{stats.get('technicals', 0)} technicals, "
             f"{stats.get('phase', 0)} phase, "
             f"{stats.get('opportunities', 0)} opportunities, "
+            f"{stats.get('levels', 0)} levels, "
             f"{stats.get('fundamentals', 0)} fundamentals"
         )
         errors = stats.get('errors', [])
@@ -261,7 +262,8 @@ class QuantResearchAgent(BaseAgent):
         container = self.container
         stats = {
             'technicals': 0, 'regime': 0, 'fundamentals': 0,
-            'phase': 0, 'opportunities': 0, 'macro': False, 'errors': [],
+            'phase': 0, 'opportunities': 0, 'levels': 0,
+            'macro': False, 'errors': [],
         }
 
         # 1. Batch regime detection (fast — one call)
@@ -331,7 +333,17 @@ class QuantResearchAgent(BaseAgent):
                 container.update_opportunities(ticker, opps)
                 stats['opportunities'] += 1
 
-        # 5. Fundamentals per ticker (slower — yfinance calls, but cached)
+        # 5. Levels analysis per ticker
+        for ticker in tickers:
+            try:
+                levels_result = ma.levels.analyze(ticker)
+                container.update_levels(ticker, levels_result.model_dump(mode='json'))
+                stats['levels'] += 1
+            except Exception as e:
+                logger.debug(f"Levels analysis failed for {ticker}: {e}")
+                stats['errors'].append(f"levels({ticker}): {e}")
+
+        # 6. Fundamentals per ticker (slower — yfinance calls, but cached)
         if not skip_fundamentals:
             for ticker in tickers:
                 try:
@@ -357,7 +369,8 @@ class QuantResearchAgent(BaseAgent):
         """Lazy-init MarketAnalyzer facade singleton."""
         if not hasattr(self, '_market_analyzer'):
             from market_analyzer import MarketAnalyzer
-            self._market_analyzer = MarketAnalyzer()
+            from market_analyzer.data import DataService
+            self._market_analyzer = MarketAnalyzer(data_service=DataService())
         return self._market_analyzer
 
     def _load_watchlist(self) -> None:

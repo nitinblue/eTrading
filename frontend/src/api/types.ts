@@ -1062,6 +1062,47 @@ export interface ResearchEntry {
   opp_momentum_strategy: string | null
   opp_momentum_direction: string | null
   opp_momentum_summary: string | null
+  // Levels (from LevelsService)
+  levels_direction: string | null
+  levels_entry_price: number | null
+  levels_atr: number | null
+  levels_atr_pct: number | null
+  levels_summary: string | null
+  levels_support_count: number | null
+  levels_resistance_count: number | null
+  levels_stop_price: number | null
+  levels_stop_distance_pct: number | null
+  levels_stop_dollar_risk: number | null
+  levels_stop_atr_buffer: number | null
+  levels_stop_description: string | null
+  levels_best_target_price: number | null
+  levels_best_target_distance_pct: number | null
+  levels_best_target_rr: number | null
+  levels_best_target_description: string | null
+  levels_s1_price: number | null
+  levels_s1_strength: number | null
+  levels_s1_sources: string | null
+  levels_s1_confluence: number | null
+  levels_s2_price: number | null
+  levels_s2_strength: number | null
+  levels_s2_sources: string | null
+  levels_s2_confluence: number | null
+  levels_s3_price: number | null
+  levels_s3_strength: number | null
+  levels_s3_sources: string | null
+  levels_s3_confluence: number | null
+  levels_r1_price: number | null
+  levels_r1_strength: number | null
+  levels_r1_sources: string | null
+  levels_r1_confluence: number | null
+  levels_r2_price: number | null
+  levels_r2_strength: number | null
+  levels_r2_sources: string | null
+  levels_r2_confluence: number | null
+  levels_r3_price: number | null
+  levels_r3_strength: number | null
+  levels_r3_sources: string | null
+  levels_r3_confluence: number | null
   // Screening
   triggered_templates: string[]
 }

@@ -1160,6 +1160,60 @@ class ResearchSnapshotORM(Base):
     opp_momentum_direction = Column(String(20))
     opp_momentum_summary = Column(Text)
 
+    # --- Levels (from LevelsService) ---
+    levels_direction = Column(String(10))              # long/short
+    levels_entry_price = Column(Numeric(10, 4))
+    levels_atr = Column(Numeric(10, 4))
+    levels_atr_pct = Column(Numeric(10, 4))
+    levels_summary = Column(Text)
+    levels_support_count = Column(Integer)
+    levels_resistance_count = Column(Integer)
+
+    # Stop loss
+    levels_stop_price = Column(Numeric(10, 4))
+    levels_stop_distance_pct = Column(Numeric(10, 4))
+    levels_stop_dollar_risk = Column(Numeric(10, 4))
+    levels_stop_atr_buffer = Column(Numeric(10, 4))
+    levels_stop_description = Column(Text)
+
+    # Best target
+    levels_best_target_price = Column(Numeric(10, 4))
+    levels_best_target_distance_pct = Column(Numeric(10, 4))
+    levels_best_target_rr = Column(Numeric(8, 4))
+    levels_best_target_description = Column(Text)
+
+    # Top 3 support levels
+    levels_s1_price = Column(Numeric(10, 4))
+    levels_s1_strength = Column(Numeric(5, 4))
+    levels_s1_sources = Column(String(200))
+    levels_s1_confluence = Column(Integer)
+
+    levels_s2_price = Column(Numeric(10, 4))
+    levels_s2_strength = Column(Numeric(5, 4))
+    levels_s2_sources = Column(String(200))
+    levels_s2_confluence = Column(Integer)
+
+    levels_s3_price = Column(Numeric(10, 4))
+    levels_s3_strength = Column(Numeric(5, 4))
+    levels_s3_sources = Column(String(200))
+    levels_s3_confluence = Column(Integer)
+
+    # Top 3 resistance levels
+    levels_r1_price = Column(Numeric(10, 4))
+    levels_r1_strength = Column(Numeric(5, 4))
+    levels_r1_sources = Column(String(200))
+    levels_r1_confluence = Column(Integer)
+
+    levels_r2_price = Column(Numeric(10, 4))
+    levels_r2_strength = Column(Numeric(5, 4))
+    levels_r2_sources = Column(String(200))
+    levels_r2_confluence = Column(Integer)
+
+    levels_r3_price = Column(Numeric(10, 4))
+    levels_r3_strength = Column(Numeric(5, 4))
+    levels_r3_sources = Column(String(200))
+    levels_r3_confluence = Column(Integer)
+
     # --- Screening ---
     triggered_templates = Column(JSON)
 

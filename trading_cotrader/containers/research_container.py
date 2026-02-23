@@ -164,6 +164,60 @@ class ResearchEntry:
     opp_momentum_direction: Optional[str] = None    # bullish/bearish
     opp_momentum_summary: Optional[str] = None
 
+    # --- Levels (from LevelsService) ---
+    levels_direction: Optional[str] = None           # "long" | "short"
+    levels_entry_price: Optional[float] = None
+    levels_atr: Optional[float] = None
+    levels_atr_pct: Optional[float] = None
+    levels_summary: Optional[str] = None
+    levels_support_count: Optional[int] = None
+    levels_resistance_count: Optional[int] = None
+
+    # Stop loss
+    levels_stop_price: Optional[float] = None
+    levels_stop_distance_pct: Optional[float] = None
+    levels_stop_dollar_risk: Optional[float] = None
+    levels_stop_atr_buffer: Optional[float] = None
+    levels_stop_description: Optional[str] = None
+
+    # Best target
+    levels_best_target_price: Optional[float] = None
+    levels_best_target_distance_pct: Optional[float] = None
+    levels_best_target_rr: Optional[float] = None
+    levels_best_target_description: Optional[str] = None
+
+    # Top 3 support levels (flattened)
+    levels_s1_price: Optional[float] = None
+    levels_s1_strength: Optional[float] = None
+    levels_s1_sources: Optional[str] = None          # comma-joined source list
+    levels_s1_confluence: Optional[int] = None
+
+    levels_s2_price: Optional[float] = None
+    levels_s2_strength: Optional[float] = None
+    levels_s2_sources: Optional[str] = None
+    levels_s2_confluence: Optional[int] = None
+
+    levels_s3_price: Optional[float] = None
+    levels_s3_strength: Optional[float] = None
+    levels_s3_sources: Optional[str] = None
+    levels_s3_confluence: Optional[int] = None
+
+    # Top 3 resistance levels (flattened)
+    levels_r1_price: Optional[float] = None
+    levels_r1_strength: Optional[float] = None
+    levels_r1_sources: Optional[str] = None
+    levels_r1_confluence: Optional[int] = None
+
+    levels_r2_price: Optional[float] = None
+    levels_r2_strength: Optional[float] = None
+    levels_r2_sources: Optional[str] = None
+    levels_r2_confluence: Optional[int] = None
+
+    levels_r3_price: Optional[float] = None
+    levels_r3_strength: Optional[float] = None
+    levels_r3_sources: Optional[str] = None
+    levels_r3_confluence: Optional[int] = None
+
     # --- Screening ---
     triggered_templates: List[str] = field(default_factory=list)
 
@@ -290,6 +344,47 @@ class ResearchEntry:
             'opp_momentum_strategy': self.opp_momentum_strategy,
             'opp_momentum_direction': self.opp_momentum_direction,
             'opp_momentum_summary': self.opp_momentum_summary,
+            # Levels
+            'levels_direction': self.levels_direction,
+            'levels_entry_price': self.levels_entry_price,
+            'levels_atr': self.levels_atr,
+            'levels_atr_pct': self.levels_atr_pct,
+            'levels_summary': self.levels_summary,
+            'levels_support_count': self.levels_support_count,
+            'levels_resistance_count': self.levels_resistance_count,
+            'levels_stop_price': self.levels_stop_price,
+            'levels_stop_distance_pct': self.levels_stop_distance_pct,
+            'levels_stop_dollar_risk': self.levels_stop_dollar_risk,
+            'levels_stop_atr_buffer': self.levels_stop_atr_buffer,
+            'levels_stop_description': self.levels_stop_description,
+            'levels_best_target_price': self.levels_best_target_price,
+            'levels_best_target_distance_pct': self.levels_best_target_distance_pct,
+            'levels_best_target_rr': self.levels_best_target_rr,
+            'levels_best_target_description': self.levels_best_target_description,
+            'levels_s1_price': self.levels_s1_price,
+            'levels_s1_strength': self.levels_s1_strength,
+            'levels_s1_sources': self.levels_s1_sources,
+            'levels_s1_confluence': self.levels_s1_confluence,
+            'levels_s2_price': self.levels_s2_price,
+            'levels_s2_strength': self.levels_s2_strength,
+            'levels_s2_sources': self.levels_s2_sources,
+            'levels_s2_confluence': self.levels_s2_confluence,
+            'levels_s3_price': self.levels_s3_price,
+            'levels_s3_strength': self.levels_s3_strength,
+            'levels_s3_sources': self.levels_s3_sources,
+            'levels_s3_confluence': self.levels_s3_confluence,
+            'levels_r1_price': self.levels_r1_price,
+            'levels_r1_strength': self.levels_r1_strength,
+            'levels_r1_sources': self.levels_r1_sources,
+            'levels_r1_confluence': self.levels_r1_confluence,
+            'levels_r2_price': self.levels_r2_price,
+            'levels_r2_strength': self.levels_r2_strength,
+            'levels_r2_sources': self.levels_r2_sources,
+            'levels_r2_confluence': self.levels_r2_confluence,
+            'levels_r3_price': self.levels_r3_price,
+            'levels_r3_strength': self.levels_r3_strength,
+            'levels_r3_sources': self.levels_r3_sources,
+            'levels_r3_confluence': self.levels_r3_confluence,
             # Screening
             'triggered_templates': self.triggered_templates,
         }
@@ -651,6 +746,70 @@ class ResearchContainer:
         entry.timestamp = datetime.utcnow()
 
     # -----------------------------------------------------------------
+    # Levels update (from LevelsService.analyze)
+    # -----------------------------------------------------------------
+
+    def update_levels(self, symbol: str, levels_data: dict) -> None:
+        """
+        Update levels fields from LevelsService.analyze() model_dump'd dict.
+
+        Flattens LevelsAnalysis into per-field storage.
+        """
+        entry = self._get_or_create(symbol)
+
+        entry.levels_direction = levels_data.get('direction')
+        entry.levels_entry_price = levels_data.get('entry_price')
+        entry.levels_atr = levels_data.get('atr')
+        entry.levels_atr_pct = levels_data.get('atr_pct')
+        entry.levels_summary = levels_data.get('summary')
+
+        supports = levels_data.get('support_levels') or []
+        resistances = levels_data.get('resistance_levels') or []
+        entry.levels_support_count = len(supports)
+        entry.levels_resistance_count = len(resistances)
+
+        # Stop loss
+        sl = levels_data.get('stop_loss')
+        if sl and isinstance(sl, dict):
+            entry.levels_stop_price = sl.get('price')
+            entry.levels_stop_distance_pct = sl.get('distance_pct')
+            entry.levels_stop_dollar_risk = sl.get('dollar_risk')
+            entry.levels_stop_atr_buffer = sl.get('atr_buffer')
+            entry.levels_stop_description = sl.get('description')
+
+        # Best target
+        bt = levels_data.get('best_target')
+        if bt and isinstance(bt, dict):
+            entry.levels_best_target_price = bt.get('price')
+            entry.levels_best_target_distance_pct = bt.get('distance_pct')
+            entry.levels_best_target_rr = bt.get('reward_risk_ratio')
+            entry.levels_best_target_description = bt.get('description')
+
+        # Flatten top 3 supports
+        for i, lvl in enumerate(supports[:3]):
+            if not isinstance(lvl, dict):
+                continue
+            prefix = f'levels_s{i + 1}'
+            setattr(entry, f'{prefix}_price', lvl.get('price'))
+            setattr(entry, f'{prefix}_strength', lvl.get('strength'))
+            sources = lvl.get('sources') or []
+            setattr(entry, f'{prefix}_sources', ','.join(sources) if isinstance(sources, list) else str(sources))
+            setattr(entry, f'{prefix}_confluence', lvl.get('confluence_score'))
+
+        # Flatten top 3 resistances
+        for i, lvl in enumerate(resistances[:3]):
+            if not isinstance(lvl, dict):
+                continue
+            prefix = f'levels_r{i + 1}'
+            setattr(entry, f'{prefix}_price', lvl.get('price'))
+            setattr(entry, f'{prefix}_strength', lvl.get('strength'))
+            sources = lvl.get('sources') or []
+            setattr(entry, f'{prefix}_sources', ','.join(sources) if isinstance(sources, list) else str(sources))
+            setattr(entry, f'{prefix}_confluence', lvl.get('confluence_score'))
+
+        entry.timestamp = datetime.utcnow()
+
+    # -----------------------------------------------------------------
     # Screening update
     # -----------------------------------------------------------------
 
@@ -778,6 +937,18 @@ class ResearchContainer:
             'opp_zero_dte_confidence', 'opp_leap_confidence',
             'opp_breakout_confidence', 'opp_breakout_pivot',
             'opp_momentum_confidence',
+            # Levels
+            'levels_entry_price', 'levels_atr', 'levels_atr_pct',
+            'levels_stop_price', 'levels_stop_distance_pct',
+            'levels_stop_dollar_risk', 'levels_stop_atr_buffer',
+            'levels_best_target_price', 'levels_best_target_distance_pct',
+            'levels_best_target_rr',
+            'levels_s1_price', 'levels_s1_strength',
+            'levels_s2_price', 'levels_s2_strength',
+            'levels_s3_price', 'levels_s3_strength',
+            'levels_r1_price', 'levels_r1_strength',
+            'levels_r2_price', 'levels_r2_strength',
+            'levels_r3_price', 'levels_r3_strength',
         ]
         _BOOL_FIELDS = [
             'rsi_overbought', 'rsi_oversold',
@@ -801,11 +972,19 @@ class ResearchContainer:
             'opp_breakout_summary',
             'opp_momentum_verdict', 'opp_momentum_strategy', 'opp_momentum_direction',
             'opp_momentum_summary',
+            # Levels
+            'levels_direction', 'levels_summary', 'levels_stop_description',
+            'levels_best_target_description',
+            'levels_s1_sources', 'levels_s2_sources', 'levels_s3_sources',
+            'levels_r1_sources', 'levels_r2_sources', 'levels_r3_sources',
         ]
         _INT_FIELDS = ['hmm_regime_id', 'days_to_earnings',
                         'vcp_contraction_count', 'vcp_days_in_base',
                         'unfilled_fvg_count', 'active_ob_count',
-                        'phase_age_days']
+                        'phase_age_days',
+                        'levels_support_count', 'levels_resistance_count',
+                        'levels_s1_confluence', 'levels_s2_confluence', 'levels_s3_confluence',
+                        'levels_r1_confluence', 'levels_r2_confluence', 'levels_r3_confluence']
 
         for snap_orm in snapshots:
             symbol = snap_orm.symbol
@@ -985,6 +1164,47 @@ class ResearchContainer:
                 'opp_momentum_strategy': entry.opp_momentum_strategy,
                 'opp_momentum_direction': entry.opp_momentum_direction,
                 'opp_momentum_summary': entry.opp_momentum_summary,
+                # Levels
+                'levels_direction': entry.levels_direction,
+                'levels_entry_price': entry.levels_entry_price,
+                'levels_atr': entry.levels_atr,
+                'levels_atr_pct': entry.levels_atr_pct,
+                'levels_summary': entry.levels_summary,
+                'levels_support_count': entry.levels_support_count,
+                'levels_resistance_count': entry.levels_resistance_count,
+                'levels_stop_price': entry.levels_stop_price,
+                'levels_stop_distance_pct': entry.levels_stop_distance_pct,
+                'levels_stop_dollar_risk': entry.levels_stop_dollar_risk,
+                'levels_stop_atr_buffer': entry.levels_stop_atr_buffer,
+                'levels_stop_description': entry.levels_stop_description,
+                'levels_best_target_price': entry.levels_best_target_price,
+                'levels_best_target_distance_pct': entry.levels_best_target_distance_pct,
+                'levels_best_target_rr': entry.levels_best_target_rr,
+                'levels_best_target_description': entry.levels_best_target_description,
+                'levels_s1_price': entry.levels_s1_price,
+                'levels_s1_strength': entry.levels_s1_strength,
+                'levels_s1_sources': entry.levels_s1_sources,
+                'levels_s1_confluence': entry.levels_s1_confluence,
+                'levels_s2_price': entry.levels_s2_price,
+                'levels_s2_strength': entry.levels_s2_strength,
+                'levels_s2_sources': entry.levels_s2_sources,
+                'levels_s2_confluence': entry.levels_s2_confluence,
+                'levels_s3_price': entry.levels_s3_price,
+                'levels_s3_strength': entry.levels_s3_strength,
+                'levels_s3_sources': entry.levels_s3_sources,
+                'levels_s3_confluence': entry.levels_s3_confluence,
+                'levels_r1_price': entry.levels_r1_price,
+                'levels_r1_strength': entry.levels_r1_strength,
+                'levels_r1_sources': entry.levels_r1_sources,
+                'levels_r1_confluence': entry.levels_r1_confluence,
+                'levels_r2_price': entry.levels_r2_price,
+                'levels_r2_strength': entry.levels_r2_strength,
+                'levels_r2_sources': entry.levels_r2_sources,
+                'levels_r2_confluence': entry.levels_r2_confluence,
+                'levels_r3_price': entry.levels_r3_price,
+                'levels_r3_strength': entry.levels_r3_strength,
+                'levels_r3_sources': entry.levels_r3_sources,
+                'levels_r3_confluence': entry.levels_r3_confluence,
                 # Screening
                 'triggered_templates': entry.triggered_templates,
             }
