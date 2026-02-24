@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 23, 2026 (session 35b)
+# Last Updated: February 23, 2026 (session 35d)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log s1-s26)
 
 ## STANDING INSTRUCTIONS
@@ -440,10 +440,8 @@ python -m trading_cotrader.harness.runner --skip-sync
 
 | Service | File | What It Does | Wire Into |
 |---------|------|-------------|-----------|
-| VaR Calculator | `services/risk/var_calculator.py` | Parametric + historical VaR | Sentinel |
 | P&L Attribution | `analytics/pricing/pnl_calculator.py` | Greek decomposition of P&L | Steward |
 | Portfolio Evaluation | `services/portfolio_evaluation_service.py` | Exit rules (TP, SL, DTE, delta) | Sentinel |
-| Black-Scholes | `services/pricing/black_scholes.py` | Greeks computation | Sentinel |
 | Macro Context | `services/macro_context_service.py` | VIX regime, macro gates | Scout or Sentinel |
 | Performance Metrics | `services/performance_metrics_service.py` | Win rate, Sharpe, drawdown | Maverick |
 | Liquidity | `services/liquidity_service.py` | OI, spread, volume thresholds | Scout |
@@ -452,6 +450,15 @@ python -m trading_cotrader.harness.runner --skip-sync
 | Snapshots | `services/snapshot_service.py` | Daily portfolio snapshots | Atlas |
 | Earnings Calendar | `services/earnings_calendar_service.py` | yfinance earnings dates | Scout |
 | Agent Intelligence | `services/agent_brain.py` | LLM via Claude API | Service (any agent) |
+| Portfolio Fitness | `services/portfolio_fitness.py` | Margin/delta/concentration checks | Maverick |
+
+### Archived Math (moved to `playground/archived_math/` — s35d)
+All mathematical pricing/risk models moved out. **Greeks and prices come from broker, not math.**
+- `black_scholes.py`, `probability.py`, `implied_vol.py`, `greeks.py`, `scenarios.py` (pricing models)
+- `var_calculator.py`, `portfolio_risk.py` (VaR/risk models)
+- `greeks_engine.py`, `option_pricer.py` (analytics math)
+- `strategy_builder.py`, `greeks_service.py`, `functional_portfolio.py`, `calculations.py`
+- `test_numerics.py`, `test_var_calculator.py` (tests for above)
 
 ---
 
@@ -460,12 +467,15 @@ python -m trading_cotrader.harness.runner --skip-sync
 ### Agent Definition & Implementation — IN PROGRESS (open-ended)
 Agent definitions are evolving. Scout (Quant) is the exemplar. Other 4 agents (Steward, Sentinel, Maverick, Atlas) have roles defined but implementation is open. Next session continues building Scout.
 
-**Current state (s35c):**
+**Current state (s35d):**
 - **Scout** (Quant) — DONE: BaseAgent + populate() + ResearchContainer + DB persistence + API. File: `agents/domain/scout.py`
-- **Sentinel** (RiskManager) — DONE: Merged Guardian+Risk. Circuit breakers + VaR + constraints + container-based risk reads. File: `agents/domain/sentinel.py`
+- **Sentinel** (RiskManager) — DONE: Merged Guardian+Risk. Circuit breakers + constraints + container-based risk reads. File: `agents/domain/sentinel.py`
 - **Steward** (PortfolioManager) — DONE: populate() fills PortfolioBundle from DB, run() does capital utilization analysis. Absorbed portfolio_state + capital agents. File: `agents/domain/steward.py`
 - **Maverick** (Trader) — WIRED (s35c): Domain orchestrator. run() cross-references Steward's PortfolioBundle with Scout's ResearchContainer to produce trading signals. Runs during boot + monitoring. `api_trading_sheet.py` GET reads entirely from containers. Next: absorb executor + notifier + accountability + objectives.
 - **Atlas** (TechArchitect) — Skeleton. Needs: absorb reporter + QA, own container for system health
+
+### Math Purge (s35d) — ZERO local math for pricing/Greeks/VaR
+All mathematical models (Black-Scholes, POP/EV calculations, VaR, IV solver, strike selection) removed from live code and moved to `playground/archived_math/`. **Greeks and prices ALWAYS come from the broker (TastyTrade DXLink streaming).** No exceptions.
 
 ### AgentBrain Service — Unfinished
 - 3 methods have no API endpoints
@@ -487,6 +497,7 @@ Agent definitions are evolving. Scout (Quant) is the exemplar. Other 4 agents (S
 
 | Session | Date | What |
 |---------|------|------|
+| s35d | Feb 23 | Math purge: removed ALL mathematical pricing/risk models from live code. Moved 14 files to `playground/archived_math/` (Black-Scholes, ProbabilityCalculator, VaRCalculator, GreeksEngine, ImpliedVolSolver, ScenarioEngine, OptionPricer, strategy_builder, greeks_service, functional_portfolio, calculations + 2 test files). Removed ProbabilityCalculator from api_trading_sheet.py (add-whatif payoff, template eval). Removed strategy proposals endpoint from api_research.py. Removed _construct_legs strike approximation. Cleaned up services/pricing/__init__.py and services/risk/__init__.py. 257 tests pass. |
 | s35c | Feb 23 | Wired Maverick as domain orchestrator. MaverickAgent.run() cross-references Steward's PortfolioBundle with Scout's ResearchContainer to produce trading signals. Rewired `api_trading_sheet.py` GET endpoint: ALL reads from containers (no DB queries). Added `market_context` (Scout's research) to trading dashboard response. Rewired `evaluate` endpoint to use ResearchContainer instead of TechnicalAnalysisService. Engine passes container_manager to Maverick, calls in boot + monitoring. Updated api_agents.py registry. 11 new tests. 296 tests pass. |
 | s35b | Feb 23 | Built out Steward (PortfolioManager). populate() absorbs PortfolioStateAgent (fills PortfolioBundle from DB), run() absorbs CapitalUtilizationAgent (capital analysis + alerts). Enhanced Sentinel with container_manager (reads risk from containers, falls back to DB). Added PortfolioRiskLimits + concentration_pct + to_summary() to RiskFactorContainer. Deleted 2 legacy files (portfolio_state.py, capital.py). 13 new tests. 285 tests pass. |
 | s35 | Feb 23 | Agent architecture reorganization. Created `agents/domain/` with 5 renamed agents (scout, sentinel, steward, maverick, atlas). Merged Guardian+Risk into Sentinel. Converted 3 legacy agents to services (calendar inlined, market_data removed, macro uses service). Deleted 8 old files. Updated engine, APIs, 3 test files, 12 frontend files. 272 tests pass. |

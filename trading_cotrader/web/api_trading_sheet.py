@@ -30,16 +30,11 @@ from trading_cotrader.core.database.schema import (
 )
 from trading_cotrader.containers.position_container import PositionState
 from trading_cotrader.containers.trade_container import TradeState
-from trading_cotrader.services.pricing.probability import ProbabilityCalculator
-from trading_cotrader.services.portfolio_fitness import PortfolioFitnessChecker
 
 if TYPE_CHECKING:
     from trading_cotrader.workflow.engine import WorkflowEngine
 
 logger = logging.getLogger(__name__)
-
-_prob_calc = ProbabilityCalculator()
-_fitness_checker = PortfolioFitnessChecker()
 
 
 # ---------------------------------------------------------------------------
@@ -923,30 +918,6 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
         if not bundle or not bundle.portfolio.state:
             raise HTTPException(404, f"Portfolio bundle '{portfolio_name}' not found")
 
-        pstate = bundle.portfolio.state
-        positions = bundle.positions.get_all()
-        risk_factor_rows = _build_risk_factors_from_container(bundle.risk_factors)
-
-        equity = float(pstate.total_equity)
-        net_delta = sum(_dec(p.delta) for p in positions)
-
-        portfolio_state_dict = {
-            'net_delta': net_delta,
-            'total_equity': equity,
-            'buying_power': float(pstate.buying_power),
-            'margin_used': equity - float(pstate.cash_balance),
-            'var_1d_95': float(pstate.var_1d_95),
-            'open_positions': len(positions),
-            'exposure_by_underlying': {f['underlying']: abs(f['delta_dollars']) for f in risk_factor_rows},
-        }
-        risk_limits = {
-            'max_delta': float(pstate.max_delta),
-            'max_positions': 50,
-            'max_var_pct': 2.0,
-            'max_concentration_pct': float(bundle.risk_factors.limits.max_concentration_pct),
-            'max_margin_pct': 50.0,
-        }
-
         # Use Scout's ResearchContainer + adapter for condition evaluation
         research = cm.research
         evaluator = ConditionEvaluator()
@@ -989,19 +960,13 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
 
             if all_passed:
                 triggered_count += 1
-                proposed = _build_proposed_from_template(template, symbol, snapshot, portfolio_state_dict, risk_limits)
-                symbol_result['proposed_trade'] = proposed
 
             evaluated.append(symbol_result)
 
         summary_parts = [f"{triggered_count} of {len(template.universe)} symbols triggered."]
         for ev in evaluated:
-            if ev.get('triggered') and ev.get('proposed_trade'):
-                pt = ev['proposed_trade']
-                summary_parts.append(
-                    f"{ev['symbol']} {pt.get('strategy_type', '?')}: "
-                    f"POP {pt.get('pop', 0)*100:.0f}%, EV ${pt.get('expected_value', 0):+.0f}."
-                )
+            if ev.get('triggered'):
+                summary_parts.append(f"{ev['symbol']} triggered.")
 
         return {
             'template': {
@@ -1186,45 +1151,9 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
                         net_premium += (leg.entry_price or Decimal('0')) * leg.quantity
                     trade.entry_price = Decimal(str(round(float(net_premium), 4)))
 
-            # max_risk from body or payoff computation
+            # max_risk from body (user-provided) — no mathematical approximation
             if body.max_risk is not None:
                 trade.max_risk = Decimal(str(body.max_risk))
-            else:
-                try:
-                    spot = 0.0
-                    # Try to get spot from existing positions
-                    positions = session.query(PositionORM).filter(
-                        PositionORM.portfolio_id == portfolio.id,
-                    ).all()
-                    for p in positions:
-                        if p.symbol and p.symbol.ticker and p.symbol.ticker.startswith(body.underlying):
-                            if p.current_underlying_price:
-                                spot = float(p.current_underlying_price)
-                                break
-                    if spot <= 0:
-                        strikes = [float(l.get('strike', 0)) for l in body.legs if l.get('strike')]
-                        if strikes:
-                            spot = sum(strikes) / len(strikes)
-                    if spot > 0:
-                        dte = 45
-                        for l in body.legs:
-                            if l.get('expiration'):
-                                try:
-                                    exp = datetime.fromisoformat(l['expiration']).date()
-                                    d = (exp - date_cls.today()).days
-                                    if d > 0:
-                                        dte = d
-                                        break
-                                except (ValueError, TypeError):
-                                    pass
-                        iv = 0.20
-                        payoff = _prob_calc.compute_trade_payoff(
-                            legs=body.legs, spot=spot, iv=iv, dte=dte,
-                        )
-                        ml = payoff.max_loss if payoff.max_loss != float('inf') else 0
-                        trade.max_risk = Decimal(str(round(ml, 2)))
-                except Exception as e:
-                    logger.warning(f"Payoff computation for WhatIf: {e}")
 
             session.add(trade)
             session.flush()
@@ -1289,106 +1218,3 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
         return {'success': True, 'trade_id': body.whatif_trade_id}
 
     return router
-
-
-# ---------------------------------------------------------------------------
-# Template → Proposed Trade builder
-# ---------------------------------------------------------------------------
-
-def _build_proposed_from_template(template, symbol, snapshot, portfolio_state, risk_limits) -> Dict:
-    strategies = template.trade_strategy.strategies
-    if not strategies:
-        return {'error': 'No strategies defined'}
-
-    strategy = strategies[0]
-    spot = float(snapshot.current_price)
-    iv = (snapshot.iv_rank or 25) / 100
-    dte = strategy.dte_target or 45
-
-    legs = _construct_legs(strategy, spot, iv, dte, symbol)
-
-    payoff = {}
-    if legs:
-        try:
-            result = _prob_calc.compute_trade_payoff(legs=legs, spot=spot, iv=max(iv, 0.10), dte=dte)
-            payoff = {
-                'pop': round(result.probability_of_profit, 4),
-                'expected_value': round(result.expected_value, 2),
-                'breakevens': [round(b, 2) for b in result.breakeven_prices],
-            }
-        except Exception as e:
-            logger.warning(f"Payoff calc error for {symbol}: {e}")
-
-    trade_delta = -(strategy.short_delta or 0.30)
-    trade_margin = payoff.get('max_loss', 500)
-
-    fitness = _fitness_checker.check_trade_fitness(
-        portfolio_state,
-        {'underlying': symbol, 'delta': trade_delta * 100, 'margin_required': trade_margin, 'var_impact': abs(trade_delta) * spot * 0.02},
-        risk_limits,
-    )
-
-    return {'strategy_type': strategy.strategy_type, 'legs': legs, 'dte': dte, **payoff, **fitness.to_dict()}
-
-
-def _construct_legs(strategy, spot, iv, dte, symbol) -> List[Dict]:
-    stype = strategy.strategy_type.lower()
-
-    if stype in ('vertical_spread', 'put_credit_spread', 'call_credit_spread'):
-        opt_type = strategy.option_type or 'put'
-        short_delta = strategy.short_delta or 0.30
-        wing_width = strategy.wing_width_pct or 0.03
-        if opt_type == 'put':
-            short_strike = round(spot * (1 - short_delta * iv), 0)
-            long_strike = round(short_strike - spot * wing_width, 0)
-        else:
-            short_strike = round(spot * (1 + short_delta * iv), 0)
-            long_strike = round(short_strike + spot * wing_width, 0)
-        return [
-            {'strike': short_strike, 'option_type': opt_type, 'quantity': -1, 'side': 'sell'},
-            {'strike': long_strike, 'option_type': opt_type, 'quantity': 1, 'side': 'buy'},
-        ]
-
-    if stype in ('iron_condor', 'iron_butterfly'):
-        put_delta = strategy.put_delta or 0.20
-        call_delta = strategy.call_delta or 0.20
-        wing = strategy.wing_width_pct or 0.03
-        put_short = round(spot * (1 - put_delta * iv), 0)
-        put_long = round(put_short - spot * wing, 0)
-        call_short = round(spot * (1 + call_delta * iv), 0)
-        call_long = round(call_short + spot * wing, 0)
-        return [
-            {'strike': put_long, 'option_type': 'put', 'quantity': 1, 'side': 'buy'},
-            {'strike': put_short, 'option_type': 'put', 'quantity': -1, 'side': 'sell'},
-            {'strike': call_short, 'option_type': 'call', 'quantity': -1, 'side': 'sell'},
-            {'strike': call_long, 'option_type': 'call', 'quantity': 1, 'side': 'buy'},
-        ]
-
-    if stype in ('strangle', 'short_strangle'):
-        put_delta = strategy.put_delta or 0.20
-        call_delta = strategy.call_delta or 0.20
-        return [
-            {'strike': round(spot * (1 - put_delta * iv), 0), 'option_type': 'put', 'quantity': -1, 'side': 'sell'},
-            {'strike': round(spot * (1 + call_delta * iv), 0), 'option_type': 'call', 'quantity': -1, 'side': 'sell'},
-        ]
-
-    if stype in ('single', 'naked_put', 'naked_call'):
-        opt_type = strategy.option_type or 'put'
-        delta = strategy.short_delta or strategy.delta_target or 0.30
-        strike = round(spot * (1 - delta * iv), 0) if opt_type == 'put' else round(spot * (1 + delta * iv), 0)
-        return [{'strike': strike, 'option_type': opt_type, 'quantity': -1, 'side': 'sell'}]
-
-    if stype in ('calendar_spread', 'double_calendar'):
-        opt_type = strategy.option_type or 'put'
-        strike = round(spot, 0)
-        return [
-            {'strike': strike, 'option_type': opt_type, 'quantity': -1, 'side': 'sell'},
-            {'strike': strike, 'option_type': opt_type, 'quantity': 1, 'side': 'buy'},
-        ]
-
-    short_strike = round(spot * 0.95, 0)
-    long_strike = round(spot * 0.92, 0)
-    return [
-        {'strike': short_strike, 'option_type': 'put', 'quantity': -1, 'side': 'sell'},
-        {'strike': long_strike, 'option_type': 'put', 'quantity': 1, 'side': 'buy'},
-    ]
