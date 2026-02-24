@@ -1,5 +1,5 @@
 """
-Quant Research Agent — Domain agent that owns the ResearchContainer.
+Scout Agent (Quant) — Domain agent that owns the ResearchContainer.
 
 Responsibilities:
   1. populate(): Fill ResearchContainer from market_analyzer library (regime, technicals,
@@ -88,7 +88,7 @@ def _get_nearest_monthly_expiration(dte_target: int = 45) -> str:
 
 
 # ---------------------------------------------------------------------------
-# ResearchEntry → ConditionEvaluator adapter
+# ResearchEntry -> ConditionEvaluator adapter
 # ---------------------------------------------------------------------------
 
 class _ResearchEntryAdapter:
@@ -102,7 +102,7 @@ class _ResearchEntryAdapter:
     def __init__(self, entry: 'ResearchEntry'):
         self.symbol = entry.symbol
         self.current_price = Decimal(str(entry.current_price)) if entry.current_price else Decimal('0')
-        # ConditionEvaluator maps 'sma_20' → 'bollinger_middle'
+        # ConditionEvaluator maps 'sma_20' -> 'bollinger_middle'
         self.bollinger_middle = entry.sma_20
         self.sma_50 = entry.sma_50
         self.sma_200 = entry.sma_200
@@ -129,10 +129,10 @@ class _ResearchEntryAdapter:
 
 
 # ---------------------------------------------------------------------------
-# QuantResearchAgent
+# ScoutAgent
 # ---------------------------------------------------------------------------
 
-class QuantResearchAgent(BaseAgent):
+class ScoutAgent(BaseAgent):
     """
     Domain agent that owns the ResearchContainer.
 
@@ -150,9 +150,9 @@ class QuantResearchAgent(BaseAgent):
     - Target research portfolio per template
     """
 
-    # Class-level metadata (replaces AGENT_REGISTRY entry in api_agents.py)
-    name: ClassVar[str] = "quant_research"
-    display_name: ClassVar[str] = "Quant Research"
+    # Class-level metadata
+    name: ClassVar[str] = "scout"
+    display_name: ClassVar[str] = "Scout (Quant)"
     category: ClassVar[str] = "domain"
     role: ClassVar[str] = "Research pipeline executor"
     intro: ClassVar[str] = (
@@ -185,11 +185,11 @@ class QuantResearchAgent(BaseAgent):
         self._evaluator = ConditionEvaluator()
 
     def safety_check(self, context: dict) -> tuple[bool, str]:
-        """Research pipeline is always safe — no real capital involved."""
+        """Research pipeline is always safe -- no real capital involved."""
         return True, ""
 
     # -----------------------------------------------------------------
-    # populate() — Fill ResearchContainer from market_analyzer library
+    # populate() -- Fill ResearchContainer from market_analyzer library
     # -----------------------------------------------------------------
 
     def populate(self, context: dict) -> AgentResult:
@@ -210,7 +210,7 @@ class QuantResearchAgent(BaseAgent):
             return AgentResult(
                 agent_name=self.name,
                 status=AgentStatus.ERROR,
-                messages=["No container — cannot populate"],
+                messages=["No container -- cannot populate"],
             )
 
         # Ensure watchlist is loaded
@@ -223,7 +223,7 @@ class QuantResearchAgent(BaseAgent):
                 agent_name=self.name,
                 status=AgentStatus.COMPLETED,
                 data={'tickers': 0},
-                messages=["No tickers in watchlist — nothing to populate"],
+                messages=["No tickers in watchlist -- nothing to populate"],
             )
 
         skip_fundamentals = context.get('skip_fundamentals', False)
@@ -266,7 +266,7 @@ class QuantResearchAgent(BaseAgent):
             'macro': False, 'errors': [],
         }
 
-        # 1. Batch regime detection (fast — one call)
+        # 1. Batch regime detection (fast -- one call)
         try:
             results = ma.regime.detect_batch(tickers=tickers)
             for ticker_key, r in results.items():
@@ -343,7 +343,7 @@ class QuantResearchAgent(BaseAgent):
                 logger.debug(f"Levels analysis failed for {ticker}: {e}")
                 stats['errors'].append(f"levels({ticker}): {e}")
 
-        # 6. Fundamentals per ticker (slower — yfinance calls, but cached)
+        # 6. Fundamentals per ticker (slower -- yfinance calls, but cached)
         if not skip_fundamentals:
             for ticker in tickers:
                 try:
@@ -354,7 +354,7 @@ class QuantResearchAgent(BaseAgent):
                     logger.warning(f"Fundamentals failed for {ticker}: {e}")
                     stats['errors'].append(f"fundamentals({ticker}): {e}")
 
-        # 6. Macro calendar (one call)
+        # 7. Macro calendar (one call)
         try:
             cal_data = ma.macro.calendar(lookahead_days=90)
             container.update_macro(cal_data.model_dump(mode='json'))
@@ -386,7 +386,7 @@ class QuantResearchAgent(BaseAgent):
     def _save_to_db(self) -> None:
         """Persist container state to DB (fire-and-forget)."""
         if self.container is None:
-            logger.warning("_save_to_db: no container — skipping")
+            logger.warning("_save_to_db: no container -- skipping")
             return
         try:
             from trading_cotrader.core.database.session import session_scope
@@ -396,7 +396,7 @@ class QuantResearchAgent(BaseAgent):
             logger.warning(f"Failed to persist research to DB: {e}")
 
     # -----------------------------------------------------------------
-    # run() — Evaluate research templates
+    # run() -- Evaluate research templates
     # -----------------------------------------------------------------
 
     def run(self, context: dict) -> AgentResult:
@@ -514,7 +514,7 @@ class QuantResearchAgent(BaseAgent):
         """Build global context dict with VIX and earnings data."""
         ctx: Dict[str, Any] = {}
 
-        # VIX — try from container first, then fallback to TechnicalAnalysisService
+        # VIX -- try from container first, then fallback to TechnicalAnalysisService
         if self.container is not None:
             vix_entry = self.container.get('^VIX')
             if vix_entry and vix_entry.current_price:
@@ -551,6 +551,14 @@ class QuantResearchAgent(BaseAgent):
             return None
         return _ResearchEntryAdapter(entry)
 
+    def _make_snapshot_adapter(self, entry):
+        """Create a ConditionEvaluator-compatible adapter from a ResearchEntry.
+
+        Used by api_trading_sheet.py to evaluate templates against container data
+        instead of calling TechnicalAnalysisService directly.
+        """
+        return _ResearchEntryAdapter(entry)
+
     def _evaluate_template_variant(
         self,
         template: ResearchTemplate,
@@ -577,7 +585,7 @@ class QuantResearchAgent(BaseAgent):
             svc = RecommendationService(session, broker=None)
 
             for symbol in symbols:
-                # Get technical snapshot — prefer container, fallback to service
+                # Get technical snapshot -- prefer container, fallback to service
                 snap = self._get_snapshot_from_container(symbol)
                 if snap is None:
                     ta = self._get_technical_service()
@@ -598,7 +606,7 @@ class QuantResearchAgent(BaseAgent):
                 if not triggered:
                     logger.debug(
                         f"Research {template.name}/{variant.variant_id}: "
-                        f"{symbol} — conditions not met"
+                        f"{symbol} -- conditions not met"
                     )
                     continue
 
@@ -617,7 +625,7 @@ class QuantResearchAgent(BaseAgent):
                         ):
                             logger.debug(
                                 f"DEDUP: Skipping {symbol}/{strategy.strategy_type} "
-                                f"for {template.name}/{variant.variant_id} — already booked today"
+                                f"for {template.name}/{variant.variant_id} -- already booked today"
                             )
                             continue
 
@@ -641,7 +649,7 @@ class QuantResearchAgent(BaseAgent):
                         # Auto-accept into target portfolio
                         result = svc.accept_recommendation(
                             rec_id=rec.id,
-                            notes=f"Auto-accepted by QuantResearchAgent ({template.name}/{variant.variant_id})",
+                            notes=f"Auto-accepted by ScoutAgent ({template.name}/{variant.variant_id})",
                             portfolio_name=template.target_portfolio,
                         )
 

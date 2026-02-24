@@ -573,8 +573,8 @@ export function ReportsPage() {
     <div className="flex flex-col h-full">
       {/* Agent ownership + Tab bar */}
       <div className="flex items-center gap-1.5 px-2 pt-1">
-        <AgentBadge agent="tech_architect" />
-        <AgentBadge agent="trade_discipline" />
+        <AgentBadge agent="atlas" />
+        <AgentBadge agent="maverick" />
       </div>
       <div className="flex border-b border-border-primary bg-bg-primary px-2">
         {TABS.map((tab) => (

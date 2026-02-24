@@ -29,24 +29,24 @@ from trading_cotrader.agents.protocol import AgentStatus
 from trading_cotrader.agents.messages import UserIntent, SystemResponse
 from trading_cotrader.config.workflow_config_loader import load_workflow_config, WorkflowConfig
 
-# Agents — only the 5 that matter
-from trading_cotrader.agents.safety.guardian import GuardianAgent
-from trading_cotrader.agents.analysis.risk import RiskAgent
-from trading_cotrader.agents.analysis.quant_research import QuantResearchAgent
-from trading_cotrader.agents.infrastructure.tech_architect import TechArchitectAgent
-from trading_cotrader.agents.learning.trade_discipline import TradeDisciplineAgent
+# The 5 domain agents
+from trading_cotrader.agents.domain.sentinel import SentinelAgent
+from trading_cotrader.agents.domain.scout import ScoutAgent
+from trading_cotrader.agents.domain.steward import StewardAgent
+from trading_cotrader.agents.domain.maverick import MaverickAgent
+from trading_cotrader.agents.domain.atlas import AtlasAgent
 
 # Non-agent utilities still used by engine
 from trading_cotrader.agents.execution.broker_router import BrokerRouter
 from trading_cotrader.agents.decision.interaction import InteractionManager
 
+# Services replacing former agents (calendar, market_data, macro)
+from trading_cotrader.services.macro_context_service import MacroContextService, MacroOverride
+
 # Legacy agents kept temporarily — engine still calls them in state handlers.
-# These are NOT BaseAgent subclasses yet. They'll be absorbed into the 5 agents
-# or converted to services over time.
-from trading_cotrader.agents.perception.market_data import MarketDataAgent
-from trading_cotrader.agents.perception.portfolio_state import PortfolioStateAgent
-from trading_cotrader.agents.perception.calendar import CalendarAgent
-from trading_cotrader.agents.analysis.macro import MacroAgent
+# These are NOT BaseAgent subclasses yet. They'll be absorbed into the 5 domain
+# agents or converted to services over time.
+# Removed (s35b): PortfolioStateAgent (-> Steward.populate), CapitalUtilizationAgent (-> Steward.run)
 from trading_cotrader.agents.analysis.screener import ScreenerAgent
 from trading_cotrader.agents.analysis.evaluator import EvaluatorAgent
 from trading_cotrader.agents.execution.executor import ExecutorAgent
@@ -55,7 +55,6 @@ from trading_cotrader.agents.execution.reporter import ReporterAgent
 from trading_cotrader.agents.learning.accountability import AccountabilityAgent
 from trading_cotrader.agents.learning.session_objectives import SessionObjectivesAgent
 from trading_cotrader.agents.learning.qa_agent import QAAgent
-from trading_cotrader.agents.analysis.capital import CapitalUtilizationAgent
 
 logger = logging.getLogger(__name__)
 
@@ -135,26 +134,25 @@ class WorkflowEngine:
         # Initialize ContainerManager so API endpoints have live data
         self._init_container_manager()
 
-        # Initialize the 5 core agents (BaseAgent subclasses)
+        # Initialize the 5 domain agents (BaseAgent subclasses)
         research_container = self.container_manager.research if self.container_manager else None
-        self.guardian = GuardianAgent(config=self.config)
-        self.risk = RiskAgent()
-        self.quant_research = QuantResearchAgent(container=research_container, config=self.config)
-        self.tech_architect = TechArchitectAgent(config=self.config)
-        self.trade_discipline = TradeDisciplineAgent(config=self.config)
+        self.sentinel = SentinelAgent(config=self.config, container_manager=self.container_manager)
+        self.scout = ScoutAgent(container=research_container, config=self.config)
+        self.steward = StewardAgent(container_manager=self.container_manager, config=self.config)
+        self.maverick = MaverickAgent(container_manager=self.container_manager, config=self.config)
+        self.atlas = AtlasAgent(config=self.config)
+
+        # Service replacing MacroAgent
+        self._macro_service = MacroContextService(broker=broker)
 
         # Legacy agents — still called in state handlers, will be absorbed over time
-        self.market_data = MarketDataAgent(broker, use_mock)
-        self.portfolio_state = PortfolioStateAgent()
-        self.calendar_agent = CalendarAgent(self.config)
-        self.macro = MacroAgent(broker)
+        # Removed (s35b): PortfolioStateAgent (-> Steward.populate), CapitalUtilizationAgent (-> Steward.run)
         self.screener = ScreenerAgent(broker)
         self.evaluator = EvaluatorAgent(broker)
         self.executor = ExecutorAgent(broker, paper_mode, broker_router=self.broker_router)
         self.notifier = NotifierAgent(self.config)
         self.reporter = ReporterAgent()
         self.accountability = AccountabilityAgent()
-        self.capital_utilization = CapitalUtilizationAgent(self.config)
         self.session_objectives = SessionObjectivesAgent()
         self.qa_agent = QAAgent(self.config)
 
@@ -206,40 +204,34 @@ class WorkflowEngine:
     # -----------------------------------------------------------------
 
     def on_enter_booting(self, event):
-        """Boot sequence: calendar → market data → portfolio state → safety."""
+        """Boot sequence: calendar → portfolio state → safety."""
         logger.info("=== WORKFLOW BOOT ===")
         self.context['cycle_count'] = self.context.get('cycle_count', 0) + 1
 
-        # Calendar check
-        cal_result = self._run_agent(self.calendar_agent, self.context)
+        # Calendar check (inlined — was CalendarAgent)
+        self._check_trading_day()
 
         if not self.context.get('is_trading_day', True):
             logger.info("Not a trading day. Going idle.")
             self.go_idle()
             return
 
-        # Market data
-        md_result = self._run_agent(self.market_data, self.context)
-
         # Sync positions from broker(s) into DB (before reading state)
         self._sync_broker_positions()
 
-        # Portfolio state (reads from DB — now with fresh broker data)
-        ps_result = self._run_agent(self.portfolio_state, self.context)
-
-        # Refresh containers from DB so API endpoints serve live data
-        self._refresh_containers()
+        # Steward populates portfolio state from DB (replaces PortfolioStateAgent)
+        self._run_agent(self.steward, self.context, method='populate')
 
         # Safety check
-        safety = self._run_agent(self.guardian, self.context)
+        safety = self._run_agent(self.sentinel, self.context)
 
         if safety.status == AgentStatus.BLOCKED:
-            logger.warning(f"Guardian blocked boot: {safety.messages}")
+            logger.warning(f"Sentinel blocked boot: {safety.messages}")
             self.halt()
             return
 
-        # Capital utilization check at boot
-        cap_result = self._run_agent(self.capital_utilization, self.context)
+        # Capital utilization check at boot (Steward.run replaces CapitalUtilizationAgent)
+        self._run_agent(self.steward, self.context)
 
         # Set session objectives for the day
         obj_result = self._run_agent(self.session_objectives, self.context, method='set_objectives')
@@ -252,11 +244,38 @@ class WorkflowEngine:
         self.check_macro()
 
         # Refresh research container via agent.populate()
-        self._run_agent(self.quant_research, self.context, method='populate')
+        self._run_agent(self.scout, self.context, method='populate')
+
+        # Maverick cross-references Scout + Steward to generate trading signals
+        self._run_agent(self.maverick, self.context)
 
     def on_enter_macro_check(self, event):
-        """Evaluate macro conditions."""
-        result = self._run_agent(self.macro, self.context)
+        """Evaluate macro conditions (direct service call, was MacroAgent)."""
+        try:
+            override = None
+            override_data = self.context.get('macro_override')
+            if override_data and isinstance(override_data, dict):
+                override = MacroOverride(**override_data)
+
+            assessment = self._macro_service.evaluate(override=override)
+
+            self.context['macro_assessment'] = {
+                'regime': assessment.regime,
+                'should_screen': assessment.should_screen,
+                'confidence_modifier': assessment.confidence_modifier,
+                'rationale': assessment.rationale,
+                'vix_level': float(assessment.vix_level) if assessment.vix_level else None,
+                'override_applied': assessment.override_applied,
+            }
+            logger.info(f"Macro: {assessment.regime} — {assessment.rationale}")
+        except Exception as e:
+            logger.error(f"Macro evaluation failed: {e}")
+            self.context['macro_assessment'] = {
+                'regime': 'neutral',
+                'should_screen': True,
+                'confidence_modifier': 1.0,
+                'rationale': f'Macro evaluation failed ({e}), defaulting to neutral',
+            }
 
         should_screen = self.context.get('macro_assessment', {}).get('should_screen', True)
         if not should_screen:
@@ -269,7 +288,7 @@ class WorkflowEngine:
         """Run screeners and calculate risk."""
         result = self._run_agent(self.screener, self.context)
 
-        risk_result = self._run_agent(self.risk, self.context)
+        risk_result = self._run_agent(self.sentinel, self.context)
 
         recs = self.context.get('pending_recommendations', [])
         if recs:
@@ -310,8 +329,8 @@ class WorkflowEngine:
         """
         logger.info("=== TRADE MANAGEMENT ===")
 
-        # Refresh portfolio state before evaluation
-        ps_result = self._run_agent(self.portfolio_state, self.context)
+        # Refresh portfolio state before evaluation (Steward replaces PortfolioStateAgent)
+        self._run_agent(self.steward, self.context, method='populate')
 
         # Run evaluation across all portfolios
         result = self._run_agent(self.evaluator, self.context)
@@ -341,7 +360,7 @@ class WorkflowEngine:
 
         for action in approved:
             # Guardian constraint check per action
-            ok, reason = self.guardian.check_trading_constraints(action, self.context)
+            ok, reason = self.sentinel.check_trading_constraints(action, self.context)
             if ok:
                 self.context['action'] = action
                 result = self._run_agent(self.executor, self.context)
@@ -354,17 +373,16 @@ class WorkflowEngine:
         self.context['approved_actions'] = []
         logger.info(f"Executed {executed}/{len(approved)} approved actions")
 
-        # Refresh portfolio state after execution
-        self._run_agent(self.portfolio_state, self.context)
-        self._refresh_containers()
+        # Refresh portfolio state after execution (Steward replaces PortfolioStateAgent)
+        self._run_agent(self.steward, self.context, method='populate')
         self.monitor()
 
     def on_enter_eod_evaluation(self, event):
         """End-of-day evaluation — run one final exit check."""
         logger.info("=== EOD EVALUATION ===")
 
-        # Final portfolio state refresh
-        self._run_agent(self.portfolio_state, self.context)
+        # Final portfolio state refresh (Steward replaces PortfolioStateAgent)
+        self._run_agent(self.steward, self.context, method='populate')
 
         # Run evaluator one more time
         self._run_agent(self.evaluator, self.context)
@@ -379,8 +397,8 @@ class WorkflowEngine:
         # Accountability metrics first (reporter needs them)
         self._run_agent(self.accountability, self.context)
 
-        # Final capital utilization snapshot
-        self._run_agent(self.capital_utilization, self.context)
+        # Final capital utilization snapshot (Steward replaces CapitalUtilizationAgent)
+        self._run_agent(self.steward, self.context)
 
         # Capture daily snapshots for all portfolios (feeds analytics + ML)
         snapshot_results = self._capture_snapshots()
@@ -456,16 +474,12 @@ class WorkflowEngine:
             logger.debug(f"Skip monitoring cycle: state is {current}")
             return
 
-        # Refresh — sync broker positions, then read state from DB
-        self._run_agent(self.market_data, self.context)
+        # Refresh — sync broker positions, then Steward populates containers from DB
         self._sync_broker_positions()
-        self._run_agent(self.portfolio_state, self.context)
+        self._run_agent(self.steward, self.context, method='populate')
 
-        # Refresh containers from DB
-        self._refresh_containers()
-
-        # Capital utilization check
-        cap_result = self._run_agent(self.capital_utilization, self.context)
+        # Capital utilization check (Steward.run replaces CapitalUtilizationAgent)
+        self._run_agent(self.steward, self.context)
 
         # Notify if capital alerts (respects nag frequency via severity escalation)
         alerts = self.context.get('capital_alerts', [])
@@ -473,16 +487,19 @@ class WorkflowEngine:
             self.notifier.notify_idle_capital(alerts)
 
         # Safety check
-        safety = self._run_agent(self.guardian, self.context)
+        safety = self._run_agent(self.sentinel, self.context)
         if safety.status == AgentStatus.BLOCKED:
             self.halt()
             return
 
-        # Quant research pipeline (auto-book into research portfolios)
-        self._run_agent(self.quant_research, self.context)
+        # Scout research pipeline (auto-book into research portfolios)
+        self._run_agent(self.scout, self.context)
 
         # Refresh research container via agent.populate() + persist to DB
-        self._run_agent(self.quant_research, self.context, method='populate')
+        self._run_agent(self.scout, self.context, method='populate')
+
+        # Maverick cross-references Scout + Steward to generate trading signals
+        self._run_agent(self.maverick, self.context)
 
         # Trade management (rolls, adjustments, exits)
         self.manage_trades()
@@ -690,6 +707,90 @@ class WorkflowEngine:
     # -----------------------------------------------------------------
     # Internal helpers
     # -----------------------------------------------------------------
+
+    def _check_trading_day(self):
+        """
+        Inline calendar check (was CalendarAgent).
+
+        Sets context keys: is_trading_day, cadences, fomc_today,
+        minutes_since_open, minutes_to_close, market_open_time, market_close_time.
+        """
+        from datetime import date
+        try:
+            import exchange_calendars
+            import pandas as pd
+            import pytz
+
+            today = date.today()
+            cal = exchange_calendars.get_calendar('XNYS')
+            tz = pytz.timezone(self.config.market_hours.timezone)
+            now = datetime.now(tz)
+
+            ts = pd.Timestamp(today)
+            is_trading_day = cal.is_session(ts)
+
+            if not is_trading_day:
+                self.context['is_trading_day'] = False
+                self.context['cadences'] = []
+                logger.info(f"{today} is not a trading day")
+                return
+
+            session_open = cal.session_open(ts)
+            session_close = cal.session_close(ts)
+            open_et = session_open.astimezone(tz)
+            close_et = session_close.astimezone(tz)
+
+            if now < open_et:
+                minutes_since_open = 0
+                minutes_to_close = int((close_et - open_et).total_seconds() / 60)
+            elif now > close_et:
+                minutes_since_open = int((close_et - open_et).total_seconds() / 60)
+                minutes_to_close = 0
+            else:
+                minutes_since_open = int((now - open_et).total_seconds() / 60)
+                minutes_to_close = int((close_et - now).total_seconds() / 60)
+
+            fomc_today = str(today) in self.config.schedule.fomc_dates
+
+            # Determine cadences
+            sched = self.config.schedule
+            day_name = today.strftime('%A').lower()
+            cadences = list(sched.daily)
+            if day_name == 'wednesday':
+                for c in sched.wednesday:
+                    if c not in cadences:
+                        cadences.append(c)
+            elif day_name == 'friday':
+                for c in sched.friday:
+                    if c not in cadences:
+                        cadences.append(c)
+            if fomc_today and sched.skip_0dte_on_fomc:
+                cadences = [c for c in cadences if c != '0dte']
+            if sched.monthly_dte_window and len(sched.monthly_dte_window) == 2:
+                if 'monthly' not in cadences:
+                    cadences.append('monthly')
+
+            self.context['is_trading_day'] = True
+            self.context['cadences'] = cadences
+            self.context['fomc_today'] = fomc_today
+            self.context['minutes_since_open'] = minutes_since_open
+            self.context['minutes_to_close'] = minutes_to_close
+            self.context['market_open_time'] = open_et.strftime('%H:%M')
+            self.context['market_close_time'] = close_et.strftime('%H:%M')
+
+            logger.info(
+                f"Trading day: cadences={cadences}, "
+                f"FOMC={'YES' if fomc_today else 'no'}, "
+                f"{minutes_to_close} min to close"
+            )
+
+        except Exception as e:
+            logger.error(f"Calendar check failed: {e}")
+            # Fail safe: assume trading day
+            self.context['is_trading_day'] = True
+            self.context['cadences'] = ['0dte']
+            self.context['minutes_to_close'] = 999
+            self.context['minutes_since_open'] = 999
 
     def _capture_snapshots(self) -> dict:
         """Capture daily snapshots for all active portfolios."""

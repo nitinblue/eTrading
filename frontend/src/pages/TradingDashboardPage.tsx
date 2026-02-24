@@ -530,8 +530,8 @@ export function TradingDashboardPage() {
     <div className="space-y-1.5 pb-4">
       {/* Agent ownership */}
       <div className="flex items-center gap-1.5">
-        <AgentBadge agent="quant_research" />
-        <AgentBadge agent="risk" />
+        <AgentBadge agent="scout" />
+        <AgentBadge agent="sentinel" />
       </div>
       {/* Toolbar: portfolio tabs + refresh */}
       <div className="flex items-center gap-2 flex-wrap">

@@ -8,20 +8,20 @@ import { AGENT_ICONS, CATEGORY_CONFIG, type AgentCategory } from '../../config/a
 
 // Agent name → category lookup (duplicated from backend for offline use)
 const AGENT_CATEGORY: Record<string, AgentCategory> = {
-  circuit_breaker: 'safety',
-  risk: 'analysis',
-  quant_research: 'analysis',
-  tech_architect: 'execution',
-  trade_discipline: 'learning',
+  sentinel: 'domain',
+  scout: 'domain',
+  steward: 'domain',
+  maverick: 'domain',
+  atlas: 'domain',
 }
 
 // Human-friendly display names
 const AGENT_DISPLAY: Record<string, string> = {
-  circuit_breaker: 'Circuit Breaker',
-  risk: 'Risk',
-  quant_research: 'Quant Research',
-  tech_architect: 'Tech Architect',
-  trade_discipline: 'Trade Discipline',
+  sentinel: 'Sentinel',
+  scout: 'Scout',
+  steward: 'Steward',
+  maverick: 'Maverick',
+  atlas: 'Atlas',
 }
 
 interface AgentBadgeProps {

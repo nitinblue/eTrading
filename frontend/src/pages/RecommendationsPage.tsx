@@ -154,8 +154,8 @@ export function RecommendationsPage() {
     <div className="space-y-3">
       {/* Agent ownership */}
       <div className="flex items-center gap-1.5">
-        <AgentBadge agent="quant_research" />
-        <AgentBadge agent="circuit_breaker" />
+        <AgentBadge agent="scout" />
+        <AgentBadge agent="sentinel" />
       </div>
       {/* Filter bar */}
       <div className="card">

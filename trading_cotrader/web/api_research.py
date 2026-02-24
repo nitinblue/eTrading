@@ -131,7 +131,7 @@ def create_research_router(engine: 'WorkflowEngine') -> APIRouter:
         populate_stats = None
         if refresh:
             try:
-                agent = engine.quant_research
+                agent = engine.scout
                 result = agent.populate({
                     'skip_fundamentals': skip_fundamentals,
                 })
@@ -179,7 +179,7 @@ def create_research_router(engine: 'WorkflowEngine') -> APIRouter:
         skip_fund = (body or {}).get('skip_fundamentals', False)
 
         # Delegate to agent
-        agent = engine.quant_research
+        agent = engine.scout
         stats = agent._populate_from_library(tickers, skip_fundamentals=skip_fund)
         agent._save_to_db()
 
@@ -285,7 +285,7 @@ def create_research_router(engine: 'WorkflowEngine') -> APIRouter:
 
         # Populate just this ticker via agent
         try:
-            agent = engine.quant_research
+            agent = engine.scout
             agent._populate_from_library([symbol])
             agent._save_to_db()
         except Exception as e:
@@ -320,7 +320,7 @@ def create_research_router(engine: 'WorkflowEngine') -> APIRouter:
         if not entry or entry.timestamp is None:
             # Try to populate on-demand
             try:
-                agent = engine.quant_research
+                agent = engine.scout
                 agent._populate_from_library([symbol])
                 agent._save_to_db()
                 entry = container.get(symbol)

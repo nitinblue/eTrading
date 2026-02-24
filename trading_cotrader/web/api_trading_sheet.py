@@ -28,6 +28,8 @@ from trading_cotrader.core.database.schema import (
     SymbolORM,
     TradeORM,
 )
+from trading_cotrader.containers.position_container import PositionState
+from trading_cotrader.containers.trade_container import TradeState
 from trading_cotrader.services.pricing.probability import ProbabilityCalculator
 from trading_cotrader.services.portfolio_fitness import PortfolioFitnessChecker
 
@@ -50,11 +52,9 @@ def _dec(val: Any) -> float:
     return float(val)
 
 
-def _multiplier(pos: PositionORM) -> int:
+def _multiplier_pos(pos: PositionState) -> int:
     """100 for options, 1 for equity/stock positions."""
-    if pos.symbol and pos.symbol.option_type:
-        return 100
-    return 1
+    return 100 if pos.is_option else 1
 
 
 def _iso(dt: Any) -> Optional[str]:
@@ -290,13 +290,13 @@ def _refresh_whatif_greeks_from_broker(
 # Table 1: Strategy-level rows — grouped from broker PositionORM
 # ---------------------------------------------------------------------------
 
-def _infer_strategy_type(legs: List[PositionORM]) -> str:
-    """Infer strategy type from a group of broker positions."""
+def _infer_strategy_type(legs: List[PositionState]) -> str:
+    """Infer strategy type from a group of container positions."""
     n = len(legs)
     option_types = set()
     for p in legs:
-        if p.symbol and p.symbol.option_type:
-            option_types.add(p.symbol.option_type)
+        if p.option_type:
+            option_types.add(p.option_type.lower())
 
     has_puts = 'put' in option_types
     has_calls = 'call' in option_types
@@ -317,36 +317,33 @@ def _infer_strategy_type(legs: List[PositionORM]) -> str:
     return f"custom_{n}leg"
 
 
-def _pos_legs_summary(legs: List[PositionORM]) -> str:
-    """Compact legs description from broker positions."""
+def _pos_legs_summary(legs: List[PositionState]) -> str:
+    """Compact legs description from container positions."""
     parts = []
-    for p in sorted(legs, key=lambda x: float(x.symbol.strike or 0) if x.symbol else 0):
-        sym = p.symbol
-        if not sym:
-            continue
-        otype = (sym.option_type or 'E')[0:1].upper()
-        strike = int(float(sym.strike)) if sym.strike else '?'
+    for p in sorted(legs, key=lambda x: float(x.strike or 0)):
+        otype = (p.option_type or 'E')[0:1].upper()
+        strike = int(float(p.strike)) if p.strike else '?'
         sign = '+' if (p.quantity or 0) > 0 else '-'
         parts.append(f"{sign}{abs(p.quantity or 1)} {strike}{otype}")
     return ' / '.join(parts)
 
 
-def _compute_max_risk(legs: List[PositionORM], net_premium: float) -> float:
-    """Estimate max risk from position legs.
+def _compute_max_risk(legs: List[PositionState], net_premium: float) -> float:
+    """Estimate max risk from container position legs.
 
     Equity: market value (entry_price * quantity)
     Defined risk (spreads): spread_width * contracts * 100 - |net_credit|
     Undefined risk: rough estimate from premium * 20.
     """
     # Equity positions: max risk = market value of the position
-    is_equity = all(not (p.symbol and p.symbol.option_type) for p in legs)
+    is_equity = all(not p.is_option for p in legs)
     if is_equity:
         return abs(net_premium)
 
-    put_strikes = sorted([float(p.symbol.strike) for p in legs
-                          if p.symbol and p.symbol.strike and p.symbol.option_type == 'put'])
-    call_strikes = sorted([float(p.symbol.strike) for p in legs
-                           if p.symbol and p.symbol.strike and p.symbol.option_type == 'call'])
+    put_strikes = sorted([float(p.strike) for p in legs
+                          if p.strike and p.option_type and p.option_type.lower() == 'put'])
+    call_strikes = sorted([float(p.strike) for p in legs
+                           if p.strike and p.option_type and p.option_type.lower() == 'call'])
 
     put_width = (put_strikes[-1] - put_strikes[0]) if len(put_strikes) >= 2 else 0
     call_width = (call_strikes[-1] - call_strikes[0]) if len(call_strikes) >= 2 else 0
@@ -365,17 +362,14 @@ def _compute_max_risk(legs: List[PositionORM], net_premium: float) -> float:
 
 
 def _group_positions_into_strategies(
-    positions: List[PositionORM],
+    positions: List[PositionState],
     total_equity: float,
     total_bp: float,
 ) -> List[Dict]:
-    """Group broker positions by underlying into strategy-level rows."""
-    groups: Dict[str, List[PositionORM]] = {}
+    """Group container positions by underlying into strategy-level rows."""
+    groups: Dict[str, List[PositionState]] = {}
     for pos in positions:
-        sym = pos.symbol
-        if not sym:
-            continue
-        underlying = sym.ticker.split()[0] if sym.ticker else ''
+        underlying = pos.underlying
         if not underlying:
             continue
         groups.setdefault(underlying, []).append(pos)
@@ -386,7 +380,7 @@ def _group_positions_into_strategies(
         legs_summary = _pos_legs_summary(legs)
 
         # Net premium: entry_price * quantity * multiplier (100 for options, 1 for equity)
-        net_premium = sum(_dec(p.entry_price) * (p.quantity or 0) * _multiplier(p) for p in legs)
+        net_premium = sum(_dec(p.entry_price) * (p.quantity or 0) * _multiplier_pos(p) for p in legs)
         entry_cost_display = abs(net_premium)
 
         # Aggregate Greeks
@@ -394,15 +388,10 @@ def _group_positions_into_strategies(
         net_gamma = sum(_dec(p.gamma) for p in legs)
         net_theta = sum(_dec(p.theta) for p in legs)
         net_vega = sum(_dec(p.vega) for p in legs)
-        total_pnl = sum(_dec(p.total_pnl) for p in legs)
+        total_pnl = sum(_dec(p.unrealized_pnl) for p in legs)
 
         # DTE — nearest expiry
-        dtes = []
-        for p in legs:
-            if p.symbol and p.symbol.expiration:
-                d = _dte_from_expiry(p.symbol.expiration)
-                if d is not None:
-                    dtes.append(d)
+        dtes = [p.dte for p in legs if p.dte is not None]
         dte = min(dtes) if dtes else None
 
         max_risk = _compute_max_risk(legs, net_premium)
@@ -437,6 +426,38 @@ def _group_positions_into_strategies(
 
     strategies.sort(key=lambda s: abs(s['max_risk']), reverse=True)
     return strategies
+
+
+def _build_whatif_position_rows_from_container(trade: TradeState) -> List[Dict]:
+    """Build position-like rows from container TradeState legs."""
+    rows = []
+    for leg in trade.legs:
+        rows.append({
+            'id': leg.leg_id,
+            'symbol': leg.symbol,
+            'underlying': leg.underlying or trade.underlying,
+            'option_type': leg.option_type,
+            'strike': float(leg.strike) if leg.strike else None,
+            'expiry': leg.expiry,
+            'dte': _dte_from_expiry(leg.expiry) if leg.expiry else None,
+            'quantity': leg.quantity,
+            'side': 'long' if leg.is_long else 'short',
+            'entry_price': _dec(leg.entry_price),
+            'entry_delta': 0.0, 'entry_gamma': 0.0, 'entry_theta': 0.0,
+            'entry_vega': 0.0, 'entry_iv': 0.0,
+            'current_price': _dec(leg.current_price or leg.entry_price),
+            'delta': _dec(leg.delta),
+            'gamma': _dec(leg.gamma),
+            'theta': _dec(leg.theta),
+            'vega': _dec(leg.vega),
+            'iv': 0.0,
+            'pnl_delta': 0.0, 'pnl_gamma': 0.0, 'pnl_theta': 0.0,
+            'pnl_vega': 0.0, 'pnl_unexplained': 0.0,
+            'total_pnl': 0.0, 'broker_pnl': 0.0, 'pnl_pct': 0.0,
+            'trade_type': 'what_if',
+            'trade_id': trade.trade_id,
+        })
+    return rows
 
 
 def _build_whatif_position_rows(trade: TradeORM) -> List[Dict]:
@@ -524,26 +545,67 @@ def _build_whatif_risk_factors(
     return result
 
 
-def _build_whatif_strategy_row(trade: TradeORM, total_equity: float, total_bp: float) -> Dict:
-    """Build one WhatIf strategy row from a TradeORM + its legs."""
-    dte = _trade_dte(trade)
-    entry_cost = _dec(trade.entry_price)
-    max_risk = _dec(trade.max_risk)
+def _build_whatif_strategy_row(trade, total_equity: float, total_bp: float) -> Dict:
+    """Build one WhatIf strategy row from TradeState (container) or TradeORM."""
+    is_container = isinstance(trade, TradeState)
+
+    if is_container:
+        dte = trade.dte
+        entry_cost = _dec(trade.entry_price)
+        max_risk = _dec(trade.max_loss)
+        net_delta = _dec(trade.delta)
+        net_theta = _dec(trade.theta)
+        net_gamma = _dec(trade.gamma)
+        net_vega = _dec(trade.vega)
+        total_pnl = 0.0  # Container tracks current - entry separately
+        trade_id = trade.trade_id
+        underlying = trade.underlying or ''
+        legs_list = trade.legs
+        n_legs = len(legs_list)
+        strategy_type = trade.strategy_type or 'custom'
+        trade_source = ''
+        trade_type = trade.trade_type or ''
+        status = trade.trade_status or ''
+        opened_at = _iso(trade.created_at)
+        is_open = True  # WhatIf in container are always open
+        # Legs summary from container legs
+        parts = []
+        for leg in sorted(legs_list, key=lambda l: float(l.strike or 0)):
+            otype = (leg.option_type or 'E')[0:1].upper()
+            strike = int(float(leg.strike)) if leg.strike else '?'
+            sign = '+' if (leg.quantity or 0) > 0 else '-'
+            parts.append(f"{sign}{abs(leg.quantity or 1)} {strike}{otype}")
+        legs_summary = ' / '.join(parts)
+        qty = max(abs(l.quantity or 0) for l in legs_list) if legs_list else 0
+    else:
+        dte = _trade_dte(trade)
+        entry_cost = _dec(trade.entry_price)
+        max_risk = _dec(trade.max_risk)
+        net_delta = _dec(trade.current_delta or trade.entry_delta)
+        net_theta = _dec(trade.current_theta or trade.entry_theta)
+        net_gamma = _dec(trade.current_gamma or trade.entry_gamma)
+        net_vega = _dec(trade.current_vega or trade.entry_vega)
+        total_pnl = _dec(trade.total_pnl)
+        trade_id = trade.id
+        underlying = trade.underlying_symbol or ''
+        strategy_type = _strategy_label(trade)
+        legs_summary = _legs_summary(trade)
+        qty = max(abs(l.quantity or 0) for l in trade.legs) if trade.legs else 0
+        trade_source = trade.trade_source or ''
+        trade_type = trade.trade_type or ''
+        status = trade.trade_status or ''
+        opened_at = _iso(trade.opened_at or trade.created_at)
+        is_open = trade.is_open
+
     margin = max_risk if max_risk > 0 else abs(entry_cost) * 100 if entry_cost else 0
 
-    net_delta = _dec(trade.current_delta or trade.entry_delta)
-    net_theta = _dec(trade.current_theta or trade.entry_theta)
-    net_gamma = _dec(trade.current_gamma or trade.entry_gamma)
-    net_vega = _dec(trade.current_vega or trade.entry_vega)
-    total_pnl = _dec(trade.total_pnl)
-
     return {
-        'trade_id': trade.id,
-        'underlying': trade.underlying_symbol or '',
-        'strategy_type': _strategy_label(trade),
-        'legs_summary': _legs_summary(trade),
+        'trade_id': trade_id,
+        'underlying': underlying,
+        'strategy_type': strategy_type,
+        'legs_summary': legs_summary,
         'dte': dte,
-        'quantity': max(abs(l.quantity or 0) for l in trade.legs) if trade.legs else 0,
+        'quantity': qty,
         'entry_cost': round(entry_cost, 2),
         'margin_used': round(margin, 2),
         'margin_pct_of_capital': round(margin / total_equity * 100, 2) if total_equity else 0,
@@ -556,11 +618,11 @@ def _build_whatif_strategy_row(trade: TradeORM, total_equity: float, total_bp: f
         'net_vega': round(net_vega, 4),
         'total_pnl': round(total_pnl, 2),
         'pnl_pct': round(total_pnl / abs(entry_cost * 100) * 100, 1) if entry_cost else 0,
-        'trade_source': trade.trade_source or '',
-        'trade_type': trade.trade_type or '',
-        'status': trade.trade_status or '',
-        'opened_at': _iso(trade.opened_at or trade.created_at),
-        'is_open': trade.is_open,
+        'trade_source': trade_source,
+        'trade_type': trade_type,
+        'status': status,
+        'opened_at': opened_at,
+        'is_open': is_open,
     }
 
 
@@ -568,44 +630,43 @@ def _build_whatif_strategy_row(trade: TradeORM, total_equity: float, total_bp: f
 # Table 2: Position (leg-level) rows
 # ---------------------------------------------------------------------------
 
-def _build_position_row(pos: PositionORM) -> Dict:
-    """Build one position row with entry/current Greeks + P&L attribution."""
-    symbol = pos.symbol
+def _build_position_row(pos: PositionState) -> Dict:
+    """Build one position row from container PositionState."""
     return {
-        'id': pos.id,
-        'symbol': symbol.ticker if symbol else '',
-        'underlying': symbol.ticker.split()[0] if symbol and symbol.ticker else '',
-        'option_type': symbol.option_type if symbol else None,
-        'strike': float(symbol.strike) if symbol and symbol.strike else None,
-        'expiry': _iso(symbol.expiration) if symbol else None,
-        'dte': _dte_from_expiry(symbol.expiration) if symbol and symbol.expiration else None,
+        'id': pos.position_id,
+        'symbol': pos.symbol,
+        'underlying': pos.underlying,
+        'option_type': pos.option_type,
+        'strike': float(pos.strike) if pos.strike else None,
+        'expiry': pos.expiry,
+        'dte': pos.dte,
         'quantity': pos.quantity,
-        'side': 'long' if (pos.quantity or 0) > 0 else 'short',
+        'side': 'long' if pos.is_long else 'short',
         # Entry state
         'entry_price': _dec(pos.entry_price),
-        'entry_delta': _dec(pos.entry_delta),
-        'entry_gamma': _dec(pos.entry_gamma),
-        'entry_theta': _dec(pos.entry_theta),
-        'entry_vega': _dec(pos.entry_vega),
-        'entry_iv': _dec(pos.entry_iv),
+        'entry_delta': 0.0,  # Not tracked separately in container
+        'entry_gamma': 0.0,
+        'entry_theta': 0.0,
+        'entry_vega': 0.0,
+        'entry_iv': 0.0,
         # Current state
         'current_price': _dec(pos.current_price),
         'delta': _dec(pos.delta),
         'gamma': _dec(pos.gamma),
         'theta': _dec(pos.theta),
         'vega': _dec(pos.vega),
-        'iv': _dec(pos.current_iv),
+        'iv': _dec(pos.iv),
         # P&L attribution
-        'pnl_delta': _dec(pos.delta_pnl),
-        'pnl_gamma': _dec(pos.gamma_pnl),
-        'pnl_theta': _dec(pos.theta_pnl),
-        'pnl_vega': _dec(pos.vega_pnl),
-        'pnl_unexplained': _dec(pos.unexplained_pnl),
-        'total_pnl': _dec(pos.total_pnl),
-        'broker_pnl': _dec(pos.market_value) - _dec(pos.total_cost),
+        'pnl_delta': _dec(pos.pnl_delta),
+        'pnl_gamma': _dec(pos.pnl_gamma),
+        'pnl_theta': _dec(pos.pnl_theta),
+        'pnl_vega': _dec(pos.pnl_vega),
+        'pnl_unexplained': _dec(pos.pnl_unexplained),
+        'total_pnl': _dec(pos.unrealized_pnl),
+        'broker_pnl': _dec(pos.market_value) - _dec(pos.entry_value),
         'pnl_pct': (
-            round(_dec(pos.total_pnl) / abs(_dec(pos.total_cost)) * 100, 2)
-            if _dec(pos.total_cost) != 0 else 0
+            round(_dec(pos.unrealized_pnl) / abs(_dec(pos.entry_value)) * 100, 2)
+            if _dec(pos.entry_value) != 0 else 0
         ),
     }
 
@@ -614,59 +675,23 @@ def _build_position_row(pos: PositionORM) -> Dict:
 # Table 3: Risk factors
 # ---------------------------------------------------------------------------
 
-def _build_risk_factors(positions: List[PositionORM]) -> List[Dict]:
-    """Aggregate positions by underlying."""
-    factors: Dict[str, Dict] = {}
-    for pos in positions:
-        sym = pos.symbol
-        if not sym:
-            continue
-        underlying = sym.ticker.split()[0] if sym.ticker else ''
-        if not underlying:
-            continue
-        is_equity = not (sym.option_type)
-        if underlying not in factors:
-            factors[underlying] = {
-                'underlying': underlying, 'spot': 0.0,
-                'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0,
-                'count': 0, 'pnl': 0.0, '_is_equity': is_equity,
-            }
-        f = factors[underlying]
-        f['delta'] += _dec(pos.delta)
-        f['gamma'] += _dec(pos.gamma)
-        f['theta'] += _dec(pos.theta)
-        f['vega'] += _dec(pos.vega)
-        f['count'] += 1
-        f['pnl'] += _dec(pos.total_pnl)
-        if _dec(pos.current_underlying_price) > 0:
-            f['spot'] = _dec(pos.current_underlying_price)
-
+def _build_risk_factors_from_container(risk_factor_container) -> List[Dict]:
+    """Build risk factor rows from RiskFactorContainer (already aggregated)."""
+    grid_rows = risk_factor_container.to_grid_rows()
+    # Map container grid format to trading dashboard format
     result = []
-    total_abs_delta_dollars = 0
-    for f in factors.values():
-        # delta_dollars: for options delta * spot * 100 (contract multiplier),
-        # for equity delta IS the share count so delta * spot is already correct.
-        # Since broker populates delta as per-share delta (0-1) for options but
-        # net delta for equity (= quantity), we use the stored delta * spot * 100
-        # for option groups and delta * spot for equity groups.
-        if f.get('_is_equity'):
-            f['delta_dollars'] = round(f['delta'] * f['spot'], 2)
-        else:
-            f['delta_dollars'] = round(f['delta'] * f['spot'] * 100, 2)
-        total_abs_delta_dollars += abs(f['delta_dollars'])
-
-    for f in factors.values():
+    for row in grid_rows:
         result.append({
-            'underlying': f['underlying'],
-            'spot': round(f['spot'], 2),
-            'delta': round(f['delta'], 4),
-            'gamma': round(f['gamma'], 6),
-            'theta': round(f['theta'], 4),
-            'vega': round(f['vega'], 4),
-            'delta_dollars': f['delta_dollars'],
-            'concentration_pct': round(abs(f['delta_dollars']) / total_abs_delta_dollars * 100, 1) if total_abs_delta_dollars else 0,
-            'count': f['count'],
-            'pnl': round(f['pnl'], 2),
+            'underlying': row['underlying'],
+            'spot': row['spot'],
+            'delta': row['delta'],
+            'gamma': row['gamma'],
+            'theta': row['theta'],
+            'vega': row['vega'],
+            'delta_dollars': row['delta_$'],
+            'concentration_pct': row['concentration'],
+            'count': row['positions'],
+            'pnl': row['pnl'],
         })
     result.sort(key=lambda x: abs(x['delta_dollars']), reverse=True)
     return result
@@ -705,122 +730,130 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
     # -----------------------------------------------------------------------
     @router.get("/trading-dashboard/{portfolio_name}")
     async def get_trading_dashboard(portfolio_name: str):
-        """Full trading view: strategies, positions, risk factors."""
-        with session_scope() as session:
-            portfolio = (
-                session.query(PortfolioORM)
-                .filter(PortfolioORM.name == portfolio_name)
-                .first()
-            )
-            if not portfolio:
-                raise HTTPException(404, f"Portfolio '{portfolio_name}' not found")
+        """Full trading view: strategies, positions, risk factors.
 
-            equity = _dec(portfolio.total_equity)
-            cash = _dec(portfolio.cash_balance)
-            buying_power = _dec(portfolio.buying_power)
-            margin_used = equity - cash if equity else 0
-            margin_pct = (margin_used / equity * 100) if equity else 0
+        ALL data comes from containers (Steward's PortfolioBundle + Scout's ResearchContainer).
+        No direct DB queries. Containers are populated by Steward.populate() and refreshed
+        via POST /refresh.
+        """
+        cm = engine.container_manager
+        if not cm:
+            raise HTTPException(503, "Container manager not initialized")
 
-            # --- Positions (broker-synced, for Table 2 + risk factors) ---
-            positions = (
-                session.query(PositionORM)
-                .filter(PositionORM.portfolio_id == portfolio.id)
-                .all()
-            )
-            position_rows = [_build_position_row(p) for p in positions]
+        bundle = cm.get_bundle(portfolio_name)
+        if not bundle or not bundle.portfolio.state:
+            raise HTTPException(404, f"Portfolio bundle '{portfolio_name}' not found or not loaded")
 
-            # Aggregate portfolio Greeks from positions
-            net_delta = sum(_dec(p.delta) for p in positions)
-            net_gamma = sum(_dec(p.gamma) for p in positions)
-            net_theta = sum(_dec(p.theta) for p in positions)
-            net_vega = sum(_dec(p.vega) for p in positions)
+        pstate = bundle.portfolio.state
+        positions = bundle.positions.get_all()
+        risk_factors = bundle.risk_factors
+        whatif_trades_container = bundle.trades.get_what_if_trades()
 
-            # --- Table 1: Strategy-level from broker positions ---
-            real_strategies = _group_positions_into_strategies(
-                positions, equity, buying_power,
-            )
+        # Portfolio summary from container
+        equity = float(pstate.total_equity)
+        cash = float(pstate.cash_balance)
+        buying_power = float(pstate.buying_power)
+        margin_used = equity - cash if equity else 0
+        margin_pct = (margin_used / equity * 100) if equity else 0
 
-            # --- WhatIf trades from TradeORM (eager-load legs + symbols) ---
-            from sqlalchemy.orm import joinedload
-            whatif_orm = (
-                session.query(TradeORM)
-                .options(joinedload(TradeORM.legs).joinedload(LegORM.symbol))
-                .filter(
-                    TradeORM.portfolio_id == portfolio.id,
-                    TradeORM.is_open == True,
-                    TradeORM.trade_type == 'what_if',
-                )
-                .all()
-            )
+        # Position rows from container
+        position_rows = [_build_position_row(p) for p in positions]
 
-            # Refresh Greeks + quotes from TastyTrade DXLink (live broker data)
-            if whatif_orm:
-                try:
-                    _refresh_whatif_greeks_from_broker(whatif_orm, engine, session)
-                except Exception as e:
-                    logger.warning(f"WhatIf broker refresh failed: {e}")
+        # Aggregate portfolio Greeks from container positions
+        net_delta = sum(_dec(p.delta) for p in positions)
+        net_gamma = sum(_dec(p.gamma) for p in positions)
+        net_theta = sum(_dec(p.theta) for p in positions)
+        net_vega = sum(_dec(p.vega) for p in positions)
 
-            whatif_trades = [
-                _build_whatif_strategy_row(t, equity, buying_power)
-                for t in whatif_orm
-            ]
+        # Strategy-level grouping from container positions
+        real_strategies = _group_positions_into_strategies(
+            positions, equity, buying_power,
+        )
 
-            # WhatIf position rows (leg-level, for merged positions table)
-            whatif_position_rows: List[Dict] = []
-            for t in whatif_orm:
-                whatif_position_rows.extend(_build_whatif_position_rows(t))
+        # WhatIf trades from trade container
+        whatif_trades = [
+            _build_whatif_strategy_row(t, equity, buying_power)
+            for t in whatif_trades_container
+        ]
 
-            # Risk factors (real positions — build first to extract spot prices)
-            risk_factor_rows = _build_risk_factors(positions)
+        # WhatIf position rows (leg-level)
+        whatif_position_rows: List[Dict] = []
+        for t in whatif_trades_container:
+            whatif_position_rows.extend(_build_whatif_position_rows_from_container(t))
 
-            # Build spot lookup from real risk factors for WhatIf
-            spot_by_udl = {r['underlying']: r['spot'] for r in risk_factor_rows if r.get('spot')}
+        # Risk factors from RiskFactorContainer (already aggregated by Steward)
+        risk_factor_rows = _build_risk_factors_from_container(risk_factors)
 
-            # WhatIf risk factors (aggregated from strategy-level data, with spots)
-            whatif_risk_factor_rows = _build_whatif_risk_factors(whatif_trades, spot_by_udl)
+        # Build spot lookup from real risk factors for WhatIf
+        spot_by_udl = {r['underlying']: r['spot'] for r in risk_factor_rows if r.get('spot')}
 
-            # WhatIf Greeks impact
-            whatif_delta = sum(w['net_delta'] for w in whatif_trades)
-            whatif_theta = sum(w['net_theta'] for w in whatif_trades)
+        # WhatIf risk factors (aggregated from strategy-level data, with spots)
+        whatif_risk_factor_rows = _build_whatif_risk_factors(whatif_trades, spot_by_udl)
 
-            # VaR
-            var_95 = _dec(portfolio.var_1d_95)
-            theta_var = abs(net_theta / var_95) if var_95 else 0
+        # WhatIf Greeks impact
+        whatif_delta = sum(w['net_delta'] for w in whatif_trades)
+        whatif_theta = sum(w['net_theta'] for w in whatif_trades)
 
-            return {
-                'portfolio': {
-                    'name': portfolio.name,
-                    'portfolio_type': portfolio.portfolio_type,
-                    'broker': portfolio.broker,
-                    'total_equity': equity,
-                    'cash_balance': cash,
-                    'buying_power': buying_power,
-                    'margin_used': round(margin_used, 2),
-                    'margin_used_pct': round(margin_pct, 1),
-                    'net_delta': round(net_delta, 4),
-                    'net_gamma': round(net_gamma, 6),
-                    'net_theta': round(net_theta, 4),
-                    'net_vega': round(net_vega, 4),
-                    'net_delta_with_whatif': round(net_delta + whatif_delta, 4),
-                    'net_theta_with_whatif': round(net_theta + whatif_theta, 4),
-                    'var_1d_95': round(var_95, 2),
-                    'theta_var_ratio': round(theta_var, 4),
-                    'capital_deployed_pct': round(margin_pct, 1),
-                    'max_delta': _dec(portfolio.max_portfolio_delta),
-                    'delta_utilization_pct': round(
-                        abs(net_delta) / _dec(portfolio.max_portfolio_delta) * 100, 1
-                    ) if _dec(portfolio.max_portfolio_delta) else 0,
-                    'open_positions': len(positions),
-                    'open_strategies': len(real_strategies),
-                    'whatif_count': len(whatif_trades),
-                },
-                'strategies': real_strategies,
-                'positions': position_rows,
-                'whatif_trades': whatif_trades,
-                'whatif_positions': whatif_position_rows,
-                'whatif_risk_factors': whatif_risk_factor_rows,
-                'risk_factors': risk_factor_rows,
-            }
+        # VaR from portfolio container
+        var_95 = float(pstate.var_1d_95)
+        theta_var = abs(net_theta / var_95) if var_95 else 0
+
+        # Market context from Scout's ResearchContainer
+        market_context = {}
+        research = cm.research
+        for underlying in bundle.positions.underlyings:
+            entry = research.get(underlying)
+            if entry:
+                market_context[underlying] = {
+                    'regime': entry.regime_label,
+                    'regime_id': entry.regime_id,
+                    'phase': entry.phase_name,
+                    'rsi': entry.rsi_14,
+                    'iv_rank': entry.iv_rank,
+                    'price': entry.current_price,
+                    'atr': entry.atr,
+                    'opp_zero_dte_verdict': entry.opp_zero_dte_verdict,
+                    'opp_leap_verdict': entry.opp_leap_verdict,
+                    'levels_direction': entry.levels_direction,
+                    'levels_stop_price': entry.levels_stop_price,
+                    'levels_best_target_price': entry.levels_best_target_price,
+                }
+
+        return {
+            'portfolio': {
+                'name': pstate.name,
+                'portfolio_type': pstate.portfolio_type,
+                'broker': bundle.broker_firm,
+                'total_equity': equity,
+                'cash_balance': cash,
+                'buying_power': buying_power,
+                'margin_used': round(margin_used, 2),
+                'margin_used_pct': round(margin_pct, 1),
+                'net_delta': round(net_delta, 4),
+                'net_gamma': round(net_gamma, 6),
+                'net_theta': round(net_theta, 4),
+                'net_vega': round(net_vega, 4),
+                'net_delta_with_whatif': round(net_delta + whatif_delta, 4),
+                'net_theta_with_whatif': round(net_theta + whatif_theta, 4),
+                'var_1d_95': round(var_95, 2),
+                'theta_var_ratio': round(theta_var, 4),
+                'capital_deployed_pct': round(margin_pct, 1),
+                'max_delta': float(pstate.max_delta),
+                'delta_utilization_pct': round(
+                    abs(net_delta) / float(pstate.max_delta) * 100, 1
+                ) if float(pstate.max_delta) else 0,
+                'open_positions': len(positions),
+                'open_strategies': len(real_strategies),
+                'whatif_count': len(whatif_trades),
+            },
+            'strategies': real_strategies,
+            'positions': position_rows,
+            'whatif_trades': whatif_trades,
+            'whatif_positions': whatif_position_rows,
+            'whatif_risk_factors': whatif_risk_factor_rows,
+            'risk_factors': risk_factor_rows,
+            'market_context': market_context,
+        }
 
     # -----------------------------------------------------------------------
     # POST /trading-dashboard/{portfolio_name}/refresh
@@ -865,11 +898,14 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
     # -----------------------------------------------------------------------
     @router.post("/trading-dashboard/{portfolio_name}/evaluate")
     async def evaluate_template(portfolio_name: str, body: EvaluateTemplateRequest):
-        """Evaluate a research template against the portfolio."""
+        """Evaluate a research template against the portfolio.
+
+        Uses ResearchContainer (Scout's data) instead of TechnicalAnalysisService.
+        Portfolio state comes from containers (Steward's data).
+        """
         try:
             from trading_cotrader.services.research.template_loader import load_research_templates
             from trading_cotrader.services.research.condition_evaluator import ConditionEvaluator
-            from trading_cotrader.services.technical_analysis_service import TechnicalAnalysisService
         except ImportError as e:
             raise HTTPException(500, f"Missing dependency: {e}")
 
@@ -878,34 +914,41 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
         if not template:
             raise HTTPException(404, f"Template '{body.template_name}' not found. Available: {list(templates.keys())}")
 
-        with session_scope() as session:
-            portfolio = session.query(PortfolioORM).filter(PortfolioORM.name == portfolio_name).first()
-            if not portfolio:
-                raise HTTPException(404, f"Portfolio '{portfolio_name}' not found")
+        # Portfolio state from containers
+        cm = engine.container_manager
+        if not cm:
+            raise HTTPException(503, "Container manager not initialized")
 
-            positions = session.query(PositionORM).filter(PositionORM.portfolio_id == portfolio.id).all()
-            equity = _dec(portfolio.total_equity)
-            net_delta = sum(_dec(p.delta) for p in positions)
-            risk_factor_rows = _build_risk_factors(positions)
+        bundle = cm.get_bundle(portfolio_name)
+        if not bundle or not bundle.portfolio.state:
+            raise HTTPException(404, f"Portfolio bundle '{portfolio_name}' not found")
 
-            portfolio_state = {
-                'net_delta': net_delta,
-                'total_equity': equity,
-                'buying_power': _dec(portfolio.buying_power),
-                'margin_used': equity - _dec(portfolio.cash_balance),
-                'var_1d_95': _dec(portfolio.var_1d_95),
-                'open_positions': len(positions),
-                'exposure_by_underlying': {f['underlying']: abs(f['delta_dollars']) for f in risk_factor_rows},
-            }
-            risk_limits = {
-                'max_delta': _dec(portfolio.max_portfolio_delta),
-                'max_positions': 50,
-                'max_var_pct': 2.0,
-                'max_concentration_pct': _dec(portfolio.max_concentration_pct) or 25,
-                'max_margin_pct': 50.0,
-            }
+        pstate = bundle.portfolio.state
+        positions = bundle.positions.get_all()
+        risk_factor_rows = _build_risk_factors_from_container(bundle.risk_factors)
 
-        ta_service = TechnicalAnalysisService()
+        equity = float(pstate.total_equity)
+        net_delta = sum(_dec(p.delta) for p in positions)
+
+        portfolio_state_dict = {
+            'net_delta': net_delta,
+            'total_equity': equity,
+            'buying_power': float(pstate.buying_power),
+            'margin_used': equity - float(pstate.cash_balance),
+            'var_1d_95': float(pstate.var_1d_95),
+            'open_positions': len(positions),
+            'exposure_by_underlying': {f['underlying']: abs(f['delta_dollars']) for f in risk_factor_rows},
+        }
+        risk_limits = {
+            'max_delta': float(pstate.max_delta),
+            'max_positions': 50,
+            'max_var_pct': 2.0,
+            'max_concentration_pct': float(bundle.risk_factors.limits.max_concentration_pct),
+            'max_margin_pct': 50.0,
+        }
+
+        # Use Scout's ResearchContainer + adapter for condition evaluation
+        research = cm.research
         evaluator = ConditionEvaluator()
         global_ctx = {}
         if hasattr(engine, 'context'):
@@ -915,11 +958,13 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
         triggered_count = 0
 
         for symbol in template.universe:
-            try:
-                snapshot = ta_service.get_snapshot(symbol)
-            except Exception as e:
-                evaluated.append({'symbol': symbol, 'triggered': False, 'conditions': {}, 'error': str(e)})
+            entry = research.get(symbol)
+            if not entry:
+                evaluated.append({'symbol': symbol, 'triggered': False, 'conditions': {}, 'error': 'No research data'})
                 continue
+
+            # Use Scout's _ResearchEntryAdapter to bridge ResearchEntry -> ConditionEvaluator
+            snapshot = engine.scout._make_snapshot_adapter(entry)
 
             all_passed, details = evaluator.evaluate_all(template.entry_conditions, snapshot, global_ctx)
             conditions_display = {}
@@ -936,15 +981,15 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
                 'triggered': all_passed,
                 'conditions': conditions_display,
                 'snapshot': {
-                    'price': float(snapshot.current_price),
-                    'rsi_14': snapshot.rsi_14,
-                    'iv_rank': snapshot.iv_rank,
+                    'price': float(entry.current_price) if entry.current_price else 0.0,
+                    'rsi_14': entry.rsi_14,
+                    'iv_rank': entry.iv_rank,
                 },
             }
 
             if all_passed:
                 triggered_count += 1
-                proposed = _build_proposed_from_template(template, symbol, snapshot, portfolio_state, risk_limits)
+                proposed = _build_proposed_from_template(template, symbol, snapshot, portfolio_state_dict, risk_limits)
                 symbol_result['proposed_trade'] = proposed
 
             evaluated.append(symbol_result)

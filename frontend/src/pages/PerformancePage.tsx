@@ -139,8 +139,8 @@ export function PerformancePage() {
     <div className="space-y-3">
       {/* Agent ownership */}
       <div className="flex items-center gap-1.5">
-        <AgentBadge agent="tech_architect" />
-        <AgentBadge agent="trade_discipline" />
+        <AgentBadge agent="atlas" />
+        <AgentBadge agent="maverick" />
       </div>
       {/* Portfolio tabs */}
       <div className="card">

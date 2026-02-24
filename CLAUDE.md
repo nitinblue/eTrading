@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 22, 2026 (session 34)
+# Last Updated: February 23, 2026 (session 35b)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log s1-s26)
 
 ## STANDING INSTRUCTIONS
@@ -86,13 +86,13 @@ React Frontend            <-- renders from API response
 
 ### The 5 Domain Agents
 
-| ID | Fun Name | Role | Current File | Container | Status |
-|----|----------|------|-------------|-----------|--------|
-| `portfolio_manager` | **Steward** | PortfolioManager — portfolio state, positions, P&L, capital utilization | `agents/analysis/risk.py` (was RiskAgent) | PortfolioBundle (future) | Needs refactor |
-| `risk_manager` | **Sentinel** | RiskManager — VaR, fitness checks, circuit breakers, evaluation rules | `agents/safety/guardian.py` (was GuardianAgent) | (future) | Needs refactor |
-| `quant` | **Scout** | Quant — research, screening, templates, market analysis | `agents/analysis/quant_research.py` | **ResearchContainer** | EXEMPLAR (done) |
-| `trader` | **Maverick** | Trader — execution, notifications, discipline, accountability | (new, absorbs executor+notifier+discipline) | TradeContainer (future) | Not started |
-| `tech_architect` | **Atlas** | TechArchitect — infrastructure, reporting, QA, system health | `agents/infrastructure/tech_architect.py` | (future) | Skeleton |
+| ID | Fun Name | Role | File | Container | Status |
+|----|----------|------|------|-----------|--------|
+| `steward` | **Steward** | PortfolioManager — portfolio state, positions, P&L, capital utilization | `agents/domain/steward.py` | PortfolioBundle (via ContainerManager) | DONE (populate + run) |
+| `sentinel` | **Sentinel** | RiskManager — VaR, circuit breakers, fitness checks, execution gatekeeper | `agents/domain/sentinel.py` | (future) | Done (merged Guardian+Risk) |
+| `scout` | **Scout** | Quant — research, screening, templates, market analysis | `agents/domain/scout.py` | **ResearchContainer** | EXEMPLAR (done) |
+| `maverick` | **Maverick** | Trader — domain orchestrator, cross-references Scout+Steward, trading signals | `agents/domain/maverick.py` | Reads from PortfolioBundle + ResearchContainer | WIRED (run: boot+monitoring) |
+| `atlas` | **Atlas** | TechArchitect — infrastructure, reporting, QA, system health | `agents/domain/atlas.py` | (future) | Skeleton |
 
 ### Non-Agent Services (tools agents can use, not autonomous)
 - **AgentBrain** (`services/agent_brain.py`) — LLM chat/analysis via Claude API. Infrastructure service, not an agent.
@@ -132,17 +132,16 @@ class Scout(BaseAgent):  # QuantResearchAgent — THE EXEMPLAR
 4. Container persists to DB for instant cold start
 5. API reads from container (never the external data source)
 
-### Legacy Agents (11 in engine.py, to be absorbed into the 5 domain agents)
+### Legacy Agents (8 remaining in engine.py, to be absorbed into the 5 domain agents)
+
+3 legacy agents **removed in s35**: CalendarAgent (inlined in engine), MarketDataAgent (Scout handles it), MacroAgent (replaced by direct MacroContextService call).
 
 | Legacy File | Absorb Into | Role |
 |-------------|-------------|------|
-| `perception/market_data.py` | **Scout** (populate) | Fetch market data |
-| `perception/portfolio_state.py` | **Steward** (populate) | Read portfolio from DB |
-| `perception/calendar.py` | Engine service call | Trading day check |
-| `analysis/macro.py` | **Scout** (populate) | Macro conditions |
+| ~~`perception/portfolio_state.py`~~ | ~~**Steward** (populate)~~ | DONE (s35b) — deleted |
 | `analysis/screener.py` | **Scout** (run) | Run screeners |
 | `analysis/evaluator.py` | **Sentinel** | Evaluate positions for exits |
-| `analysis/capital.py` | **Steward** | Capital utilization |
+| ~~`analysis/capital.py`~~ | ~~**Steward** (run)~~ | DONE (s35b) — deleted |
 | `execution/executor.py` | **Maverick** | Place orders |
 | `execution/notifier.py` | **Maverick** | Send alerts |
 | `execution/reporter.py` | **Atlas** | Generate reports |
@@ -252,23 +251,25 @@ From anywhere: -> HALTED (circuit breaker) -> resume -> MONITORING
 
 | State | Agent Called | Method | Type |
 |-------|-------------|--------|------|
-| **BOOTING** | CalendarAgent | run() | Legacy -> service |
-| | MarketDataAgent | run() | Legacy -> Scout |
+| **BOOTING** | CalendarAgent | _check_trading_day() | Inlined (s35) |
 | | PortfolioSyncService | sync | Service |
-| | PortfolioStateAgent | run() | Legacy -> Steward |
-| | GuardianAgent (Sentinel) | run() | BaseAgent |
-| | CapitalUtilizationAgent | run() | Legacy -> Steward |
+| | **Steward** | populate() | BaseAgent (DONE s35b) |
+| | **Sentinel** | run() | BaseAgent |
+| | **Steward** | run() | BaseAgent (capital util, DONE s35b) |
 | | SessionObjectivesAgent | set_objectives() | Legacy -> Maverick |
 | | **Scout** (Quant) | populate() | BaseAgent (DONE) |
+| | **Maverick** | run() | BaseAgent (DONE s35c) |
 | **MACRO_CHECK** | MacroAgent | run() | Legacy -> Scout |
 | **SCREENING** | ScreenerAgent | run() | Legacy -> Scout |
 | | RiskAgent (Sentinel) | run() | BaseAgent |
 | **REC_REVIEW** | (human pause — approve/reject) | | |
 | **EXECUTION** | Guardian.check_constraints() | per-action | BaseAgent |
 | | ExecutorAgent | run() | Legacy -> Maverick |
-| **MONITORING** | MarketData, PortfolioSync, PortfolioState | refresh | Legacy |
-| (30min cycle) | Capital, Guardian | check | Mixed |
+| **MONITORING** | PortfolioSyncService | sync | Service |
+| (30min cycle) | **Steward** | populate() + run() | BaseAgent (DONE s35b) |
+| | **Sentinel** | run() | BaseAgent |
 | | **Scout** | run() + populate() | BaseAgent (DONE) |
+| | **Maverick** | run() | BaseAgent (DONE s35c) |
 | **TRADE_MGMT** | PortfolioState, EvaluatorAgent | run() | Legacy |
 | **EOD_EVAL** | PortfolioState, EvaluatorAgent | run() | Legacy |
 | **REPORTING** | Accountability, Capital, SessionObj, QA, Reporter | run() | Legacy |
@@ -339,11 +340,11 @@ ma.macro.calendar()                # 30-day macro event calendar
 
 | Area | Key Files |
 |------|-----------|
-| **Scout (Quant)** | `agents/analysis/quant_research.py`, `containers/research_container.py`, `web/api_research.py`, `repositories/research_snapshot.py` |
-| **Steward (PortfolioManager)** | `agents/analysis/risk.py` (currently RiskAgent, to refactor), `containers/portfolio_bundle.py` |
-| **Sentinel (RiskManager)** | `agents/safety/guardian.py` (currently GuardianAgent), `services/portfolio_fitness.py`, `services/risk/var_calculator.py`, `config/workflow_rules.yaml` |
-| **Maverick (Trader)** | (new, to be created — absorbs executor/notifier/discipline) |
-| **Atlas (TechArchitect)** | `agents/infrastructure/tech_architect.py` (skeleton) |
+| **Scout (Quant)** | `agents/domain/scout.py`, `containers/research_container.py`, `web/api_research.py`, `repositories/research_snapshot.py` |
+| **Steward (PortfolioManager)** | `agents/domain/steward.py`, `containers/portfolio_bundle.py` |
+| **Sentinel (RiskManager)** | `agents/domain/sentinel.py` (merged Guardian+Risk), `services/portfolio_fitness.py`, `services/risk/var_calculator.py`, `config/workflow_rules.yaml` |
+| **Maverick (Trader)** | `agents/domain/maverick.py` (orchestrator — reads PortfolioBundle + ResearchContainer) |
+| **Atlas (TechArchitect)** | `agents/domain/atlas.py` (skeleton) |
 | **Agent Framework** | `agents/base.py` (BaseAgent ABC), `agents/protocol.py` (AgentResult/AgentStatus) |
 | **Agent API** | `web/api_agents.py` (9 endpoints, dynamic registry from BaseAgent metadata) |
 | **Containers** | `containers/container_manager.py`, `containers/portfolio_bundle.py`, `containers/research_container.py` |
@@ -459,12 +460,12 @@ python -m trading_cotrader.harness.runner --skip-sync
 ### Agent Definition & Implementation — IN PROGRESS (open-ended)
 Agent definitions are evolving. Scout (Quant) is the exemplar. Other 4 agents (Steward, Sentinel, Maverick, Atlas) have roles defined but implementation is open. Next session continues building Scout.
 
-**Current state:**
-- **Scout** (Quant) — DONE: BaseAgent + populate() + ResearchContainer + DB persistence + API
-- **Steward** (PortfolioManager) — Needs: own container, populate() from broker sync, absorb portfolio_state + capital agents
-- **Sentinel** (RiskManager) — Needs: absorb guardian + evaluator, own container for risk state
-- **Maverick** (Trader) — Needs: absorb executor + notifier + accountability + objectives
-- **Atlas** (TechArchitect) — Needs: absorb reporter + QA, own container for system health
+**Current state (s35c):**
+- **Scout** (Quant) — DONE: BaseAgent + populate() + ResearchContainer + DB persistence + API. File: `agents/domain/scout.py`
+- **Sentinel** (RiskManager) — DONE: Merged Guardian+Risk. Circuit breakers + VaR + constraints + container-based risk reads. File: `agents/domain/sentinel.py`
+- **Steward** (PortfolioManager) — DONE: populate() fills PortfolioBundle from DB, run() does capital utilization analysis. Absorbed portfolio_state + capital agents. File: `agents/domain/steward.py`
+- **Maverick** (Trader) — WIRED (s35c): Domain orchestrator. run() cross-references Steward's PortfolioBundle with Scout's ResearchContainer to produce trading signals. Runs during boot + monitoring. `api_trading_sheet.py` GET reads entirely from containers. Next: absorb executor + notifier + accountability + objectives.
+- **Atlas** (TechArchitect) — Skeleton. Needs: absorb reporter + QA, own container for system health
 
 ### AgentBrain Service — Unfinished
 - 3 methods have no API endpoints
@@ -478,7 +479,7 @@ Agent definitions are evolving. Scout (Quant) is the exemplar. Other 4 agents (S
 - Portfolio page: all data should come from Steward's container
 - Agents page: needs enhancements (TBD by Nitin)
 - Sidebar: restructure per UI Architecture section (primary/archived/removed)
-- Agent file renames to nouns (guardian.py -> sentinel.py, etc.)
+- Agent file renames to nouns — DONE (s35): all 5 domain agents in `agents/domain/`
 
 ---
 
@@ -486,6 +487,9 @@ Agent definitions are evolving. Scout (Quant) is the exemplar. Other 4 agents (S
 
 | Session | Date | What |
 |---------|------|------|
+| s35c | Feb 23 | Wired Maverick as domain orchestrator. MaverickAgent.run() cross-references Steward's PortfolioBundle with Scout's ResearchContainer to produce trading signals. Rewired `api_trading_sheet.py` GET endpoint: ALL reads from containers (no DB queries). Added `market_context` (Scout's research) to trading dashboard response. Rewired `evaluate` endpoint to use ResearchContainer instead of TechnicalAnalysisService. Engine passes container_manager to Maverick, calls in boot + monitoring. Updated api_agents.py registry. 11 new tests. 296 tests pass. |
+| s35b | Feb 23 | Built out Steward (PortfolioManager). populate() absorbs PortfolioStateAgent (fills PortfolioBundle from DB), run() absorbs CapitalUtilizationAgent (capital analysis + alerts). Enhanced Sentinel with container_manager (reads risk from containers, falls back to DB). Added PortfolioRiskLimits + concentration_pct + to_summary() to RiskFactorContainer. Deleted 2 legacy files (portfolio_state.py, capital.py). 13 new tests. 285 tests pass. |
+| s35 | Feb 23 | Agent architecture reorganization. Created `agents/domain/` with 5 renamed agents (scout, sentinel, steward, maverick, atlas). Merged Guardian+Risk into Sentinel. Converted 3 legacy agents to services (calendar inlined, market_data removed, macro uses service). Deleted 8 old files. Updated engine, APIs, 3 test files, 12 frontend files. 272 tests pass. |
 | s34 | Feb 22 | LevelsService integration (ResearchContainer + schema + Scout + API + UI). CLAUDE.md rewrite. |
 | s33 | Feb 22 | MarketAnalyzer full integration — phase + opportunities + smart money. 9 API endpoints. |
 | s32 | Feb 22 | Agent framework refactor — BaseAgent ABC + QuantResearchAgent exemplar. |

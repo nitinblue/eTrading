@@ -8,7 +8,7 @@ Tests:
 4. Entry/exit conditions parsed as Condition objects
 5. Variants parsed correctly
 6. TradeStrategyConfig for equity vs option
-7. Integration: QuantResearchAgent uses research templates
+7. Integration: ScoutAgent uses research templates
 8. Agent disabled returns early
 9. Agent with no templates returns early
 10. TradeSource.RESEARCH_TEMPLATE exists
@@ -25,7 +25,7 @@ from trading_cotrader.services.research.template_loader import (
     ResearchTemplate, TradeStrategyConfig, StrategyVariant, ParameterVariant,
 )
 from trading_cotrader.services.research.condition_evaluator import Condition
-from trading_cotrader.agents.analysis.quant_research import QuantResearchAgent
+from trading_cotrader.agents.domain.scout import ScoutAgent
 from trading_cotrader.agents.protocol import AgentStatus
 from trading_cotrader.core.models.domain import TradeSource
 
@@ -240,39 +240,39 @@ class TestResearchPortfolioConfig:
             assert name in portfolios, f"Missing portfolio: {name}"
 
 
-class TestQuantResearchAgentExecution:
-    """Test the rewritten QuantResearchAgent."""
+class TestScoutAgentExecution:
+    """Test the rewritten ScoutAgent."""
 
     def test_agent_has_correct_name(self):
-        agent = QuantResearchAgent()
-        assert agent.name == "quant_research"
+        agent = ScoutAgent()
+        assert agent.name == "scout"
 
     def test_safety_check_always_passes(self):
-        agent = QuantResearchAgent()
+        agent = ScoutAgent()
         ok, reason = agent.safety_check({})
         assert ok is True
 
-    @patch('trading_cotrader.agents.analysis.quant_research.QuantResearchAgent._is_research_enabled')
+    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
     def test_disabled_returns_early(self, mock_enabled):
         mock_enabled.return_value = False
-        agent = QuantResearchAgent()
+        agent = ScoutAgent()
         result = agent.run({})
         assert result.status == AgentStatus.COMPLETED
         assert result.data.get('enabled') is False
 
-    @patch('trading_cotrader.agents.analysis.quant_research.get_enabled_templates')
-    @patch('trading_cotrader.agents.analysis.quant_research.QuantResearchAgent._is_research_enabled')
+    @patch('trading_cotrader.agents.domain.scout.get_enabled_templates')
+    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
     def test_no_templates_returns_early(self, mock_enabled, mock_templates):
         mock_enabled.return_value = True
         mock_templates.return_value = {}
-        agent = QuantResearchAgent()
+        agent = ScoutAgent()
         result = agent.run({})
         assert result.status == AgentStatus.COMPLETED
         assert result.data.get('template_count') == 0
 
-    @patch('trading_cotrader.agents.analysis.quant_research.QuantResearchAgent._evaluate_template_variant')
-    @patch('trading_cotrader.agents.analysis.quant_research.get_enabled_templates')
-    @patch('trading_cotrader.agents.analysis.quant_research.QuantResearchAgent._is_research_enabled')
+    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._evaluate_template_variant')
+    @patch('trading_cotrader.agents.domain.scout.get_enabled_templates')
+    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
     def test_runs_all_enabled_templates(self, mock_enabled, mock_templates, mock_eval):
         mock_enabled.return_value = True
         mock_templates.return_value = {
@@ -289,16 +289,16 @@ class TestQuantResearchAgentExecution:
         }
         mock_eval.return_value = (3, 3, 0)
 
-        agent = QuantResearchAgent()
+        agent = ScoutAgent()
         result = agent.run({})
 
         assert result.status == AgentStatus.COMPLETED
         assert mock_eval.call_count == 2
         assert result.data['trades_booked'] == 6
 
-    @patch('trading_cotrader.agents.analysis.quant_research.QuantResearchAgent._evaluate_template_variant')
-    @patch('trading_cotrader.agents.analysis.quant_research.get_enabled_templates')
-    @patch('trading_cotrader.agents.analysis.quant_research.QuantResearchAgent._is_research_enabled')
+    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._evaluate_template_variant')
+    @patch('trading_cotrader.agents.domain.scout.get_enabled_templates')
+    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
     def test_variants_each_trigger_evaluation(self, mock_enabled, mock_templates, mock_eval):
         mock_enabled.return_value = True
         mock_templates.return_value = {
@@ -314,15 +314,15 @@ class TestQuantResearchAgentExecution:
         }
         mock_eval.return_value = (1, 1, 0)
 
-        agent = QuantResearchAgent()
+        agent = ScoutAgent()
         result = agent.run({})
 
         assert mock_eval.call_count == 3
         assert result.data['trades_booked'] == 3
 
-    @patch('trading_cotrader.agents.analysis.quant_research.QuantResearchAgent._evaluate_template_variant')
-    @patch('trading_cotrader.agents.analysis.quant_research.get_enabled_templates')
-    @patch('trading_cotrader.agents.analysis.quant_research.QuantResearchAgent._is_research_enabled')
+    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._evaluate_template_variant')
+    @patch('trading_cotrader.agents.domain.scout.get_enabled_templates')
+    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
     def test_context_updated_with_booked_trades(self, mock_enabled, mock_templates, mock_eval):
         mock_enabled.return_value = True
         mock_templates.return_value = {
@@ -335,7 +335,7 @@ class TestQuantResearchAgentExecution:
         mock_eval.return_value = (2, 2, 0)
 
         context = {}
-        agent = QuantResearchAgent()
+        agent = ScoutAgent()
         agent.run(context)
 
         assert 'research_trades_booked' in context
@@ -343,9 +343,9 @@ class TestQuantResearchAgentExecution:
         assert context['research_trades_booked'][0]['template'] == 'correction_premium_sell'
         assert context['research_trades_booked'][0]['count'] == 2
 
-    @patch('trading_cotrader.agents.analysis.quant_research.QuantResearchAgent._evaluate_template_variant')
-    @patch('trading_cotrader.agents.analysis.quant_research.get_enabled_templates')
-    @patch('trading_cotrader.agents.analysis.quant_research.QuantResearchAgent._is_research_enabled')
+    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._evaluate_template_variant')
+    @patch('trading_cotrader.agents.domain.scout.get_enabled_templates')
+    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
     def test_empty_universe_skipped(self, mock_enabled, mock_templates, mock_eval):
         mock_enabled.return_value = True
         mock_templates.return_value = {
@@ -357,7 +357,7 @@ class TestQuantResearchAgentExecution:
         }
         mock_eval.return_value = (0, 0, 0)
 
-        agent = QuantResearchAgent()
+        agent = ScoutAgent()
         result = agent.run({})
 
         # Should NOT call _evaluate_template_variant since no symbols
@@ -369,35 +369,35 @@ class TestAgentRegistry:
 
     def test_agent_in_registry(self):
         from trading_cotrader.web.api_agents import AGENT_REGISTRY
-        assert 'quant_research' in AGENT_REGISTRY
+        assert 'scout' in AGENT_REGISTRY
 
     def test_registry_entry_has_required_fields(self):
         from trading_cotrader.web.api_agents import AGENT_REGISTRY
-        entry = AGENT_REGISTRY['quant_research']
+        entry = AGENT_REGISTRY['scout']
         assert entry['category'] == 'domain'
         assert 'monitoring' in entry['runs_during']
 
 
 class TestWorkflowEngineWiring:
-    """Test QuantResearchAgent is wired into the workflow engine."""
+    """Test ScoutAgent is wired into the workflow engine."""
 
-    def test_engine_has_quant_research_agent(self):
-        from trading_cotrader.workflow import engine as eng
-        assert hasattr(eng, 'QuantResearchAgent')
+    def test_engine_has_scout_agent(self):
+        from trading_cotrader.agents.domain import scout as scout_mod
+        assert hasattr(scout_mod, 'ScoutAgent')
 
-    def test_engine_instantiates_quant_research(self):
+    def test_engine_instantiates_scout(self):
         import inspect
         from trading_cotrader.workflow.engine import WorkflowEngine
         source = inspect.getsource(WorkflowEngine.__init__)
-        assert 'quant_research' in source
-        assert 'QuantResearchAgent' in source
+        assert 'scout' in source
+        assert 'ScoutAgent' in source
 
 
 class TestLegConstruction:
-    """Test option leg building in QuantResearchAgent."""
+    """Test option leg building in ScoutAgent."""
 
     def setup_method(self):
-        self.agent = QuantResearchAgent()
+        self.agent = ScoutAgent()
 
     def test_vertical_spread_legs(self):
         strategy = StrategyVariant(

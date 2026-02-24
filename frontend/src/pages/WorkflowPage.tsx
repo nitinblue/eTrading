@@ -98,8 +98,8 @@ export function WorkflowPage() {
     <div className="space-y-3">
       {/* Agent ownership */}
       <div className="flex items-center gap-1.5">
-        <AgentBadge agent="circuit_breaker" />
-        <AgentBadge agent="trade_discipline" />
+        <AgentBadge agent="sentinel" />
+        <AgentBadge agent="maverick" />
       </div>
       {/* State machine pipeline */}
       <div className="card">

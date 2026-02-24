@@ -320,9 +320,9 @@ class TestGuardianCrossBroker:
     """Guardian agent cross-broker safety checks."""
 
     def test_cross_broker_blocked(self):
-        from trading_cotrader.agents.safety.guardian import GuardianAgent
+        from trading_cotrader.agents.domain.sentinel import SentinelAgent
         from trading_cotrader.config.workflow_config_loader import WorkflowConfig
-        guardian = GuardianAgent(WorkflowConfig())
+        guardian = SentinelAgent(WorkflowConfig())
 
         action = {
             'portfolio_broker': 'fidelity',
@@ -333,9 +333,9 @@ class TestGuardianCrossBroker:
         assert 'Cross-broker routing blocked' in reason
 
     def test_currency_mismatch_blocked(self):
-        from trading_cotrader.agents.safety.guardian import GuardianAgent
+        from trading_cotrader.agents.domain.sentinel import SentinelAgent
         from trading_cotrader.config.workflow_config_loader import WorkflowConfig
-        guardian = GuardianAgent(WorkflowConfig())
+        guardian = SentinelAgent(WorkflowConfig())
 
         action = {
             'currency': 'USD',
@@ -346,9 +346,9 @@ class TestGuardianCrossBroker:
         assert 'Currency mismatch' in reason
 
     def test_same_broker_passes(self):
-        from trading_cotrader.agents.safety.guardian import GuardianAgent
+        from trading_cotrader.agents.domain.sentinel import SentinelAgent
         from trading_cotrader.config.workflow_config_loader import WorkflowConfig
-        guardian = GuardianAgent(WorkflowConfig())
+        guardian = SentinelAgent(WorkflowConfig())
 
         action = {
             'portfolio_broker': 'tastytrade',

@@ -66,7 +66,7 @@ export function CapitalPage() {
     <div className="space-y-3">
       {/* Agent ownership */}
       <div className="flex items-center gap-1.5">
-        <AgentBadge agent="risk" />
+        <AgentBadge agent="steward" />
       </div>
       {/* KPI strip */}
       {totals && (

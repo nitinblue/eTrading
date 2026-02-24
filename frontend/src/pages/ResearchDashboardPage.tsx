@@ -211,7 +211,7 @@ export function ResearchDashboardPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h1 className="text-sm font-semibold text-text-primary">Market Analysis</h1>
-          <AgentBadge agent="quant_research" />
+          <AgentBadge agent="scout" />
         </div>
         <div className="flex items-center gap-3">
           {/* Column group toggles */}

@@ -50,7 +50,7 @@ export function DashboardPage() {
     <div className="space-y-3">
       {/* Agent ownership */}
       <div className="flex items-center gap-1.5">
-        <AgentBadge agent="circuit_breaker" />
+        <AgentBadge agent="sentinel" />
       </div>
       {/* Row 1: KPI strip + Workflow status side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">

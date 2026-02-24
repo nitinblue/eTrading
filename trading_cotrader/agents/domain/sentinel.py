@@ -1,12 +1,15 @@
 """
-Guardian Agent (Circuit Breaker) — Safety layer that checks circuit breakers
-and trading constraints before any action is taken.
+Sentinel Agent (Risk Manager) — Safety layer and risk quantification.
+
+Merges:
+  - GuardianAgent (circuit breakers, trading constraints, kill switch)
+  - RiskAgent (VaR, concentration, portfolio risk metrics)
 
 All thresholds come from workflow_rules.yaml, never hardcoded.
 
 Usage:
-    guardian = GuardianAgent(config)
-    result = guardian.run(context)
+    sentinel = SentinelAgent(config)
+    result = sentinel.run(context)
     if result.status == AgentStatus.BLOCKED:
         print(f"HALTED: {result.messages}")
 """
@@ -23,42 +26,55 @@ from trading_cotrader.config.workflow_config_loader import WorkflowConfig
 logger = logging.getLogger(__name__)
 
 
-class GuardianAgent(BaseAgent):
-    """Checks circuit breakers and trading constraints before every action."""
+class SentinelAgent(BaseAgent):
+    """Combined risk manager: circuit breakers + portfolio risk metrics."""
 
     # Class-level metadata
-    name: ClassVar[str] = "circuit_breaker"
-    display_name: ClassVar[str] = "Circuit Breaker"
-    category: ClassVar[str] = "safety"
-    role: ClassVar[str] = "Circuit breaker & kill switch"
+    name: ClassVar[str] = "sentinel"
+    display_name: ClassVar[str] = "Sentinel (Risk)"
+    category: ClassVar[str] = "domain"
+    role: ClassVar[str] = "Risk manager, circuit breakers & execution gatekeeper"
     intro: ClassVar[str] = (
-        "I am the emergency stop. Daily/weekly loss limits, VIX spikes, "
-        "no-trade tickers — when something is wrong, I halt everything. "
-        "Simple rules, no exceptions."
+        "I am the risk manager. Circuit breakers, VaR, concentration, fitness checks, "
+        "kill switch -- nothing gets through without my approval. When something is "
+        "wrong, I halt everything."
     )
     responsibilities: ClassVar[List[str]] = [
         "Circuit breakers (daily/weekly loss)",
         "VIX halt threshold",
         "No-trade ticker list",
         "Emergency halt",
+        "Parametric VaR",
+        "Historical VaR",
+        "Concentration",
+        "Margin",
+        "Portfolio fitness",
+        "Trade execution gate",
     ]
     datasources: ClassVar[List[str]] = [
         "workflow_rules.yaml",
         "VIX feed",
         "Daily P&L",
+        "PortfolioORM",
+        "PositionORM",
+        "yfinance (price history)",
+        "CorrelationAnalyzer",
+        "Broker adapters",
     ]
     boundaries: ClassVar[List[str]] = [
         "Cannot override human halt decisions",
-        "Does not evaluate strategies or positions",
-        "Kill switch only",
+        "LIMIT orders only (no market orders)",
+        "Requires explicit approval for execution",
+        "Reports risk metrics, gates trades",
     ]
-    runs_during: ClassVar[List[str]] = ["booting", "monitoring", "execution"]
+    runs_during: ClassVar[List[str]] = ["booting", "screening", "monitoring", "execution"]
 
-    def __init__(self, config: WorkflowConfig = None, container=None):
+    def __init__(self, config: WorkflowConfig = None, container=None, container_manager=None):
         super().__init__(container=container, config=config)
+        self._container_manager = container_manager
 
     def safety_check(self, context: dict) -> tuple[bool, str]:
-        """Pre-flight check — same as run() but returns tuple."""
+        """Pre-flight check -- same as run() but returns tuple."""
         result = self.run(context)
         if result.status == AgentStatus.BLOCKED:
             return False, "; ".join(result.messages)
@@ -66,7 +82,49 @@ class GuardianAgent(BaseAgent):
 
     def run(self, context: dict) -> AgentResult:
         """
-        Full safety sweep. Called at boot and before every action.
+        Combined safety + risk sweep.
+
+        1. Check circuit breakers (from Guardian)
+        2. Calculate risk metrics (from Risk)
+        """
+        messages = []
+
+        # --- Part 1: Circuit breaker checks ---
+        breakers_tripped = self._check_circuit_breakers(context)
+        if breakers_tripped:
+            context['halt_reason'] = "; ".join(breakers_tripped)
+            return AgentResult(
+                agent_name=self.name,
+                status=AgentStatus.BLOCKED,
+                data={'breakers_tripped': breakers_tripped},
+                messages=[f"CIRCUIT BREAKER: {b}" for b in breakers_tripped],
+            )
+
+        messages.append("All circuit breakers clear")
+
+        # --- Part 2: Risk metrics ---
+        risk_data = self._calculate_risk(context)
+        if risk_data:
+            context['risk_snapshot'] = risk_data
+            messages.append(
+                f"Risk: {risk_data.get('open_positions', 0)} positions, "
+                f"VaR95=${risk_data.get('var_95', 0):.0f}"
+            )
+
+        return AgentResult(
+            agent_name=self.name,
+            status=AgentStatus.COMPLETED,
+            data=risk_data or {},
+            messages=messages,
+        )
+
+    # -----------------------------------------------------------------
+    # Circuit breaker checks (from GuardianAgent)
+    # -----------------------------------------------------------------
+
+    def _check_circuit_breakers(self, context: dict) -> list[str]:
+        """
+        Check all circuit breakers. Returns list of tripped breaker messages.
 
         Checks:
             1. Daily P&L loss limit
@@ -75,15 +133,10 @@ class GuardianAgent(BaseAgent):
             4. Per-portfolio drawdown
             5. Consecutive losses (per strategy / per portfolio)
         """
-        breakers_tripped: list[str] = []
-
         if self.config is None:
-            return AgentResult(
-                agent_name=self.name,
-                status=AgentStatus.COMPLETED,
-                messages=["No config — skipping circuit breaker checks"],
-            )
+            return []
 
+        breakers_tripped: list[str] = []
         cb = self.config.circuit_breakers
 
         # 1. Daily loss
@@ -128,20 +181,80 @@ class GuardianAgent(BaseAgent):
                     f"{key}: {count} consecutive losses (pause threshold: {cb.consecutive_loss_pause})"
                 )
 
-        if breakers_tripped:
-            context['halt_reason'] = "; ".join(breakers_tripped)
-            return AgentResult(
-                agent_name=self.name,
-                status=AgentStatus.BLOCKED,
-                data={'breakers_tripped': breakers_tripped},
-                messages=[f"CIRCUIT BREAKER: {b}" for b in breakers_tripped],
-            )
+        return breakers_tripped
 
-        return AgentResult(
-            agent_name=self.name,
-            status=AgentStatus.COMPLETED,
-            messages=["All circuit breakers clear"],
-        )
+    # -----------------------------------------------------------------
+    # Risk metrics (from RiskAgent)
+    # -----------------------------------------------------------------
+
+    def _calculate_risk(self, context: dict) -> dict:
+        """Calculate risk metrics from containers (or fallback to DB)."""
+        risk_data = {
+            'var_95': 0.0,
+            'var_99': 0.0,
+            'es_95': 0.0,
+            'open_positions': 0,
+            'underlying_concentration': {},
+        }
+
+        # Prefer reading from containers (populated by Steward)
+        if self._container_manager:
+            try:
+                underlying_counts: dict[str, int] = {}
+                total_positions = 0
+                for bundle in self._container_manager.get_all_bundles():
+                    for rf in bundle.risk_factors.get_all():
+                        underlying_counts[rf.underlying] = (
+                            underlying_counts.get(rf.underlying, 0) + rf.position_count
+                        )
+                        total_positions += rf.position_count
+
+                    # Read VaR from portfolio state if available
+                    pstate = bundle.portfolio.state or {}
+                    risk_data['var_95'] += float(pstate.get('var_1d_95', 0) or 0)
+                    risk_data['var_99'] += float(pstate.get('var_1d_99', 0) or 0)
+
+                risk_data['open_positions'] = total_positions
+                risk_data['underlying_concentration'] = underlying_counts
+                return risk_data
+            except Exception as e:
+                logger.warning(f"Container-based risk calc failed, falling back to DB: {e}")
+
+        # Fallback: read from DB directly
+        try:
+            from trading_cotrader.core.database.session import session_scope
+            from trading_cotrader.core.database.schema import TradeORM, PortfolioORM
+
+            with session_scope() as session:
+                open_trades = session.query(TradeORM).filter(
+                    TradeORM.is_open == True
+                ).all()
+
+                risk_data['open_positions'] = len(open_trades)
+
+                underlying_counts = {}
+                for t in open_trades:
+                    sym = t.underlying_symbol
+                    underlying_counts[sym] = underlying_counts.get(sym, 0) + 1
+                risk_data['underlying_concentration'] = underlying_counts
+
+                if open_trades:
+                    try:
+                        portfolios = session.query(PortfolioORM).all()
+                        risk_data['var_95'] = sum(float(p.var_1d_95 or 0) for p in portfolios)
+                        risk_data['var_99'] = sum(float(p.var_1d_99 or 0) for p in portfolios)
+                    except Exception as e:
+                        logger.debug(f"VaR calculation skipped: {e}")
+
+            return risk_data
+
+        except Exception as e:
+            logger.error(f"Risk calculation failed: {e}")
+            return {}
+
+    # -----------------------------------------------------------------
+    # Trading constraints (from GuardianAgent)
+    # -----------------------------------------------------------------
 
     def check_trading_constraints(self, action: dict, context: dict) -> tuple[bool, str]:
         """

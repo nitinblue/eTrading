@@ -15,7 +15,7 @@ import type { LucideIcon } from 'lucide-react'
 // Category config (colors + icons)
 // ---------------------------------------------------------------------------
 
-export type AgentCategory = 'safety' | 'perception' | 'analysis' | 'execution' | 'learning'
+export type AgentCategory = 'safety' | 'perception' | 'analysis' | 'execution' | 'learning' | 'domain'
 
 export interface CategoryConfig {
   icon: LucideIcon
@@ -67,6 +67,14 @@ export const CATEGORY_CONFIG: Record<AgentCategory, CategoryConfig> = {
     border: 'border-amber-500/20',
     dot: 'bg-amber-400',
   },
+  domain: {
+    icon: Shield,
+    label: 'Domain',
+    color: 'text-blue-400',
+    bg: 'bg-blue-500/10',
+    border: 'border-blue-500/20',
+    dot: 'bg-blue-400',
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -74,11 +82,11 @@ export const CATEGORY_CONFIG: Record<AgentCategory, CategoryConfig> = {
 // ---------------------------------------------------------------------------
 
 export const AGENT_ICONS: Record<string, LucideIcon> = {
-  circuit_breaker: Siren,
-  risk: Gauge,
-  tech_architect: GitBranch,
-  trade_discipline: Scale,
-  quant_research: FlaskConical,
+  sentinel: Siren,
+  scout: FlaskConical,
+  steward: Gauge,
+  maverick: Scale,
+  atlas: GitBranch,
 }
 
 // ---------------------------------------------------------------------------
@@ -95,50 +103,50 @@ export interface AgentOwnership {
 export const PAGE_OWNERSHIP: Record<string, AgentOwnership[]> = {
   // Research Dashboard
   'research': [
-    { agent: 'quant_research', label: 'Quant Research', section: 'Watchlist & Templates' },
+    { agent: 'scout', label: 'Scout', section: 'Watchlist & Templates' },
   ],
   // Portfolio page
   'portfolio': [
-    { agent: 'risk', label: 'Risk', section: 'Positions & Risk Factors' },
+    { agent: 'steward', label: 'Steward', section: 'Positions & Risk Factors' },
   ],
   // Trading Sheet
   'trading-sheet': [
-    { agent: 'quant_research', label: 'Quant Research', section: 'Template Evaluation' },
-    { agent: 'risk', label: 'Risk', section: 'Risk Factors & Fitness' },
-    { agent: 'risk', label: 'Risk', section: 'WhatIf & Booking' },
+    { agent: 'scout', label: 'Scout', section: 'Template Evaluation' },
+    { agent: 'sentinel', label: 'Sentinel', section: 'Risk Factors & Fitness' },
+    { agent: 'sentinel', label: 'Sentinel', section: 'WhatIf & Booking' },
   ],
   // Recommendations
   'recommendations': [
-    { agent: 'quant_research', label: 'Quant Research', section: 'Recommendations' },
-    { agent: 'circuit_breaker', label: 'Circuit Breaker', section: 'Approval Gate' },
+    { agent: 'scout', label: 'Scout', section: 'Recommendations' },
+    { agent: 'sentinel', label: 'Sentinel', section: 'Approval Gate' },
   ],
   // Risk
   'risk': [
-    { agent: 'risk', label: 'Risk', section: 'VaR & Greeks' },
-    { agent: 'circuit_breaker', label: 'Circuit Breaker', section: 'Circuit Breakers' },
+    { agent: 'sentinel', label: 'Sentinel', section: 'VaR & Greeks' },
+    { agent: 'sentinel', label: 'Sentinel', section: 'Circuit Breakers' },
   ],
   // Workflow
   'workflow': [
-    { agent: 'circuit_breaker', label: 'Circuit Breaker', section: 'Safety Gate' },
-    { agent: 'trade_discipline', label: 'Trade Discipline', section: 'Daily Goals' },
+    { agent: 'sentinel', label: 'Sentinel', section: 'Safety Gate' },
+    { agent: 'maverick', label: 'Maverick', section: 'Daily Goals' },
   ],
   // Reports
   'reports': [
-    { agent: 'tech_architect', label: 'Tech Architect', section: 'Reports' },
-    { agent: 'trade_discipline', label: 'Trade Discipline', section: 'Decision Audit' },
+    { agent: 'atlas', label: 'Atlas', section: 'Reports' },
+    { agent: 'maverick', label: 'Maverick', section: 'Decision Audit' },
   ],
   // Performance
   'performance': [
-    { agent: 'tech_architect', label: 'Tech Architect', section: 'Performance Metrics' },
-    { agent: 'trade_discipline', label: 'Trade Discipline', section: 'Win Rate & Expectancy' },
+    { agent: 'atlas', label: 'Atlas', section: 'Performance Metrics' },
+    { agent: 'maverick', label: 'Maverick', section: 'Win Rate & Expectancy' },
   ],
   // Capital
   'capital': [
-    { agent: 'risk', label: 'Risk', section: 'Deployment & Idle' },
+    { agent: 'steward', label: 'Steward', section: 'Deployment & Idle' },
   ],
   // Dashboard
   'dashboard': [
-    { agent: 'circuit_breaker', label: 'Circuit Breaker', section: 'Circuit Breakers' },
+    { agent: 'sentinel', label: 'Sentinel', section: 'Circuit Breakers' },
   ],
 }
 

@@ -41,7 +41,7 @@ def _build_registry(engine) -> dict:
     from trading_cotrader.agents.base import BaseAgent
 
     registry = {}
-    for attr_name in ['guardian', 'risk', 'quant_research', 'tech_architect', 'trade_discipline']:
+    for attr_name in ['sentinel', 'scout', 'steward', 'maverick', 'atlas']:
         agent = getattr(engine, attr_name, None)
         if agent and isinstance(agent, BaseAgent):
             meta = agent.get_metadata()
@@ -51,52 +51,19 @@ def _build_registry(engine) -> dict:
 
 # Fallback static registry for when engine hasn't initialized yet
 AGENT_REGISTRY: dict[str, dict] = {
-    'circuit_breaker': {
-        'display_name': 'Circuit Breaker',
-        'category': 'safety',
-        'role': 'Circuit breaker & kill switch',
-        'intro': 'I am the emergency stop. Daily/weekly loss limits, VIX spikes, no-trade tickers — when something is wrong, I halt everything.',
-        'description': 'Circuit breakers and no-trade enforcement.',
-        'responsibilities': ['Circuit breakers (daily/weekly loss)', 'VIX halt threshold', 'No-trade ticker list', 'Emergency halt'],
-        'datasources': ['workflow_rules.yaml', 'VIX feed', 'Daily P&L'],
-        'boundaries': ['Cannot override human halt decisions', 'Does not evaluate strategies or positions', 'Kill switch only'],
-        'runs_during': ['booting', 'monitoring', 'execution'],
-    },
-    'risk': {
-        'display_name': 'Risk Manager',
+    'sentinel': {
+        'display_name': 'Sentinel (Risk)',
         'category': 'domain',
-        'role': 'Risk & execution gatekeeper',
-        'intro': 'I quantify risk and gate every trade. VaR, concentration, fitness checks, WhatIf booking, order preview.',
-        'description': 'Computes VaR, portfolio fitness, concentration. Gates trade execution.',
-        'responsibilities': ['Parametric VaR', 'Historical VaR', 'Concentration', 'Margin', 'Portfolio fitness', 'WhatIf booking', 'Trade execution gate'],
-        'datasources': ['PortfolioORM', 'PositionORM', 'yfinance (price history)', 'CorrelationAnalyzer', 'Broker adapters', 'TradeBookingService'],
-        'boundaries': ['LIMIT orders only (no market orders)', 'Requires explicit approval for execution', 'Reports risk metrics, gates trades'],
-        'runs_during': ['screening', 'monitoring'],
+        'role': 'Risk manager, circuit breakers & execution gatekeeper',
+        'intro': 'I am the risk manager. Circuit breakers, VaR, concentration, fitness checks, kill switch -- nothing gets through without my approval.',
+        'description': 'Combined risk manager: circuit breakers + portfolio risk metrics.',
+        'responsibilities': ['Circuit breakers (daily/weekly loss)', 'VIX halt threshold', 'Emergency halt', 'Parametric VaR', 'Concentration', 'Portfolio fitness', 'Trade execution gate'],
+        'datasources': ['workflow_rules.yaml', 'VIX feed', 'Daily P&L', 'PortfolioORM', 'PositionORM', 'Broker adapters'],
+        'boundaries': ['Cannot override human halt decisions', 'LIMIT orders only', 'Reports risk metrics, gates trades'],
+        'runs_during': ['booting', 'screening', 'monitoring', 'execution'],
     },
-    'tech_architect': {
-        'display_name': 'Tech Architect',
-        'category': 'infrastructure',
-        'role': 'Infrastructure, ops & QA',
-        'intro': 'I handle the plumbing. Broker routing, notifications, reports, test health, performance tracking.',
-        'description': 'Consolidated infrastructure: broker routing, notifications, reporting, QA, and performance.',
-        'responsibilities': ['Broker routing', 'Order routing', 'Notifications', 'Daily reports', 'Performance reports', 'Test suite health', 'Coverage analysis'],
-        'datasources': ['config/brokers.yaml', 'Broker adapters', 'PortfolioORM', 'TradeORM', 'PerformanceMetricsService', 'pytest runner'],
-        'boundaries': ['Cannot make trading decisions', 'Infrastructure and reporting only', 'Does not evaluate strategies'],
-        'runs_during': ['execution', 'recommendation_review', 'trade_review', 'reporting'],
-    },
-    'trade_discipline': {
-        'display_name': 'Trade Discipline',
-        'category': 'learning',
-        'role': 'Trading workflow & accountability',
-        'intro': 'I enforce process discipline. Morning objectives, decision tracking, time-to-action, EOD grading.',
-        'description': 'Trading workflow manager: session objectives, decision tracking, accountability.',
-        'responsibilities': ['Session objectives', 'Decision tracking', 'Time-to-decision', 'Rec expiry', 'EOD grading', 'Gap analysis', 'Corrective plans'],
-        'datasources': ['DecisionLogORM', 'RecommendationORM', 'AgentObjectiveORM', 'Agent run history', 'Portfolio performance'],
-        'boundaries': ['Cannot force decisions', 'Observes and grades only', 'No trading authority'],
-        'runs_during': ['booting', 'reporting'],
-    },
-    'quant_research': {
-        'display_name': 'Quant Research',
+    'scout': {
+        'display_name': 'Scout (Quant)',
         'category': 'domain',
         'role': 'Research pipeline executor',
         'intro': 'I run scenario-based research. 7 templates, parameter variants, auto-booking into research portfolios.',
@@ -105,6 +72,39 @@ AGENT_REGISTRY: dict[str, dict] = {
         'datasources': ['market_analyzer library', 'research_templates.yaml', 'ConditionEvaluator', 'ResearchContainer'],
         'boundaries': ['Books into research portfolios only (not live)', 'Cannot modify templates', 'Auto-accept only for research'],
         'runs_during': ['monitoring'],
+    },
+    'steward': {
+        'display_name': 'Steward (Portfolio)',
+        'category': 'domain',
+        'role': 'Portfolio state, positions, P&L, capital utilization',
+        'intro': 'I manage portfolio state. Positions, P&L tracking, capital utilization, position monitoring.',
+        'description': 'Portfolio manager: state, positions, P&L, capital utilization.',
+        'responsibilities': ['Portfolio state', 'Position monitoring', 'P&L tracking', 'Capital utilization', 'Broker sync coordination'],
+        'datasources': ['PortfolioORM', 'PositionORM', 'TradeORM', 'Broker adapters', 'PortfolioBundle'],
+        'boundaries': ['Read-only portfolio state', 'Does not place trades', 'Does not evaluate risk'],
+        'runs_during': ['booting', 'monitoring'],
+    },
+    'maverick': {
+        'display_name': 'Maverick (Trader)',
+        'category': 'domain',
+        'role': 'Trading orchestration & Scout/Steward cross-reference',
+        'intro': 'I bring it all together. I cross-reference portfolio positions with market intelligence to surface trading signals.',
+        'description': 'Domain orchestrator: cross-references Scout (research) + Steward (portfolio) for trading decisions.',
+        'responsibilities': ['Trading orchestration', 'Scout/Steward cross-reference', 'Trading signals', 'Blotter data coordination', 'Order execution', 'Notifications', 'Session objectives', 'Decision tracking'],
+        'datasources': ['PortfolioBundle (via ContainerManager)', 'ResearchContainer (via ContainerManager)', 'DecisionLogORM', 'Broker adapters'],
+        'boundaries': ['LIMIT orders only', 'Requires explicit approval', 'Cannot override risk limits'],
+        'runs_during': ['booting', 'monitoring', 'execution', 'reporting'],
+    },
+    'atlas': {
+        'display_name': 'Atlas (Infra)',
+        'category': 'domain',
+        'role': 'Infrastructure, ops & QA',
+        'intro': 'I handle the plumbing. Reports, test health, performance tracking.',
+        'description': 'Consolidated infrastructure: reporting, QA, system health.',
+        'responsibilities': ['Daily reports', 'Performance reports', 'Test suite health', 'Coverage analysis', 'System health monitoring'],
+        'datasources': ['PortfolioORM', 'TradeORM', 'PerformanceMetricsService', 'pytest runner'],
+        'boundaries': ['Cannot make trading decisions', 'Infrastructure and reporting only'],
+        'runs_during': ['reporting'],
     },
 }
 

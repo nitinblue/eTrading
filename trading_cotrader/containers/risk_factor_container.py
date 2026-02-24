@@ -4,7 +4,7 @@ Risk Factor Container - Aggregated risk by underlying
 Aggregates positions by underlying to provide:
 - Greeks totals per underlying
 - Exposure metrics
-- Risk limit monitoring
+- Risk limit monitoring (from risk_config.yaml per-portfolio limits)
 """
 
 from dataclasses import dataclass, field
@@ -14,6 +14,18 @@ from typing import Dict, List, Any, Callable, Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PortfolioRiskLimits:
+    """Risk limits from risk_config.yaml, loaded per portfolio."""
+    max_portfolio_delta: Decimal = Decimal('500')
+    max_positions: int = 10
+    max_single_position_pct: Decimal = Decimal('25')
+    max_single_trade_risk_pct: Decimal = Decimal('15')
+    max_total_risk_pct: Decimal = Decimal('80')
+    min_cash_reserve_pct: Decimal = Decimal('10')
+    max_concentration_pct: Decimal = Decimal('30')
 
 
 @dataclass
@@ -51,6 +63,7 @@ class RiskFactorState:
     # Limits
     delta_limit: Decimal = Decimal('200')
     delta_utilization_pct: Decimal = Decimal('0')
+    concentration_pct: Decimal = Decimal('0')
 
     # Status
     risk_status: str = "OK"
@@ -77,6 +90,7 @@ class RiskFactorState:
             'daily_pnl': float(self.daily_pnl),
             'delta_limit': float(self.delta_limit),
             'delta_utilization_pct': float(self.delta_utilization_pct),
+            'concentration_pct': float(self.concentration_pct),
             'risk_status': self.risk_status,
             'last_updated': self.last_updated.isoformat(),
         }
@@ -94,6 +108,7 @@ class RiskFactorContainer:
         self._previous_states: Dict[str, Dict[str, Any]] = {}
         self._change_listeners: List[Callable] = []
         self._initialized = False
+        self._limits: Optional[PortfolioRiskLimits] = None
 
     @property
     def is_initialized(self) -> bool:
@@ -116,6 +131,15 @@ class RiskFactorContainer:
                 listener('risk_factor', {'underlying': underlying, 'changes': changes})
             except Exception as e:
                 logger.error(f"Error in change listener: {e}")
+
+    def set_risk_limits(self, limits: PortfolioRiskLimits) -> None:
+        """Set per-portfolio risk limits (from risk_config.yaml)."""
+        self._limits = limits
+
+    @property
+    def limits(self) -> PortfolioRiskLimits:
+        """Current risk limits. Returns defaults if none set."""
+        return self._limits or PortfolioRiskLimits()
 
     def get(self, underlying: str) -> Optional[RiskFactorState]:
         return self._risk_factors.get(underlying)
@@ -171,20 +195,31 @@ class RiskFactorContainer:
                 rf.delta_dollars = rf.delta * rf.spot_price
                 rf.gamma_dollars = rf.gamma * rf.spot_price * rf.spot_price * Decimal('0.01')
 
+            # Use real limits from config (or defaults)
+            rf.delta_limit = self.limits.max_portfolio_delta
+
             # Calculate utilization
             if rf.delta_limit > 0:
                 rf.delta_utilization_pct = abs(rf.delta) / rf.delta_limit * 100
 
-            # Set risk status
-            if rf.delta_utilization_pct > 100:
+            rf.last_updated = datetime.utcnow()
+            self._risk_factors[underlying] = rf
+
+        # Calculate concentration (each underlying's exposure as % of total)
+        total_gross = sum(rf.gross_exposure for rf in self._risk_factors.values())
+        total_positions = sum(rf.position_count for rf in self._risk_factors.values())
+        for rf in self._risk_factors.values():
+            if total_gross > 0:
+                rf.concentration_pct = rf.gross_exposure / total_gross * 100
+
+            # Set risk status based on delta utilization and concentration
+            max_conc = float(self.limits.max_concentration_pct)
+            if rf.delta_utilization_pct > 100 or float(rf.concentration_pct) > max_conc:
                 rf.risk_status = "BREACH"
-            elif rf.delta_utilization_pct > 80:
+            elif rf.delta_utilization_pct > 80 or float(rf.concentration_pct) > max_conc * 0.8:
                 rf.risk_status = "WARNING"
             else:
                 rf.risk_status = "OK"
-
-            rf.last_updated = datetime.utcnow()
-            self._risk_factors[underlying] = rf
 
         self._initialized = True
         return self._detect_all_changes()
@@ -258,6 +293,38 @@ class RiskFactorContainer:
         self._notify_changes(underlying, changes)
         return changes
 
+    def to_summary(self) -> Dict[str, Any]:
+        """Portfolio-level risk summary across all underlyings."""
+        total_delta = sum(rf.delta for rf in self._risk_factors.values())
+        total_positions = sum(rf.position_count for rf in self._risk_factors.values())
+        total_pnl = sum(rf.unrealized_pnl for rf in self._risk_factors.values())
+        breach_count = sum(1 for rf in self._risk_factors.values() if rf.risk_status == "BREACH")
+        warning_count = sum(1 for rf in self._risk_factors.values() if rf.risk_status == "WARNING")
+
+        position_utilization_pct = 0.0
+        if self.limits.max_positions > 0:
+            position_utilization_pct = total_positions / self.limits.max_positions * 100
+
+        if breach_count > 0:
+            overall_status = "BREACH"
+        elif warning_count > 0:
+            overall_status = "WARNING"
+        else:
+            overall_status = "OK"
+
+        return {
+            'total_delta': float(total_delta),
+            'total_positions': total_positions,
+            'max_positions': self.limits.max_positions,
+            'position_utilization_pct': round(position_utilization_pct, 1),
+            'total_unrealized_pnl': float(total_pnl),
+            'underlyings_count': len(self._risk_factors),
+            'breach_count': breach_count,
+            'warning_count': warning_count,
+            'overall_risk_status': overall_status,
+            'delta_limit': float(self.limits.max_portfolio_delta),
+        }
+
     def to_grid_rows(self) -> List[Dict[str, Any]]:
         """Convert to AG Grid row format"""
         rows = []
@@ -278,6 +345,7 @@ class RiskFactorContainer:
                 'short': rf.short_count,
                 'pnl': float(rf.unrealized_pnl),
                 'limit_used': float(rf.delta_utilization_pct),
+                'concentration': float(rf.concentration_pct),
                 'status': rf.risk_status,
             })
         return rows

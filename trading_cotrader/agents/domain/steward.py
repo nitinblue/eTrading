@@ -1,49 +1,229 @@
 """
-Capital Utilization Agent — Proactively monitors idle capital across portfolios.
+Steward Agent (Portfolio Manager) — Portfolio state, positions, P&L, capital utilization.
 
-Per portfolio each monitoring cycle:
-    target_deployed_pct = 100 - min_cash_reserve_pct
-    actual_deployed_pct = (equity - cash) / equity * 100
-    idle_capital = cash - (equity * min_cash_reserve_pct / 100)
-    gap_pct = target_deployed_pct - actual_deployed_pct
-    opportunity_cost_per_day = idle_capital * target_annual_return / 365
+Absorbs:
+  - PortfolioStateAgent (populate) — reads portfolio state from DB via ContainerManager
+  - CapitalUtilizationAgent (run) — monitors idle capital, generates alerts
 
-Severity escalation (from workflow_rules.yaml):
-    info:     gap > idle_alert_pct threshold
-    warning:  gap > 2x threshold OR days_idle > warning_days_idle
-    critical: gap > 3x threshold OR days_idle > critical_days_idle
+Pattern (follows Scout exemplar):
+  1. Owns containers via ContainerManager (PortfolioBundle per portfolio)
+  2. populate() fills containers from DB (like Scout fills ResearchContainer from MarketAnalyzer)
+  3. run() analyzes capital utilization from container data
+  4. API reads from containers, never DB directly
 
-Correlates with pending recommendations to suggest concrete actions.
+Usage:
+    steward = StewardAgent(container_manager=cm, config=config)
+    steward.populate(context)  # fills PortfolioBundle containers from DB
+    steward.run(context)       # capital utilization analysis + alerts
 """
 
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import ClassVar, Dict, List, Optional, TYPE_CHECKING
 import logging
 
+import yaml
+
+from trading_cotrader.agents.base import BaseAgent
 from trading_cotrader.agents.protocol import AgentResult, AgentStatus
-from trading_cotrader.config.workflow_config_loader import WorkflowConfig
+
+if TYPE_CHECKING:
+    from trading_cotrader.containers.container_manager import ContainerManager
+    from trading_cotrader.config.workflow_config_loader import WorkflowConfig
 
 logger = logging.getLogger(__name__)
 
 
-class CapitalUtilizationAgent:
-    """Monitors capital deployment and generates idle-capital alerts."""
+class StewardAgent(BaseAgent):
+    """Portfolio manager: state, positions, P&L, capital utilization."""
 
-    name = "capital_utilization"
+    # Class-level metadata
+    name: ClassVar[str] = "steward"
+    display_name: ClassVar[str] = "Steward (Portfolio)"
+    category: ClassVar[str] = "domain"
+    role: ClassVar[str] = "Portfolio state, positions, P&L, capital utilization"
+    intro: ClassVar[str] = (
+        "I manage portfolio state. Positions, P&L tracking, capital utilization, "
+        "position monitoring -- the single source of truth for what we own "
+        "and how it is performing."
+    )
+    responsibilities: ClassVar[List[str]] = [
+        "Portfolio state",
+        "Position monitoring",
+        "P&L tracking",
+        "Capital utilization",
+        "Broker sync coordination",
+    ]
+    datasources: ClassVar[List[str]] = [
+        "PortfolioORM",
+        "PositionORM",
+        "TradeORM",
+        "Broker adapters",
+        "PortfolioBundle",
+    ]
+    boundaries: ClassVar[List[str]] = [
+        "Read-only portfolio state",
+        "Does not place trades",
+        "Does not evaluate risk",
+    ]
+    runs_during: ClassVar[List[str]] = ["booting", "monitoring"]
 
-    def __init__(self, config: WorkflowConfig):
-        self.config = config
+    def __init__(self, container_manager: 'ContainerManager' = None, config: 'WorkflowConfig' = None):
+        super().__init__(container=None, config=config)
+        self._container_manager = container_manager
 
-    def safety_check(self, context: dict) -> tuple[bool, str]:
-        return True, ""
+    # -----------------------------------------------------------------
+    # populate() — Fill PortfolioBundle containers from DB
+    # -----------------------------------------------------------------
+
+    def populate(self, context: dict) -> AgentResult:
+        """
+        Fill PortfolioBundle containers from DB.
+
+        Replaces PortfolioStateAgent.run():
+          1. Load all bundles from DB (positions, trades, risk factors)
+          2. Build portfolio summaries from bundles
+          3. Query trade counts from DB (containers don't track historical counts)
+          4. Set context keys for downstream agents (Sentinel, etc.)
+
+        Returns AgentResult with portfolio stats.
+        """
+        if self._container_manager is None:
+            return AgentResult(
+                agent_name=self.name,
+                status=AgentStatus.ERROR,
+                messages=["No container_manager -- cannot populate"],
+            )
+
+        try:
+            from trading_cotrader.core.database.session import session_scope
+            from trading_cotrader.core.database.schema import PortfolioORM, TradeORM
+
+            # 1. Load all bundles from DB (positions, trades, risk factors)
+            with session_scope() as session:
+                self._container_manager.load_all_bundles(session)
+
+            # 2. Build portfolio summaries from container data
+            bundles = self._container_manager.get_all_bundles()
+            portfolio_summaries = []
+            total_equity = Decimal('0')
+            total_daily_pnl = Decimal('0')
+
+            for bundle in bundles:
+                # PortfolioContainer.state is a PortfolioState dataclass (or None)
+                pstate = bundle.portfolio.state
+                if pstate is None:
+                    continue
+
+                equity = pstate.total_equity or Decimal('0')
+                daily = pstate.daily_pnl or Decimal('0')
+                total_equity += equity
+                total_daily_pnl += daily
+
+                portfolio_summaries.append({
+                    'id': pstate.portfolio_id,
+                    'name': pstate.name or bundle.config_name,
+                    'account_id': bundle.account_number,
+                    'broker': bundle.broker_firm,
+                    'portfolio_type': pstate.portfolio_type or '',
+                    'equity': float(equity),
+                    'daily_pnl': float(daily),
+                    'cash': float(pstate.cash_balance or 0),
+                    'delta': float(pstate.delta or 0),
+                    'theta': float(pstate.theta or 0),
+                })
+
+            # Build open trades list from containers (TradeState objects)
+            open_trade_list = []
+            for bundle in bundles:
+                for trade in bundle.trades.get_all():
+                    open_trade_list.append({
+                        'id': trade.trade_id,
+                        'underlying': trade.underlying,
+                        'portfolio_id': getattr(trade, 'portfolio_id', ''),
+                        'status': trade.trade_status,
+                        'pnl': float(getattr(trade, 'total_pnl', 0) or 0),
+                        'delta': float(trade.delta or 0),
+                        'theta': float(trade.theta or 0),
+                    })
+
+            # 3. Trade counts still need DB queries (containers don't track historical counts)
+            with session_scope() as session:
+                today_start = datetime.combine(date.today(), datetime.min.time())
+                trades_today = session.query(TradeORM).filter(
+                    TradeORM.created_at >= today_start,
+                    TradeORM.trade_status.in_(['executed', 'partial', 'closed']),
+                ).count()
+
+                week_start = today_start - timedelta(days=date.today().weekday())
+                weekly_trades_query = session.query(
+                    TradeORM.portfolio_id, TradeORM.id
+                ).filter(
+                    TradeORM.created_at >= week_start,
+                    TradeORM.trade_status.in_(['executed', 'partial', 'closed']),
+                ).all()
+
+                # Map portfolio_id -> name
+                portfolios_orm = session.query(PortfolioORM).all()
+                portfolio_id_to_name = {
+                    p.id: (p.account_id or p.name) for p in portfolios_orm
+                }
+                weekly_per_portfolio: Dict[str, int] = {}
+                for portfolio_id, _ in weekly_trades_query:
+                    pname = portfolio_id_to_name.get(portfolio_id, portfolio_id)
+                    weekly_per_portfolio[pname] = weekly_per_portfolio.get(pname, 0) + 1
+
+            # 4. Calculate daily P&L percentage
+            daily_pnl_pct = 0.0
+            if total_equity > 0:
+                daily_pnl_pct = float(total_daily_pnl / total_equity * 100)
+
+            # 5. Enrich context
+            context['portfolios'] = portfolio_summaries
+            context['open_trades'] = open_trade_list
+            context['total_equity'] = float(total_equity)
+            context['daily_pnl_pct'] = daily_pnl_pct
+            context['weekly_pnl_pct'] = context.get('weekly_pnl_pct', 0.0)
+            context['trades_today_count'] = trades_today
+            context['weekly_trades_per_portfolio'] = weekly_per_portfolio
+            context['portfolio_drawdowns'] = context.get('portfolio_drawdowns', {})
+            context['consecutive_losses'] = context.get('consecutive_losses', {})
+
+            return AgentResult(
+                agent_name=self.name,
+                status=AgentStatus.COMPLETED,
+                data={
+                    'portfolio_count': len(portfolio_summaries),
+                    'open_trade_count': len(open_trade_list),
+                    'total_equity': float(total_equity),
+                    'trades_today': trades_today,
+                },
+                messages=[
+                    f"Portfolios: {len(portfolio_summaries)}, "
+                    f"Open trades: {len(open_trade_list)}, "
+                    f"Daily P&L: {daily_pnl_pct:+.2f}%"
+                ],
+            )
+
+        except Exception as e:
+            logger.error(f"StewardAgent.populate failed: {e}")
+            return AgentResult(
+                agent_name=self.name,
+                status=AgentStatus.ERROR,
+                messages=[f"Portfolio state error: {e}"],
+            )
+
+    # -----------------------------------------------------------------
+    # run() — Capital utilization analysis (absorbs CapitalUtilizationAgent)
+    # -----------------------------------------------------------------
 
     def run(self, context: dict) -> AgentResult:
         """
         Analyze capital utilization per portfolio.
 
         Reads from context:
-            - portfolios (from PortfolioStateAgent)
+            - portfolios (from populate)
             - capital_deployment (from AccountabilityAgent)
             - pending_recommendations (from ScreenerAgent)
 
@@ -86,7 +266,7 @@ class CapitalUtilizationAgent:
             )
 
         except Exception as e:
-            logger.error(f"CapitalUtilizationAgent failed: {e}")
+            logger.error(f"StewardAgent.run failed: {e}")
             context['capital_utilization'] = {}
             context['capital_alerts'] = []
             return AgentResult(
@@ -95,11 +275,18 @@ class CapitalUtilizationAgent:
                 messages=[f"Capital utilization error: {e}"],
             )
 
+    # -----------------------------------------------------------------
+    # Capital utilization internals (from CapitalUtilizationAgent)
+    # -----------------------------------------------------------------
+
     def _analyze_utilization(self, context: dict) -> Dict[str, dict]:
         """Calculate deployment metrics per portfolio."""
         portfolio_configs = self._load_portfolio_configs()
         portfolios = context.get('portfolios', [])
         capital_deployment = context.get('capital_deployment', {})
+
+        if self.config is None:
+            return {}
 
         # Escalation config from workflow rules
         escalation = self.config.capital_deployment.escalation
@@ -125,7 +312,7 @@ class CapitalUtilizationAgent:
             risk_limits = pcfg.get('risk_limits', {})
             min_cash_pct = risk_limits.get('min_cash_reserve_pct', 10.0)
 
-            # Target vs actual — apply staggered ramp if early
+            # Target vs actual -- apply staggered ramp if early
             full_target_pct = 100.0 - min_cash_pct
             target_deployed_pct = self._apply_staggered_ramp(
                 pname, full_target_pct, ramp_weeks, max_deploy_per_week, context,
@@ -133,8 +320,7 @@ class CapitalUtilizationAgent:
             actual_deployed_pct = ((equity - cash) / equity) * 100.0
             gap_pct = target_deployed_pct - actual_deployed_pct
 
-            # Idle capital — relative to the ramped target, not the full target.
-            # If ramped target says deploy 30% and we're at 0%, idle = 30% of equity.
+            # Idle capital
             ramped_cash_target_pct = 100.0 - target_deployed_pct
             ramped_reserve = equity * ramped_cash_target_pct / 100.0
             idle_capital = max(0.0, cash - ramped_reserve)
@@ -172,9 +358,6 @@ class CapitalUtilizationAgent:
 
     def _load_portfolio_configs(self) -> Dict[str, dict]:
         """Load portfolio section from risk_config.yaml as raw dict."""
-        from pathlib import Path
-        import yaml
-
         paths = [
             Path('config/risk_config.yaml'),
             Path(__file__).parent.parent.parent / 'config' / 'risk_config.yaml',
@@ -197,13 +380,9 @@ class CapitalUtilizationAgent:
         """
         Apply staggered deployment ramp-up.
 
-        Instead of expecting full deployment from day 1, the target ramps up
-        linearly over `ramp_weeks`. This prevents the agent from nagging to
-        deploy $200K on the first morning.
-
-        Uses engine_start_time or first trade date as ramp start.
+        Target ramps up linearly over `ramp_weeks` to prevent
+        deploying all capital on day one.
         """
-        # Determine how many weeks since ramp started
         start_str = context.get('engine_start_time', '')
         if start_str:
             try:
@@ -218,12 +397,8 @@ class CapitalUtilizationAgent:
         if weeks_elapsed >= ramp_weeks:
             return full_target_pct
 
-        # Weekly cap for this portfolio
         weekly_cap = max_deploy_per_week.get(portfolio_name, 15.0)
-
-        # Ramped target: min(weeks * weekly_cap, full_target)
         ramped_target = min(weeks_elapsed * weekly_cap, full_target_pct)
-
         return ramped_target
 
     def _calc_severity(
@@ -240,15 +415,12 @@ class CapitalUtilizationAgent:
         if gap_pct <= 0:
             return 'ok'
 
-        # Critical: gap > 3x threshold OR days_idle > critical_days
         if gap_pct > threshold * 3 or (days_idle is not None and days_idle >= critical_days):
             return 'critical'
 
-        # Warning: gap > 2x threshold OR days_idle > warning_days
         if gap_pct > threshold * 2 or (days_idle is not None and days_idle >= warning_days):
             return 'warning'
 
-        # Info: gap > threshold
         if gap_pct > threshold:
             return 'info'
 
@@ -264,13 +436,11 @@ class CapitalUtilizationAgent:
             if severity == 'ok':
                 continue
 
-            # Find pending recs for this portfolio
             matching_recs = [
                 r for r in pending_recs
                 if r.get('portfolio', '') == pname or r.get('target_portfolio', '') == pname
             ]
 
-            # Build suggested action
             action = self._suggest_action(pname, data, matching_recs)
 
             alerts.append({
@@ -286,10 +456,8 @@ class CapitalUtilizationAgent:
                 'suggested_action': action,
             })
 
-        # Sort: critical first, then warning, then info
         severity_order = {'critical': 0, 'warning': 1, 'info': 2}
         alerts.sort(key=lambda a: severity_order.get(a['severity'], 3))
-
         return alerts
 
     def _suggest_action(

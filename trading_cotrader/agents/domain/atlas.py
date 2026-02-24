@@ -1,8 +1,7 @@
 """
-Tech Architect Agent — Infrastructure, ops & QA.
+Atlas Agent (Tech Architect) — Infrastructure, ops & QA.
 
-Absorbs logic from: broker_router, notifier, reporter, qa_agent.
-Skeleton for now — run() returns no-op until logic is implemented.
+Skeleton for now. Future: absorbs reporter + qa_agent.
 """
 
 import logging
@@ -14,31 +13,27 @@ from trading_cotrader.agents.protocol import AgentResult, AgentStatus
 logger = logging.getLogger(__name__)
 
 
-class TechArchitectAgent(BaseAgent):
-    """Consolidated infrastructure: broker routing, notifications, reporting, QA."""
+class AtlasAgent(BaseAgent):
+    """Consolidated infrastructure: reporting, QA, system health."""
 
     # Class-level metadata
-    name: ClassVar[str] = "tech_architect"
-    display_name: ClassVar[str] = "Tech Architect"
-    category: ClassVar[str] = "infrastructure"
+    name: ClassVar[str] = "atlas"
+    display_name: ClassVar[str] = "Atlas (Infra)"
+    category: ClassVar[str] = "domain"
     role: ClassVar[str] = "Infrastructure, ops & QA"
     intro: ClassVar[str] = (
-        "I handle the plumbing. Broker routing, notifications, reports, test health, "
-        "performance tracking — the operational backbone that keeps everything "
+        "I handle the plumbing. Reports, test health, "
+        "performance tracking -- the operational backbone that keeps everything "
         "running and verified."
     )
     responsibilities: ClassVar[List[str]] = [
-        "Broker routing",
-        "Order routing",
-        "Notifications",
         "Daily reports",
         "Performance reports",
         "Test suite health",
         "Coverage analysis",
+        "System health monitoring",
     ]
     datasources: ClassVar[List[str]] = [
-        "config/brokers.yaml",
-        "Broker adapters",
         "PortfolioORM",
         "TradeORM",
         "PerformanceMetricsService",
@@ -50,9 +45,6 @@ class TechArchitectAgent(BaseAgent):
         "Does not evaluate strategies",
     ]
     runs_during: ClassVar[List[str]] = [
-        "execution",
-        "recommendation_review",
-        "trade_review",
         "reporting",
     ]
 
@@ -60,9 +52,9 @@ class TechArchitectAgent(BaseAgent):
         super().__init__(container=container, config=config)
 
     def run(self, context: dict) -> AgentResult:
-        """Skeleton — no-op until broker/notification/report logic is wired."""
+        """Skeleton -- no-op until reporter/QA logic is wired."""
         return AgentResult(
             agent_name=self.name,
             status=AgentStatus.COMPLETED,
-            messages=["Tech Architect: skeleton (no-op)"],
+            messages=["Atlas: skeleton (no-op)"],
         )
