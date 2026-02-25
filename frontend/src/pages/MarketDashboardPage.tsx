@@ -1,4 +1,3 @@
-import { useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useMarketWatchlist, useMacroCalendar } from '../hooks/useRegime'
 import { Spinner } from '../components/common/Spinner'
@@ -61,7 +60,7 @@ function daysFromNow(dateStr: string): number {
 export function MarketDashboardPage() {
   const { data: watchlist, isLoading, isError, error } = useMarketWatchlist()
   const { data: macro, isLoading: macroLoading } = useMacroCalendar()
-  const navigate = useNavigate()
+
 
   if (isError) {
     return (
@@ -191,8 +190,7 @@ export function MarketDashboardPage() {
                   return (
                     <tr
                       key={item.ticker}
-                      className="border-b border-border-secondary/50 hover:bg-bg-hover cursor-pointer transition-colors"
-                      onClick={() => navigate(`/market/${item.ticker}`)}
+                      className="border-b border-border-secondary/50 hover:bg-bg-hover transition-colors"
                     >
                       <td className="py-1.5 px-2">
                         <span className="font-mono font-bold text-accent-blue">{item.ticker}</span>

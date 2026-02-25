@@ -7,11 +7,13 @@ export function useTradingDashboard(portfolio: string) {
   return useQuery<TradingDashboardData>({
     queryKey: ['trading-dashboard', portfolio],
     queryFn: async () => {
-      const { data } = await api.get(endpoints.tradingDashboard(portfolio))
+      const { data } = await api.get(endpoints.tradingDashboard(portfolio), { timeout: 30_000 })
       return data
     },
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
     enabled: !!portfolio,
+    retry: 1,
+    retryDelay: 5_000,
   })
 }
 

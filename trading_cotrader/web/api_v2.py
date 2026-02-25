@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Optional
 import logging
 
 from fastapi import APIRouter, Query, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func
 
 from trading_cotrader.core.database.session import session_scope
@@ -1714,5 +1715,135 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         except Exception as e:
             logger.error(f"Momentum opportunity failed for {ticker}: {e}")
             raise HTTPException(500, f"Momentum opportunity assessment failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Trade Ranking (via market_analyzer RankingService)
+    # ------------------------------------------------------------------
+
+    class RankingRequest(BaseModel):
+        tickers: list[str] | None = None
+
+    @router.post("/ranking")
+    async def get_ranking(body: RankingRequest | None = None):
+        """Rank watchlist tickers across 4 strategy types (0DTE, LEAP, breakout, momentum)."""
+        try:
+            ma = _get_market_analyzer()
+            tickers = body.tickers if body and body.tickers else None
+            if not tickers:
+                from market_analyzer.config import get_settings
+                tickers = get_settings().display.default_tickers
+            result = ma.ranking.rank(tickers)
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Ranking failed: {e}")
+            raise HTTPException(500, f"Ranking failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Black Swan / Tail-Risk Alert (via market_analyzer BlackSwanService)
+    # ------------------------------------------------------------------
+
+    @router.get("/black-swan")
+    async def get_black_swan():
+        """Tail-risk alert: composite score, stress indicators, circuit breakers."""
+        try:
+            ma = _get_market_analyzer()
+            alert = ma.black_swan.alert()
+            return alert.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Black swan alert failed: {e}")
+            raise HTTPException(500, f"Black swan alert failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Market Context (via market_analyzer MarketContextService)
+    # ------------------------------------------------------------------
+
+    @router.get("/context")
+    async def get_market_context():
+        """Pre-trade gate: environment label, trading allowed, size factor, intermarket."""
+        try:
+            ma = _get_market_analyzer()
+            ctx = ma.context.assess()
+            return ctx.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Market context failed: {e}")
+            raise HTTPException(500, f"Market context failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Screening (via market_analyzer ScreeningService)
+    # ------------------------------------------------------------------
+
+    class ScreeningRequest(BaseModel):
+        tickers: list[str]
+        screens: list[str] | None = None
+
+    @router.post("/screening")
+    async def run_screening(body: ScreeningRequest):
+        """Find setups across tickers: breakout, momentum, mean_reversion, income."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.screening.scan(body.tickers, screens=body.screens)
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Screening failed: {e}")
+            raise HTTPException(500, f"Screening failed: {e}")
+
+    # ------------------------------------------------------------------
+    # New Opportunity Endpoints (iron_condor, iron_butterfly, calendar, etc.)
+    # ------------------------------------------------------------------
+
+    @router.get("/opportunity/iron-condor/{ticker}")
+    async def get_opportunity_iron_condor(ticker: str):
+        """Iron condor opportunity with trade spec (strikes, expiry, sizing)."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.opportunity.assess_iron_condor(ticker.upper())
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Iron condor opportunity failed for {ticker}: {e}")
+            raise HTTPException(500, f"Iron condor assessment failed: {e}")
+
+    @router.get("/opportunity/iron-butterfly/{ticker}")
+    async def get_opportunity_iron_butterfly(ticker: str):
+        """Iron butterfly opportunity assessment."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.opportunity.assess_iron_butterfly(ticker.upper())
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Iron butterfly opportunity failed for {ticker}: {e}")
+            raise HTTPException(500, f"Iron butterfly assessment failed: {e}")
+
+    @router.get("/opportunity/calendar/{ticker}")
+    async def get_opportunity_calendar(ticker: str):
+        """Calendar spread opportunity with IV differential."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.opportunity.assess_calendar(ticker.upper())
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Calendar opportunity failed for {ticker}: {e}")
+            raise HTTPException(500, f"Calendar assessment failed: {e}")
+
+    @router.get("/opportunity/diagonal/{ticker}")
+    async def get_opportunity_diagonal(ticker: str):
+        """Diagonal spread opportunity assessment."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.opportunity.assess_diagonal(ticker.upper())
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Diagonal opportunity failed for {ticker}: {e}")
+            raise HTTPException(500, f"Diagonal assessment failed: {e}")
+
+    @router.get("/opportunity/mean-reversion/{ticker}")
+    async def get_opportunity_mean_reversion(ticker: str):
+        """Mean reversion opportunity: RSI extreme, Bollinger squeeze."""
+        try:
+            ma = _get_market_analyzer()
+            result = ma.opportunity.assess_mean_reversion(ticker.upper())
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Mean reversion opportunity failed for {ticker}: {e}")
+            raise HTTPException(500, f"Mean reversion assessment failed: {e}")
 
     return router

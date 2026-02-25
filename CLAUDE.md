@@ -384,6 +384,7 @@ ma.macro.calendar()                # 30-day macro event calendar
 - Specific exceptions only, never bare `Exception`
 - Always use `session_scope()` for DB — never raw sessions
 - Import order: stdlib -> third-party -> local (`trading_cotrader.`)
+- **ALL imports at top of file.** No inline/deferred imports unless there is a specific design reason (circular import avoidance). This is mandatory.
 - Schema change: ORM in `schema.py` -> domain in `domain.py` -> `setup_database.py`
 
 ### Naming Conventions

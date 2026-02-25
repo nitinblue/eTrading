@@ -1,10 +1,13 @@
 import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { RefreshCw, Plus, X, Settings, ChevronDown } from 'lucide-react'
+import { RefreshCw, Plus, X, Settings } from 'lucide-react'
 import { useResearch, useRefreshResearch, useWatchlist, useAddWatchlistTicker, useRemoveWatchlistTicker } from '../hooks/useResearch'
 import { Spinner } from '../components/common/Spinner'
 import { AgentBadge } from '../components/common/AgentBadge'
+import { TickerDetailPanel } from '../components/research/TickerDetailPanel'
+import { RankingPanel } from '../components/research/RankingPanel'
+import { BlackSwanBar } from '../components/research/BlackSwanBar'
+import { MarketContextStrip } from '../components/research/MarketContextStrip'
 import type { ResearchEntry, ResearchMacroContext, MacroEvent } from '../api/types'
 
 // ---------------------------------------------------------------------------
@@ -182,9 +185,9 @@ const COL_GROUPS: { key: ColGroup; label: string }[] = [
 export function ResearchDashboardPage() {
   const { data: res, isLoading, isError, error } = useResearch()
   const refreshMutation = useRefreshResearch()
-  const navigate = useNavigate()
   const [activeGroups, setActiveGroups] = useState<Set<ColGroup>>(new Set(['core', 'regime', 'technicals']))
   const [showWatchlistManager, setShowWatchlistManager] = useState(false)
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
 
   const toggle = (g: ColGroup) => {
     setActiveGroups(prev => {
@@ -204,171 +207,188 @@ export function ResearchDashboardPage() {
 
   const data = res?.data || []
   const macro = res?.macro
+  const selectedEntry = selectedTicker ? data.find(d => d.symbol === selectedTicker) : null
 
   return (
-    <div className="space-y-2">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h1 className="text-sm font-semibold text-text-primary">Market Analysis</h1>
-          <AgentBadge agent="scout" />
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Column group toggles */}
-          <div className="flex gap-1">
-            {COL_GROUPS.map(g => (
+    <div className="flex h-full -m-3">
+      {/* Detail panel (left) */}
+      {selectedEntry && (
+        <TickerDetailPanel entry={selectedEntry} onClose={() => setSelectedTicker(null)} />
+      )}
+
+      {/* Main content (right) */}
+      <div className="flex-1 overflow-auto p-1.5">
+        <div className="space-y-1">
+          {/* Row 1: Header + controls (ultra-compact) */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h1 className="text-xs font-bold text-text-primary uppercase tracking-wider">Market Analysis</h1>
+              <AgentBadge agent="scout" />
+              <span className="text-2xs text-text-muted">
+                {isLoading ? 'Loading...' : `${data.length} tickers`}
+              </span>
+              {res?.from_db && !refreshMutation.isPending && (
+                <span className="text-2xs text-amber-400">cached</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              {/* Column group toggles */}
+              {COL_GROUPS.map(g => (
+                <button
+                  key={g.key}
+                  onClick={() => toggle(g.key)}
+                  className={clsx(
+                    'px-1.5 py-0.5 rounded text-2xs font-medium transition-colors',
+                    activeGroups.has(g.key) ? 'bg-accent-blue/20 text-accent-blue' : 'text-text-muted hover:text-text-secondary',
+                  )}
+                >
+                  {g.label}
+                </button>
+              ))}
+              <span className="text-border-secondary mx-0.5">|</span>
               <button
-                key={g.key}
-                onClick={() => toggle(g.key)}
-                className={clsx(
-                  'px-2 py-0.5 rounded text-2xs font-medium transition-colors',
-                  activeGroups.has(g.key) ? 'bg-accent-blue/20 text-accent-blue border border-accent-blue/30' : 'bg-bg-tertiary text-text-muted hover:text-text-secondary',
-                )}
+                onClick={() => setShowWatchlistManager(v => !v)}
+                className={clsx('p-1 rounded hover:bg-bg-hover', showWatchlistManager ? 'text-accent-blue' : 'text-text-muted')}
+                title="Manage watchlist"
               >
-                {g.label}
+                <Settings size={11} />
               </button>
-            ))}
+              <button
+                onClick={() => refreshMutation.mutate(undefined)}
+                disabled={refreshMutation.isPending}
+                className="p-1 rounded text-accent-blue hover:bg-bg-hover disabled:opacity-50"
+                title="Refresh data"
+              >
+                <RefreshCw size={11} className={clsx(refreshMutation.isPending && 'animate-spin')} />
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => setShowWatchlistManager(v => !v)}
-            className={clsx(
-              'flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-bg-hover',
-              showWatchlistManager ? 'text-accent-blue bg-accent-blue/10' : 'text-text-secondary',
-            )}
-          >
-            <Settings size={12} />
-            Watchlist
-          </button>
-          <button
-            onClick={() => refreshMutation.mutate(undefined)}
-            disabled={refreshMutation.isPending}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-accent-blue hover:bg-bg-hover disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={clsx(refreshMutation.isPending && 'animate-spin')} />
-            Refresh
-          </button>
-          <span className="text-2xs text-text-muted">
-            {isLoading ? 'Loading...' : `${data.length} symbols`}
-          </span>
-          {res?.from_db && !refreshMutation.isPending && (
-            <span className="text-2xs text-amber-400">Cached</span>
+
+          {/* Row 2: Black Swan alert (only if elevated+) */}
+          <BlackSwanBar />
+
+          {/* Row 3: Market Context strip */}
+          <MarketContextStrip />
+
+          {/* Row 4: Macro strip */}
+          {macro && <MacroStrip macro={macro} />}
+
+          {/* Watchlist manager (expandable) */}
+          {showWatchlistManager && <WatchlistManager onClose={() => setShowWatchlistManager(false)} />}
+
+          {/* Row 5: Ranking report — all watchlist tickers */}
+          {data.length > 0 && <RankingPanel tickers={data.map(d => d.symbol)} />}
+
+          {/* Main table */}
+          {isLoading ? (
+            <div className="card card-body flex items-center justify-center py-4">
+              <Spinner size="sm" />
+              <span className="text-xs text-text-muted ml-2">Loading research data...</span>
+            </div>
+          ) : data.length === 0 ? (
+            <div className="card card-body text-center py-4 text-text-muted text-xs">
+              No watchlist configured. Add tickers to config/market_watchlist.yaml
+            </div>
+          ) : (
+            <div className="card">
+              <div className="card-body p-0 overflow-x-auto">
+                <table className="w-full text-xs whitespace-nowrap">
+                  <thead>
+                    <tr className="text-text-muted text-left border-b border-border-secondary text-2xs uppercase tracking-wider">
+                      {/* Core — always visible */}
+                      <th className="py-0.5 px-1.5 sticky left-0 bg-bg-primary z-10">Ticker</th>
+                      {activeGroups.has('core') && <>
+                        <th className="py-0.5 px-1.5 text-right">Price</th>
+                        <th className="py-0.5 px-1.5">Sector</th>
+                        <th className="py-0.5 px-1.5 text-right">MCap</th>
+                      </>}
+                      {activeGroups.has('regime') && <>
+                        <th className="py-0.5 px-1.5">Regime</th>
+                        <th className="py-0.5 px-1.5">Conf</th>
+                        <th className="py-0.5 px-1.5 text-center">Trend</th>
+                        <th className="py-0.5 px-1.5">Strategy</th>
+                      </>}
+                      {activeGroups.has('phase') && <>
+                        <th className="py-0.5 px-1.5">Phase</th>
+                        <th className="py-0.5 px-1.5">Conf</th>
+                        <th className="py-0.5 px-1.5 text-right">Age</th>
+                        <th className="py-0.5 px-1.5 text-right">Cycle</th>
+                        <th className="py-0.5 px-1.5">Structure</th>
+                        <th className="py-0.5 px-1.5">Strategy</th>
+                      </>}
+                      {activeGroups.has('opportunities') && <>
+                        <th className="py-0.5 px-1.5">0DTE</th>
+                        <th className="py-0.5 px-1.5">LEAP</th>
+                        <th className="py-0.5 px-1.5">Breakout</th>
+                        <th className="py-0.5 px-1.5">Momentum</th>
+                      </>}
+                      {activeGroups.has('smartmoney') && <>
+                        <th className="py-0.5 px-1.5">SM Score</th>
+                        <th className="py-0.5 px-1.5 text-right">OBs</th>
+                        <th className="py-0.5 px-1.5 text-right">FVGs</th>
+                      </>}
+                      {activeGroups.has('levels') && <>
+                        <th className="py-0.5 px-1.5">Dir</th>
+                        <th className="py-0.5 px-1.5 text-right">Stop</th>
+                        <th className="py-0.5 px-1.5 text-right">Target</th>
+                        <th className="py-0.5 px-1.5 text-right">S1</th>
+                        <th className="py-0.5 px-1.5 text-right">S2</th>
+                        <th className="py-0.5 px-1.5 text-right">R1</th>
+                        <th className="py-0.5 px-1.5 text-right">R2</th>
+                        <th className="py-0.5 px-1.5">Summary</th>
+                      </>}
+                      {activeGroups.has('technicals') && <>
+                        <th className="py-0.5 px-1.5">RSI</th>
+                        <th className="py-0.5 px-1.5">MACD</th>
+                        <th className="py-0.5 px-1.5 text-right">%B</th>
+                        <th className="py-0.5 px-1.5 text-right">ATR%</th>
+                        <th className="py-0.5 px-1.5 text-right">Supp</th>
+                        <th className="py-0.5 px-1.5 text-right">Res</th>
+                      </>}
+                      {activeGroups.has('momentum') && <>
+                        <th className="py-0.5 px-1.5 text-right">vs SMA20</th>
+                        <th className="py-0.5 px-1.5 text-right">vs SMA50</th>
+                        <th className="py-0.5 px-1.5 text-right">vs SMA200</th>
+                        <th className="py-0.5 px-1.5 text-right">Stoch %K</th>
+                      </>}
+                      {activeGroups.has('vcp') && <>
+                        <th className="py-0.5 px-1.5">Stage</th>
+                        <th className="py-0.5 px-1.5 text-right">Score</th>
+                        <th className="py-0.5 px-1.5 text-right">Pivot</th>
+                        <th className="py-0.5 px-1.5 text-right">Dist%</th>
+                        <th className="py-0.5 px-1.5 text-right">Base</th>
+                        <th className="py-0.5 px-1.5 text-right">Comp</th>
+                      </>}
+                      {activeGroups.has('fundamentals') && <>
+                        <th className="py-0.5 px-1.5 text-right">P/E</th>
+                        <th className="py-0.5 px-1.5 text-right">Fwd PE</th>
+                        <th className="py-0.5 px-1.5 text-right">PEG</th>
+                        <th className="py-0.5 px-1.5 text-right">Earn Gr</th>
+                        <th className="py-0.5 px-1.5 text-right">Div Yld</th>
+                        <th className="py-0.5 px-1.5 text-right">Beta</th>
+                        <th className="py-0.5 px-1.5 text-right">52w Hi</th>
+                        <th className="py-0.5 px-1.5">Earnings</th>
+                      </>}
+                      <th className="py-0.5 px-1.5">Signals</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.map((r: ResearchEntry) => (
+                      <ResearchRow
+                        key={r.symbol}
+                        entry={r}
+                        activeGroups={activeGroups}
+                        selected={r.symbol === selectedTicker}
+                        onClick={() => setSelectedTicker(r.symbol === selectedTicker ? null : r.symbol)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </div>
       </div>
-
-      {/* Watchlist manager */}
-      {showWatchlistManager && <WatchlistManager onClose={() => setShowWatchlistManager(false)} />}
-
-      {/* Macro strip */}
-      {macro && <MacroStrip macro={macro} />}
-
-      {/* Main table */}
-      {isLoading ? (
-        <div className="card card-body flex items-center justify-center py-8">
-          <Spinner size="sm" />
-          <span className="text-xs text-text-muted ml-2">Loading research data...</span>
-        </div>
-      ) : data.length === 0 ? (
-        <div className="card card-body text-center py-6 text-text-muted text-xs">
-          No watchlist configured. Add tickers to config/market_watchlist.yaml
-        </div>
-      ) : (
-        <div className="card">
-          <div className="card-body p-0 overflow-x-auto">
-            <table className="w-full text-xs whitespace-nowrap">
-              <thead>
-                <tr className="text-text-muted text-left border-b border-border-secondary text-2xs uppercase tracking-wider">
-                  {/* Core — always visible */}
-                  <th className="py-1.5 px-2 sticky left-0 bg-bg-primary z-10">Ticker</th>
-                  {activeGroups.has('core') && <>
-                    <th className="py-1.5 px-2 text-right">Price</th>
-                    <th className="py-1.5 px-2">Sector</th>
-                    <th className="py-1.5 px-2 text-right">MCap</th>
-                  </>}
-                  {activeGroups.has('regime') && <>
-                    <th className="py-1.5 px-2">Regime</th>
-                    <th className="py-1.5 px-2">Conf</th>
-                    <th className="py-1.5 px-2 text-center">Trend</th>
-                    <th className="py-1.5 px-2">Strategy</th>
-                  </>}
-                  {activeGroups.has('phase') && <>
-                    <th className="py-1.5 px-2">Phase</th>
-                    <th className="py-1.5 px-2">Conf</th>
-                    <th className="py-1.5 px-2 text-right">Age</th>
-                    <th className="py-1.5 px-2 text-right">Cycle</th>
-                    <th className="py-1.5 px-2">Structure</th>
-                    <th className="py-1.5 px-2">Strategy</th>
-                  </>}
-                  {activeGroups.has('opportunities') && <>
-                    <th className="py-1.5 px-2">0DTE</th>
-                    <th className="py-1.5 px-2">LEAP</th>
-                    <th className="py-1.5 px-2">Breakout</th>
-                    <th className="py-1.5 px-2">Momentum</th>
-                  </>}
-                  {activeGroups.has('smartmoney') && <>
-                    <th className="py-1.5 px-2">SM Score</th>
-                    <th className="py-1.5 px-2 text-right">OBs</th>
-                    <th className="py-1.5 px-2 text-right">FVGs</th>
-                  </>}
-                  {activeGroups.has('levels') && <>
-                    <th className="py-1.5 px-2">Dir</th>
-                    <th className="py-1.5 px-2 text-right">Stop</th>
-                    <th className="py-1.5 px-2 text-right">Target</th>
-                    <th className="py-1.5 px-2 text-right">S1</th>
-                    <th className="py-1.5 px-2 text-right">S2</th>
-                    <th className="py-1.5 px-2 text-right">R1</th>
-                    <th className="py-1.5 px-2 text-right">R2</th>
-                    <th className="py-1.5 px-2">Summary</th>
-                  </>}
-                  {activeGroups.has('technicals') && <>
-                    <th className="py-1.5 px-2">RSI</th>
-                    <th className="py-1.5 px-2">MACD</th>
-                    <th className="py-1.5 px-2 text-right">%B</th>
-                    <th className="py-1.5 px-2 text-right">ATR%</th>
-                    <th className="py-1.5 px-2 text-right">Supp</th>
-                    <th className="py-1.5 px-2 text-right">Res</th>
-                  </>}
-                  {activeGroups.has('momentum') && <>
-                    <th className="py-1.5 px-2 text-right">vs SMA20</th>
-                    <th className="py-1.5 px-2 text-right">vs SMA50</th>
-                    <th className="py-1.5 px-2 text-right">vs SMA200</th>
-                    <th className="py-1.5 px-2 text-right">Stoch %K</th>
-                  </>}
-                  {activeGroups.has('vcp') && <>
-                    <th className="py-1.5 px-2">Stage</th>
-                    <th className="py-1.5 px-2 text-right">Score</th>
-                    <th className="py-1.5 px-2 text-right">Pivot</th>
-                    <th className="py-1.5 px-2 text-right">Dist%</th>
-                    <th className="py-1.5 px-2 text-right">Base</th>
-                    <th className="py-1.5 px-2 text-right">Comp</th>
-                  </>}
-                  {activeGroups.has('fundamentals') && <>
-                    <th className="py-1.5 px-2 text-right">P/E</th>
-                    <th className="py-1.5 px-2 text-right">Fwd PE</th>
-                    <th className="py-1.5 px-2 text-right">PEG</th>
-                    <th className="py-1.5 px-2 text-right">Earn Gr</th>
-                    <th className="py-1.5 px-2 text-right">Div Yld</th>
-                    <th className="py-1.5 px-2 text-right">Beta</th>
-                    <th className="py-1.5 px-2 text-right">52w Hi</th>
-                    <th className="py-1.5 px-2">Earnings</th>
-                  </>}
-                  <th className="py-1.5 px-2">Signals</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((r: ResearchEntry) => (
-                  <ResearchRow
-                    key={r.symbol}
-                    entry={r}
-                    activeGroups={activeGroups}
-                    onClick={() => navigate(`/market/${r.symbol}`)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -504,31 +524,32 @@ function WatchlistManager({ onClose }: { onClose: () => void }) {
 // Table Row
 // ---------------------------------------------------------------------------
 
-function ResearchRow({ entry: r, activeGroups, onClick }: {
+function ResearchRow({ entry: r, activeGroups, selected, onClick }: {
   entry: ResearchEntry
   activeGroups: Set<ColGroup>
+  selected?: boolean
   onClick: () => void
 }) {
   const rc = getRC(r.hmm_regime_id)
 
   return (
-    <tr className="border-b border-border-secondary/50 hover:bg-bg-hover cursor-pointer transition-colors" onClick={onClick}>
+    <tr className={clsx('border-b border-border-secondary/50 hover:bg-bg-hover cursor-pointer transition-colors', selected && 'bg-accent-blue/10 border-l-2 border-l-accent-blue')} onClick={onClick}>
       {/* Ticker — always visible, sticky */}
-      <td className="py-1.5 px-2 sticky left-0 bg-bg-primary z-10">
+      <td className="py-0.5 px-1.5 sticky left-0 bg-bg-primary z-10">
         <span className="font-mono font-bold text-accent-blue">{r.symbol}</span>
         <span className="text-text-muted text-2xs ml-1">{r.name}</span>
       </td>
 
       {/* Core */}
       {activeGroups.has('core') && <>
-        <td className="py-1.5 px-2 text-right font-mono text-text-primary">{r.current_price != null ? `$${r.current_price.toFixed(2)}` : '--'}</td>
-        <td className="py-1.5 px-2 text-text-secondary text-2xs">{r.sector || '--'}</td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary text-2xs">{fmtBigNum(r.market_cap)}</td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-primary">{r.current_price != null ? `$${r.current_price.toFixed(2)}` : '--'}</td>
+        <td className="py-0.5 px-1.5 text-text-secondary text-2xs">{r.sector || '--'}</td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary text-2xs">{fmtBigNum(r.market_cap)}</td>
       </>}
 
       {/* Regime */}
       {activeGroups.has('regime') && <>
-        <td className="py-1.5 px-2">
+        <td className="py-0.5 px-1.5">
           {r.hmm_regime_id != null ? (
             <>
               <span className={clsx('px-1 py-0.5 rounded text-2xs font-semibold border', rc.bg, rc.color, rc.border)}>R{r.hmm_regime_id}</span>
@@ -536,14 +557,14 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             </>
           ) : <span className="text-text-muted text-2xs">--</span>}
         </td>
-        <td className="py-1.5 px-2"><ConfBar value={r.hmm_confidence} /></td>
-        <td className="py-1.5 px-2 text-center"><TrendArrow direction={r.hmm_trend_direction} /></td>
-        <td className="py-1.5 px-2 text-text-secondary text-2xs max-w-[200px] truncate">{r.hmm_strategy_comment || '--'}</td>
+        <td className="py-0.5 px-1.5"><ConfBar value={r.hmm_confidence} /></td>
+        <td className="py-0.5 px-1.5 text-center"><TrendArrow direction={r.hmm_trend_direction} /></td>
+        <td className="py-0.5 px-1.5 text-text-secondary text-2xs max-w-[200px] truncate">{r.hmm_strategy_comment || '--'}</td>
       </>}
 
       {/* Phase (enhanced) */}
       {activeGroups.has('phase') && <>
-        <td className="py-1.5 px-2">
+        <td className="py-0.5 px-1.5">
           {r.phase_name ? (
             <span className={clsx('px-1 py-0.5 rounded text-2xs font-semibold border',
               r.phase_name === 'markup' ? 'bg-green-900/30 text-green-400 border-green-700' :
@@ -556,11 +577,11 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             </span>
           ) : <span className="text-text-muted text-2xs">--</span>}
         </td>
-        <td className="py-1.5 px-2"><ConfBar value={r.phase_confidence} /></td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary text-2xs">
+        <td className="py-0.5 px-1.5"><ConfBar value={r.phase_confidence} /></td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary text-2xs">
           {r.phase_age_days != null ? `${r.phase_age_days}d` : '--'}
         </td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right">
           {r.phase_cycle_completion != null ? (
             <div className="flex items-center gap-1">
               <div className="w-8 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
@@ -570,7 +591,7 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             </div>
           ) : <span className="text-text-muted text-2xs">--</span>}
         </td>
-        <td className="py-1.5 px-2">
+        <td className="py-0.5 px-1.5">
           <div className="flex gap-0.5 text-2xs font-mono">
             {r.phase_higher_highs && <span className="text-green-400" title="Higher Highs">HH</span>}
             {r.phase_higher_lows && <span className="text-green-400" title="Higher Lows">HL</span>}
@@ -579,20 +600,20 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             {!r.phase_higher_highs && !r.phase_higher_lows && !r.phase_lower_highs && !r.phase_lower_lows && <span className="text-text-muted">--</span>}
           </div>
         </td>
-        <td className="py-1.5 px-2 text-text-secondary text-2xs max-w-[150px] truncate" title={r.phase_strategy_comment || ''}>
+        <td className="py-0.5 px-1.5 text-text-secondary text-2xs max-w-[150px] truncate" title={r.phase_strategy_comment || ''}>
           {r.phase_strategy_comment || '--'}
         </td>
       </>}
 
       {/* Opportunities */}
       {activeGroups.has('opportunities') && <>
-        <td className="py-1.5 px-2">
+        <td className="py-0.5 px-1.5">
           <VerdictBadge verdict={r.opp_zero_dte_verdict} strategy={r.opp_zero_dte_strategy} confidence={r.opp_zero_dte_confidence} />
         </td>
-        <td className="py-1.5 px-2">
+        <td className="py-0.5 px-1.5">
           <VerdictBadge verdict={r.opp_leap_verdict} strategy={r.opp_leap_strategy} confidence={r.opp_leap_confidence} />
         </td>
-        <td className="py-1.5 px-2">
+        <td className="py-0.5 px-1.5">
           <div className="flex flex-col gap-0.5">
             <VerdictBadge verdict={r.opp_breakout_verdict} strategy={r.opp_breakout_strategy} confidence={r.opp_breakout_confidence} />
             {r.opp_breakout_type && (
@@ -602,7 +623,7 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             )}
           </div>
         </td>
-        <td className="py-1.5 px-2">
+        <td className="py-0.5 px-1.5">
           <div className="flex flex-col gap-0.5">
             <VerdictBadge verdict={r.opp_momentum_verdict} strategy={r.opp_momentum_strategy} confidence={r.opp_momentum_confidence} />
             {r.opp_momentum_direction && (
@@ -616,25 +637,25 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
 
       {/* Smart Money */}
       {activeGroups.has('smartmoney') && <>
-        <td className="py-1.5 px-2"><SmScoreBar value={r.smart_money_score} /></td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary text-2xs">
+        <td className="py-0.5 px-1.5"><SmScoreBar value={r.smart_money_score} /></td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary text-2xs">
           {r.active_ob_count != null ? r.active_ob_count : '--'}
         </td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary text-2xs">
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary text-2xs">
           {r.unfilled_fvg_count != null ? r.unfilled_fvg_count : '--'}
         </td>
       </>}
 
       {/* Levels */}
       {activeGroups.has('levels') && <>
-        <td className="py-1.5 px-2">
+        <td className="py-0.5 px-1.5">
           {r.levels_direction ? (
             <span className={clsx('font-mono font-bold text-2xs', r.levels_direction === 'long' ? 'text-green-400' : 'text-red-400')}>
               {r.levels_direction === 'long' ? '\u25B2 LONG' : '\u25BC SHORT'}
             </span>
           ) : <span className="text-text-muted text-2xs">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right">
           {r.levels_stop_price != null ? (
             <div className="flex flex-col items-end">
               <span className="font-mono text-red-400">${r.levels_stop_price.toFixed(2)}</span>
@@ -642,7 +663,7 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             </div>
           ) : <span className="text-text-muted">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right">
           {r.levels_best_target_price != null ? (
             <div className="flex flex-col items-end">
               <span className="font-mono text-green-400">${r.levels_best_target_price.toFixed(2)}</span>
@@ -650,7 +671,7 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             </div>
           ) : <span className="text-text-muted">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right">
           {r.levels_s1_price != null ? (
             <div className="flex flex-col items-end">
               <span className="font-mono text-text-secondary">${r.levels_s1_price.toFixed(2)}</span>
@@ -658,7 +679,7 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             </div>
           ) : <span className="text-text-muted">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right">
           {r.levels_s2_price != null ? (
             <div className="flex flex-col items-end">
               <span className="font-mono text-text-secondary">${r.levels_s2_price.toFixed(2)}</span>
@@ -666,7 +687,7 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             </div>
           ) : <span className="text-text-muted">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right">
           {r.levels_r1_price != null ? (
             <div className="flex flex-col items-end">
               <span className="font-mono text-text-secondary">${r.levels_r1_price.toFixed(2)}</span>
@@ -674,7 +695,7 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             </div>
           ) : <span className="text-text-muted">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right">
           {r.levels_r2_price != null ? (
             <div className="flex flex-col items-end">
               <span className="font-mono text-text-secondary">${r.levels_r2_price.toFixed(2)}</span>
@@ -682,33 +703,33 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             </div>
           ) : <span className="text-text-muted">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-text-secondary text-2xs max-w-[250px] truncate" title={r.levels_summary || ''}>
+        <td className="py-0.5 px-1.5 text-text-secondary text-2xs max-w-[250px] truncate" title={r.levels_summary || ''}>
           {r.levels_summary || '--'}
         </td>
       </>}
 
       {/* Technicals */}
       {activeGroups.has('technicals') && <>
-        <td className="py-1.5 px-2"><RsiCell value={r.rsi_14} ob={r.rsi_overbought} os={r.rsi_oversold} /></td>
-        <td className="py-1.5 px-2"><MacdCell hist={r.macd_histogram} bullCross={r.macd_bullish_cross} bearCross={r.macd_bearish_cross} /></td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5"><RsiCell value={r.rsi_14} ob={r.rsi_overbought} os={r.rsi_oversold} /></td>
+        <td className="py-0.5 px-1.5"><MacdCell hist={r.macd_histogram} bullCross={r.macd_bullish_cross} bearCross={r.macd_bearish_cross} /></td>
+        <td className="py-0.5 px-1.5 text-right">
           {r.bollinger_pct_b != null ? (
             <span className={clsx('font-mono', r.bollinger_pct_b > 1 ? 'text-red-400' : r.bollinger_pct_b < 0 ? 'text-green-400' : 'text-text-primary')}>
               {r.bollinger_pct_b.toFixed(2)}
             </span>
           ) : <span className="text-text-muted">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary">{r.atr_pct != null ? `${r.atr_pct.toFixed(1)}%` : '--'}</td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary">{r.support != null ? `$${r.support.toFixed(0)}` : '--'}</td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary">{r.resistance != null ? `$${r.resistance.toFixed(0)}` : '--'}</td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary">{r.atr_pct != null ? `${r.atr_pct.toFixed(1)}%` : '--'}</td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary">{r.support != null ? `$${r.support.toFixed(0)}` : '--'}</td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary">{r.resistance != null ? `$${r.resistance.toFixed(0)}` : '--'}</td>
       </>}
 
       {/* Momentum */}
       {activeGroups.has('momentum') && <>
-        <td className="py-1.5 px-2 text-right"><PctCell value={r.price_vs_sma_20_pct} /></td>
-        <td className="py-1.5 px-2 text-right"><PctCell value={r.price_vs_sma_50_pct} /></td>
-        <td className="py-1.5 px-2 text-right"><PctCell value={r.price_vs_sma_200_pct} /></td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right"><PctCell value={r.price_vs_sma_20_pct} /></td>
+        <td className="py-0.5 px-1.5 text-right"><PctCell value={r.price_vs_sma_50_pct} /></td>
+        <td className="py-0.5 px-1.5 text-right"><PctCell value={r.price_vs_sma_200_pct} /></td>
+        <td className="py-0.5 px-1.5 text-right">
           {r.stochastic_k != null ? (
             <span className={clsx('font-mono', r.stochastic_overbought ? 'text-red-400' : r.stochastic_oversold ? 'text-green-400' : 'text-text-primary')}>
               {r.stochastic_k.toFixed(1)}
@@ -719,7 +740,7 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
 
       {/* VCP */}
       {activeGroups.has('vcp') && <>
-        <td className="py-1.5 px-2">
+        <td className="py-0.5 px-1.5">
           {r.vcp_stage && r.vcp_stage !== 'none' ? (
             <span className={clsx('px-1 py-0.5 rounded text-2xs font-semibold border',
               r.vcp_stage === 'breakout' ? 'bg-green-900/30 text-green-400 border-green-700' :
@@ -732,23 +753,23 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
             </span>
           ) : <span className="text-text-muted text-2xs">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right">
           {r.vcp_score != null ? (
             <span className={clsx('font-mono', r.vcp_score >= 7 ? 'text-green-400 font-bold' : r.vcp_score >= 4 ? 'text-amber-400' : 'text-text-muted')}>
               {r.vcp_score.toFixed(1)}
             </span>
           ) : <span className="text-text-muted">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary">
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary">
           {r.vcp_pivot_price != null ? `$${r.vcp_pivot_price.toFixed(2)}` : '--'}
         </td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right">
           {r.vcp_pivot_distance_pct != null ? <PctCell value={r.vcp_pivot_distance_pct / 100} /> : <span className="text-text-muted">--</span>}
         </td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary">
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary">
           {r.vcp_days_in_base != null ? `${r.vcp_days_in_base}d` : '--'}
         </td>
-        <td className="py-1.5 px-2 text-right">
+        <td className="py-0.5 px-1.5 text-right">
           {r.vcp_range_compression != null ? (
             <span className={clsx('font-mono text-2xs', r.vcp_range_compression > 0.5 ? 'text-green-400' : 'text-text-muted')}>
               {(r.vcp_range_compression * 100).toFixed(0)}%
@@ -759,14 +780,14 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
 
       {/* Fundamentals */}
       {activeGroups.has('fundamentals') && <>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary">{fmt(r.pe_ratio, 1)}</td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary">{fmt(r.forward_pe, 1)}</td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary">{fmt(r.peg_ratio, 1)}</td>
-        <td className="py-1.5 px-2 text-right">{r.earnings_growth != null ? <PctCell value={r.earnings_growth} /> : <span className="text-text-muted">--</span>}</td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary">{r.dividend_yield != null ? fmtPct(r.dividend_yield) : '--'}</td>
-        <td className="py-1.5 px-2 text-right font-mono text-text-secondary">{fmt(r.beta, 2)}</td>
-        <td className="py-1.5 px-2 text-right">{r.pct_from_52w_high != null ? <PctCell value={r.pct_from_52w_high / 100} /> : <span className="text-text-muted">--</span>}</td>
-        <td className="py-1.5 px-2">
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary">{fmt(r.pe_ratio, 1)}</td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary">{fmt(r.forward_pe, 1)}</td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary">{fmt(r.peg_ratio, 1)}</td>
+        <td className="py-0.5 px-1.5 text-right">{r.earnings_growth != null ? <PctCell value={r.earnings_growth} /> : <span className="text-text-muted">--</span>}</td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary">{r.dividend_yield != null ? fmtPct(r.dividend_yield) : '--'}</td>
+        <td className="py-0.5 px-1.5 text-right font-mono text-text-secondary">{fmt(r.beta, 2)}</td>
+        <td className="py-0.5 px-1.5 text-right">{r.pct_from_52w_high != null ? <PctCell value={r.pct_from_52w_high / 100} /> : <span className="text-text-muted">--</span>}</td>
+        <td className="py-0.5 px-1.5">
           {r.next_earnings_date ? (
             <span className="text-2xs">
               <span className="font-mono text-amber-400">{r.next_earnings_date}</span>
@@ -777,7 +798,7 @@ function ResearchRow({ entry: r, activeGroups, onClick }: {
       </>}
 
       {/* Signals */}
-      <td className="py-1.5 px-2">
+      <td className="py-0.5 px-1.5">
         {r.signals && r.signals.length > 0 ? (
           <div className="flex gap-0.5 flex-wrap max-w-[200px]">
             {r.signals.slice(0, 3).map((sig, i) => (
@@ -811,7 +832,7 @@ function MacroStrip({ macro }: { macro: ResearchMacroContext }) {
 
   return (
     <div className="card">
-      <div className="card-body py-1.5 px-3">
+      <div className="card-body py-1 px-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             {/* Next event */}

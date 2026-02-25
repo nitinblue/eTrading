@@ -1489,6 +1489,132 @@ export interface WatchlistResponse {
   count: number
 }
 
+// ---------------------------------------------------------------------------
+// Trade Ranking Types (from market_analyzer RankingService)
+// ---------------------------------------------------------------------------
+
+export interface ScoreBreakdown {
+  verdict_score: number
+  confidence_score: number
+  regime_alignment: number
+  risk_reward: number
+  technical_quality: number
+  phase_alignment: number
+  income_bias_boost: number
+  black_swan_penalty: number
+  macro_penalty: number
+  earnings_penalty: number
+}
+
+export interface RankedEntry {
+  rank: number
+  ticker: string
+  strategy_type: string
+  verdict: string
+  composite_score: number
+  breakdown: ScoreBreakdown
+  strategy_name: string
+  direction: string
+  rationale: string
+  risk_notes: string[]
+}
+
+export interface TradeRankingResult {
+  as_of_date: string
+  tickers: string[]
+  top_trades: RankedEntry[]
+  by_ticker: Record<string, RankedEntry[]>
+  by_strategy: Record<string, RankedEntry[]>
+  black_swan_level: string
+  black_swan_gate: boolean
+  total_assessed: number
+  total_actionable: number
+  summary: string
+}
+
+// ---------------------------------------------------------------------------
+// Black Swan / Tail Risk
+// ---------------------------------------------------------------------------
+export interface StressIndicator {
+  name: string
+  value: number | null
+  score: number
+  status: string  // NORMAL, WARNING, DANGER, CRITICAL, UNAVAILABLE
+  weight: number
+  description: string
+}
+
+export interface CircuitBreaker {
+  name: string
+  triggered: boolean
+  value: number | null
+  threshold: number
+  description: string
+}
+
+export interface BlackSwanAlert {
+  as_of_date: string
+  alert_level: string  // NORMAL, ELEVATED, HIGH, CRITICAL
+  composite_score: number
+  circuit_breakers: CircuitBreaker[]
+  indicators: StressIndicator[]
+  triggered_breakers: number
+  action: string
+  summary: string
+}
+
+// ---------------------------------------------------------------------------
+// Market Context (pre-trade gate)
+// ---------------------------------------------------------------------------
+export interface IntermarketEntry {
+  ticker: string
+  regime_id: number | null
+  regime_label: string | null
+  confidence: number | null
+}
+
+export interface IntermarketDashboard {
+  entries: IntermarketEntry[]
+  dominant_regime: number | null
+  risk_on_count: number
+  risk_off_count: number
+  divergence: boolean
+  summary: string
+}
+
+export interface MarketContextData {
+  as_of_date: string
+  market: string
+  macro: Record<string, unknown>
+  black_swan: BlackSwanAlert
+  intermarket: IntermarketDashboard
+  environment_label: string  // risk-on, cautious, defensive, crisis
+  trading_allowed: boolean
+  position_size_factor: number
+  summary: string
+}
+
+// ---------------------------------------------------------------------------
+// Screening
+// ---------------------------------------------------------------------------
+export interface ScreenCandidate {
+  ticker: string
+  screen: string
+  score: number
+  reason: string
+  regime_id: number
+  rsi: number
+  atr_pct: number
+}
+
+export interface ScreeningResult {
+  as_of_date: string
+  tickers_scanned: number
+  candidates: ScreenCandidate[]
+  by_screen: Record<string, ScreenCandidate[]>
+  summary: string
+}
+
 // WebSocket message types
 export type WSMessageType =
   | 'cell_update'

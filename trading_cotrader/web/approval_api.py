@@ -182,6 +182,13 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
     app.include_router(research_router, prefix="/api/v2")
 
     # ------------------------------------------------------------------
+    # Terminal API Router (interactive market analyzer terminal)
+    # ------------------------------------------------------------------
+    from trading_cotrader.web.api_terminal import create_terminal_router
+    terminal_router = create_terminal_router(engine)
+    app.include_router(terminal_router, prefix="/api/v2")
+
+    # ------------------------------------------------------------------
     # Serve React frontend (production build)
     # ------------------------------------------------------------------
     from fastapi.staticfiles import StaticFiles

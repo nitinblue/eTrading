@@ -24,7 +24,6 @@ from trading_cotrader.core.database.session import session_scope
 from trading_cotrader.core.database.schema import (
     LegORM,
     PortfolioORM,
-    PositionORM,
     SymbolORM,
     TradeORM,
 )
@@ -728,18 +727,41 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
         """Full trading view: strategies, positions, risk factors.
 
         ALL data comes from containers (Steward's PortfolioBundle + Scout's ResearchContainer).
-        No direct DB queries. Containers are populated by Steward.populate() and refreshed
-        via POST /refresh.
+        No DB queries, no broker calls — pure in-memory reads for instant response.
+        Containers are populated by Steward.populate() on boot/monitoring.
+        Use POST /refresh to trigger a broker sync + container refresh.
         """
         cm = engine.container_manager
         if not cm:
             raise HTTPException(503, "Container manager not initialized")
 
         bundle = cm.get_bundle(portfolio_name)
-        if not bundle or not bundle.portfolio.state:
-            raise HTTPException(404, f"Portfolio bundle '{portfolio_name}' not found or not loaded")
+        if not bundle:
+            raise HTTPException(404, f"Portfolio bundle '{portfolio_name}' not found")
 
         pstate = bundle.portfolio.state
+
+        # If Steward hasn't populated yet (engine still booting), return empty dashboard
+        # instantly — no DB fallback, no blocking.  Frontend shows "No live data" gracefully.
+        if not pstate:
+            return {
+                'portfolio': {
+                    'name': portfolio_name, 'portfolio_type': 'real',
+                    'broker': bundle.broker_firm or '', 'total_equity': 0,
+                    'cash_balance': 0, 'buying_power': 0, 'margin_used': 0,
+                    'margin_used_pct': 0, 'net_delta': 0, 'net_gamma': 0,
+                    'net_theta': 0, 'net_vega': 0, 'net_delta_with_whatif': 0,
+                    'net_theta_with_whatif': 0, 'var_1d_95': 0, 'theta_var_ratio': 0,
+                    'capital_deployed_pct': 0, 'max_delta': 0,
+                    'delta_utilization_pct': 0, 'open_positions': 0,
+                    'open_strategies': 0, 'whatif_count': 0,
+                },
+                'strategies': [], 'positions': [], 'whatif_trades': [],
+                'whatif_positions': [], 'whatif_risk_factors': [],
+                'risk_factors': [], 'market_context': {},
+                'status': 'waiting',  # signals frontend: engine still booting
+            }
+
         positions = bundle.positions.get_all()
         risk_factors = bundle.risk_factors
         whatif_trades_container = bundle.trades.get_what_if_trades()
@@ -915,7 +937,7 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
             raise HTTPException(503, "Container manager not initialized")
 
         bundle = cm.get_bundle(portfolio_name)
-        if not bundle or not bundle.portfolio.state:
+        if not bundle:
             raise HTTPException(404, f"Portfolio bundle '{portfolio_name}' not found")
 
         # Use Scout's ResearchContainer + adapter for condition evaluation

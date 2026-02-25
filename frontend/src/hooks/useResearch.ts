@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { endpoints } from '../api/endpoints'
-import type { ResearchResponse, ResearchEntry, StrategyProposalsResponse, WatchlistResponse } from '../api/types'
+import type { ResearchResponse, ResearchEntry, WatchlistResponse } from '../api/types'
 
 export function useResearch(skipFundamentals = false) {
   return useQuery<ResearchResponse>({
@@ -24,20 +24,6 @@ export function useResearchTicker(ticker: string | null) {
     queryKey: ['research-ticker', ticker],
     queryFn: async () => {
       const { data } = await api.get(endpoints.researchTicker(ticker!))
-      return data
-    },
-    enabled: !!ticker,
-    refetchInterval: 300_000,
-  })
-}
-
-export function useStrategies(ticker: string | null, portfolio = 'tastytrade_real') {
-  return useQuery<StrategyProposalsResponse>({
-    queryKey: ['strategies', ticker, portfolio],
-    queryFn: async () => {
-      const { data } = await api.get(
-        `${endpoints.researchStrategies(ticker!)}?portfolio=${portfolio}`,
-      )
       return data
     },
     enabled: !!ticker,

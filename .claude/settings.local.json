@@ -91,7 +91,9 @@
       "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/python.exe -m pip install \"market_analyzer @ git+https://github.com/nitinblue/market_analyzer.git@main\" --force-reinstall --no-deps 2>&1)",
       "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/python.exe -c \"\nfrom market_analyzer import MarketAnalyzer, DataService\nma = MarketAnalyzer\\(data_service=DataService\\(\\)\\)\nprint\\('Has levels:', hasattr\\(ma, 'levels'\\)\\)\nif hasattr\\(ma, 'levels'\\):\n    print\\('Type:', type\\(ma.levels\\).__name__\\)\n    a = ma.levels.analyze\\('SPY'\\)\n    print\\('Result:', type\\(a\\).__name__\\)\n    print\\('Fields:', list\\(a.model_fields.keys\\(\\)\\)\\)\n    print\\('Summary:', a.summary\\)\n    print\\('Stop:', a.stop_loss\\)\n    print\\('Targets:', len\\(a.targets\\)\\)\n    print\\('Support:', len\\(a.support_levels\\)\\)\n    print\\('Resistance:', len\\(a.resistance_levels\\)\\)\n\" 2>&1)",
       "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/python.exe -c \"\nfrom market_analyzer import MarketAnalyzer, DataService\nma = MarketAnalyzer\\(data_service=DataService\\(\\)\\)\na = ma.levels.analyze\\('SPY'\\)\nimport json\n\n# Dump full structure\nd = a.model_dump\\(mode='json'\\)\nprint\\(json.dumps\\(d, indent=2, default=str\\)\\)\n\" 2>&1)",
-      "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/python.exe -c \"from trading_cotrader.workflow.engine import WorkflowEngine; print\\('Engine imports OK'\\)\" 2>&1)"
+      "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/python.exe -c \"from trading_cotrader.workflow.engine import WorkflowEngine; print\\('Engine imports OK'\\)\" 2>&1)",
+      "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/pip.exe uninstall market_regime -y 2>&1)",
+      "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/pip.exe install --force-reinstall --no-deps -e ../market_analyzer 2>&1)"
     ]
   }
 }

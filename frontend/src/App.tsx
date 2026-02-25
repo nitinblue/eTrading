@@ -21,7 +21,6 @@ import {
 import { TradingDashboardPage } from './pages/TradingDashboardPage'
 import { FundsPage } from './pages/FundsPage'
 import { MarketDashboardPage } from './pages/MarketDashboardPage'
-import { TradeBlotterPage } from './pages/ResearchPage'
 import { ResearchDashboardPage } from './pages/ResearchDashboardPage'
 import { ToastContainer } from './components/common/Toast'
 
@@ -31,8 +30,6 @@ export default function App() {
       <Routes>
         <Route path="/" element={<ResearchDashboardPage />} />
         <Route path="/market" element={<MarketDashboardPage />} />
-        <Route path="/blotter" element={<TradeBlotterPage />} />
-        <Route path="/market/:ticker" element={<TradeBlotterPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/position/:id" element={<PositionDetailPage />} />
         <Route path="/recommendations" element={<RecommendationsPage />} />

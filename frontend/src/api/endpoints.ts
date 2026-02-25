@@ -85,7 +85,6 @@ export const endpoints = {
   // Research Container (unified research data)
   research: `${V2}/research`,
   researchTicker: (ticker: string) => `${V2}/research/${ticker}`,
-  researchStrategies: (ticker: string) => `${V2}/research/${ticker}/strategies`,
   researchRefresh: `${V2}/research/refresh`,
   researchWatchlist: `${V2}/research/watchlist`,
   researchWatchlistTicker: (ticker: string) => `${V2}/research/watchlist/${ticker}`,
@@ -112,6 +111,26 @@ export const endpoints = {
   opportunityLeap: (ticker: string) => `${V2}/opportunity/leap/${ticker}`,
   opportunityBreakout: (ticker: string) => `${V2}/opportunity/breakout/${ticker}`,
   opportunityMomentum: (ticker: string) => `${V2}/opportunity/momentum/${ticker}`,
+  opportunityIronCondor: (ticker: string) => `${V2}/opportunity/iron-condor/${ticker}`,
+  opportunityIronButterfly: (ticker: string) => `${V2}/opportunity/iron-butterfly/${ticker}`,
+  opportunityCalendar: (ticker: string) => `${V2}/opportunity/calendar/${ticker}`,
+  opportunityDiagonal: (ticker: string) => `${V2}/opportunity/diagonal/${ticker}`,
+  opportunityMeanReversion: (ticker: string) => `${V2}/opportunity/mean-reversion/${ticker}`,
+
+  // Black Swan / Tail Risk
+  blackSwan: `${V2}/black-swan`,
+
+  // Market Context (pre-trade gate)
+  marketContext: `${V2}/context`,
+
+  // Screening
+  screening: `${V2}/screening`,
+
+  // Ranking
+  ranking: `${V2}/ranking`,
+
+  // Terminal
+  terminalExecute: `${V2}/terminal/execute`,
 
   // WebSocket
   ws: '/ws',
