@@ -367,6 +367,123 @@ def _handle_exit_plan(args: list[str], ma: MarketAnalyzer) -> list[dict]:
     return blocks
 
 
+def _handle_plan(args: list[str], ma: MarketAnalyzer) -> list[dict]:
+    """Generate daily trading plan."""
+    from market_analyzer.models.trading_plan import PlanHorizon
+
+    tickers: list[str] = []
+    plan_date = None
+    i = 0
+    while i < len(args):
+        if args[i] == "--date" and i + 1 < len(args):
+            try:
+                plan_date = date.fromisoformat(args[i + 1])
+            except ValueError:
+                return [_error(f"Invalid date: {args[i + 1]}")]
+            i += 2
+        else:
+            tickers.append(args[i].upper())
+            i += 1
+
+    plan = ma.plan.generate(tickers=tickers or None, plan_date=plan_date)
+    blocks: list[dict] = []
+
+    day_str = plan.plan_for_date.strftime("%a %b %d, %Y")
+    blocks.append(_header(f"Daily Trading Plan - {day_str}"))
+
+    # Day verdict
+    verdict_colors = {"trade": "green", "trade_light": "yellow", "avoid": "red", "no_trade": "red"}
+    vc = verdict_colors.get(plan.day_verdict, "")
+    blocks.append(_kv_item("Day Verdict", plan.day_verdict.value.upper().replace("_", " "), vc))
+
+    if plan.day_verdict_reasons:
+        for r in plan.day_verdict_reasons:
+            blocks.append(_text(f"  {r}", "dim"))
+
+    # Risk budget
+    b = plan.risk_budget
+    blocks.append(_section("Risk Budget"))
+    blocks.append(_kv_item("Max New Positions", str(b.max_new_positions)))
+    blocks.append(_kv_item("Daily Risk Budget", f"${b.max_daily_risk_dollars:,.0f}"))
+    blocks.append(_kv_item("Position Sizing", f"{b.position_size_factor:.0%}"))
+
+    # Expiry events
+    if plan.expiry_events:
+        blocks.append(_section("Expiry Events"))
+        for e in plan.expiry_events:
+            blocks.append(_text(f"  {e.label} ({e.date})"))
+
+    if plan.upcoming_expiries:
+        future = [e for e in plan.upcoming_expiries if e.date > plan.plan_for_date]
+        if future:
+            nxt = future[0]
+            blocks.append(_kv_item("Next Expiry", f"{nxt.label} ({nxt.date})"))
+
+    # Trades by horizon
+    if not plan.all_trades:
+        blocks.append(_text("No actionable trades.", "dim"))
+    else:
+        horizon_labels = {
+            PlanHorizon.ZERO_DTE: "0DTE",
+            PlanHorizon.WEEKLY: "Weekly",
+            PlanHorizon.MONTHLY: "Monthly",
+            PlanHorizon.LEAP: "LEAP",
+        }
+        for h in PlanHorizon:
+            trades = plan.trades_by_horizon.get(h, [])
+            if not trades:
+                continue
+            blocks.append(_section(f"{horizon_labels[h]} ({len(trades)} trades)"))
+
+            rows = []
+            for t in trades:
+                v_color = {"go": "green", "caution": "yellow"}.get(t.verdict, "")
+                legs = ""
+                max_info = ""
+                if t.trade_spec:
+                    legs = " | ".join(t.trade_spec.leg_codes)
+                    mp = t.trade_spec.max_profit_desc or ""
+                    ml = t.trade_spec.max_loss_desc or ""
+                    if mp or ml:
+                        max_info = f"P: {mp} / L: {ml}"
+
+                rows.append([
+                    f"#{t.rank}",
+                    t.ticker,
+                    str(t.strategy_type),
+                    t.verdict.value.upper() if hasattr(t.verdict, 'value') else str(t.verdict).upper(),
+                    f"{t.composite_score:.2f}",
+                    legs,
+                ])
+
+                # Detail lines
+
+            blocks.append(_table(
+                ["#", "Ticker", "Strategy", "Verdict", "Score", "Legs"],
+                rows,
+            ))
+
+            # Detail per trade
+            for t in trades:
+                detail_items = []
+                if t.trade_spec:
+                    mp = t.trade_spec.max_profit_desc or ""
+                    ml = t.trade_spec.max_loss_desc or ""
+                    if mp or ml:
+                        detail_items.append(f"Max P: {mp} | Max L: {ml}")
+                    if t.trade_spec.exit_summary:
+                        detail_items.append(f"Exit: {t.trade_spec.exit_summary}")
+                if t.max_entry_price is not None:
+                    detail_items.append(f"Chase limit: ${t.max_entry_price:.2f}")
+                if t.expiry_note:
+                    detail_items.append(f"NOTE: {t.expiry_note}")
+                if detail_items:
+                    blocks.append(_text(f"  {t.ticker}: {' | '.join(detail_items)}", "dim"))
+
+    blocks.append(_text(plan.summary, "dim"))
+    return blocks
+
+
 def _handle_rank(args: list[str], ma: MarketAnalyzer) -> list[dict]:
     tickers = [a.upper() for a in args] if args else None
     if not tickers:
@@ -388,6 +505,220 @@ def _handle_rank(args: list[str], ma: MarketAnalyzer) -> list[dict]:
         blocks.append(_table(["#", "Ticker", "Strategy", "Verdict", "Score", "Direction", "Rationale"], rows))
 
     blocks.append(_text(result.summary, "dim"))
+    return blocks
+
+
+def _handle_vol(args: list[str], ma: MarketAnalyzer) -> list[dict]:
+    """Volatility surface for a single ticker."""
+    if not args:
+        return [_error("Usage: vol TICKER")]
+
+    ticker = args[0].upper()
+    surf = ma.vol_surface.surface(ticker)
+
+    blocks: list[dict] = [
+        _header(f"{ticker} - Volatility Surface ({surf.as_of_date})"),
+        _kv([
+            _kv_item("Underlying", f"${surf.underlying_price:.2f}"),
+            _kv_item("Front IV", f"{surf.front_iv:.1%}"),
+            _kv_item("Back IV", f"{surf.back_iv:.1%}"),
+            _kv_item("Term Slope", f"{surf.term_slope:+.1%} ({'contango' if surf.is_contango else 'backwardation'})"),
+            _kv_item("Calendar Edge", f"{surf.calendar_edge_score:.2f}"),
+            _kv_item("Data Quality", surf.data_quality),
+        ]),
+    ]
+
+    if surf.term_structure:
+        rows = [
+            [str(pt.expiration), str(pt.days_to_expiry), f"{pt.atm_iv:.1%}", f"${pt.atm_strike:.0f}"]
+            for pt in surf.term_structure
+        ]
+        blocks.append(_section("Term Structure"))
+        blocks.append(_table(["Expiry", "DTE", "ATM IV", "Strike"], rows))
+
+    if surf.skew_by_expiry:
+        sk = surf.skew_by_expiry[0]
+        blocks.append(_section("Skew (front expiry)"))
+        blocks.append(_kv([
+            _kv_item("ATM IV", f"{sk.atm_iv:.1%}"),
+            _kv_item("OTM Put IV", f"{sk.otm_put_iv:.1%} (skew: +{sk.put_skew:.1%})"),
+            _kv_item("OTM Call IV", f"{sk.otm_call_iv:.1%} (skew: +{sk.call_skew:.1%})"),
+            _kv_item("Skew Ratio", f"{sk.skew_ratio:.1f}"),
+        ]))
+
+    if surf.best_calendar_expiries:
+        f, b = surf.best_calendar_expiries
+        blocks.append(_kv_item("Best Calendar", f"sell {f} / buy {b} (diff: {surf.iv_differential_pct:+.1f}%)"))
+
+    blocks.append(_text(surf.summary, "dim"))
+    return blocks
+
+
+def _handle_setup(args: list[str], ma: MarketAnalyzer) -> list[dict]:
+    """Assess price-based setups (breakout, momentum, mean_reversion, orb)."""
+    if not args:
+        return [_error("Usage: setup TICKER [type]\n  Types: breakout, momentum, mr, orb, all (default)")]
+
+    ticker = args[0].upper()
+    setup_type = args[1].lower() if len(args) > 1 else "all"
+
+    type_map = {
+        "breakout": ["breakout"],
+        "momentum": ["momentum"],
+        "mr": ["mean_reversion"],
+        "mean_reversion": ["mean_reversion"],
+        "orb": ["orb"],
+        "all": ["breakout", "momentum", "mean_reversion", "orb"],
+    }
+    setups = type_map.get(setup_type)
+    if setups is None:
+        return [_error(f"Unknown setup: '{setup_type}'. Use: breakout, momentum, mr, orb, all")]
+
+    blocks: list[dict] = [_header(f"{ticker} - Setup Assessment")]
+
+    for s in setups:
+        try:
+            if s == "breakout":
+                result = ma.opportunity.assess_breakout(ticker)
+            elif s == "momentum":
+                result = ma.opportunity.assess_momentum(ticker)
+            elif s == "mean_reversion":
+                result = ma.opportunity.assess_mean_reversion(ticker)
+            elif s == "orb":
+                from market_analyzer.opportunity.setups.orb import assess_orb as _orb_assess
+                regime = ma.regime.detect(ticker)
+                technicals = ma.technicals.snapshot(ticker)
+                result = _orb_assess(ticker, regime, technicals, orb=None)
+            else:
+                continue
+
+            v = result.verdict if isinstance(result.verdict, str) else result.verdict.value
+            verdict_colors = {"go": "green", "caution": "yellow", "no_go": "red"}
+            name = s.replace("_", " ").title()
+            conf = result.confidence if hasattr(result, "confidence") else 0
+
+            blocks.append(_section(f"{name}: {v.upper()} ({conf:.0%})"))
+
+            if hasattr(result, "hard_stops") and result.hard_stops:
+                for hs in result.hard_stops[:2]:
+                    blocks.append(_text(f"STOP: {hs.description}", "red"))
+
+            items = []
+            if hasattr(result, "direction") and result.direction != "neutral":
+                items.append(_kv_item("Direction", result.direction.title()))
+            if hasattr(result, "strategy") and isinstance(result.strategy, str):
+                items.append(_kv_item("Strategy", result.strategy.replace("_", " ").title()))
+
+            # ORB-specific
+            if hasattr(result, "orb_status") and result.orb_status != "none":
+                items.append(_kv_item("ORB Status", result.orb_status))
+                items.append(_kv_item("Range", f"{result.range_pct:.2f}%"))
+                if result.range_vs_daily_atr_pct is not None:
+                    items.append(_kv_item("Range/ATR", f"{result.range_vs_daily_atr_pct:.0f}%"))
+
+            if items:
+                blocks.append(_kv(items))
+
+            if hasattr(result, "signals") and result.signals:
+                sig_items = [
+                    f"[{'+ ' if sig.favorable else '- '}] {sig.description}"
+                    for sig in result.signals[:5]
+                ]
+                blocks.append(_list(sig_items))
+
+            # Trade spec
+            if hasattr(result, "trade_spec") and result.trade_spec is not None:
+                ts = result.trade_spec
+                blocks.append(_text(f"Legs: {' | '.join(ts.leg_codes)}"))
+                if ts.exit_summary:
+                    blocks.append(_text(f"Exit: {ts.exit_summary}", "dim"))
+
+            blocks.append(_text(result.summary, "dim"))
+
+        except Exception as exc:
+            blocks.append(_text(f"{s.replace('_', ' ').title()}: {exc}", "red"))
+
+    return blocks
+
+
+def _handle_opportunity(args: list[str], ma: MarketAnalyzer) -> list[dict]:
+    """Assess option play opportunities."""
+    if not args:
+        return [_error("Usage: opportunity TICKER [play]\n  Plays: ic, ifly, calendar, diagonal, ratio, zero_dte, leap, earnings, all")]
+
+    ticker = args[0].upper()
+    play = args[1].lower() if len(args) > 1 else "all"
+
+    play_map = {
+        "ic": ["iron_condor"], "iron_condor": ["iron_condor"],
+        "ifly": ["iron_butterfly"], "iron_butterfly": ["iron_butterfly"],
+        "calendar": ["calendar"], "cal": ["calendar"],
+        "diagonal": ["diagonal"], "diag": ["diagonal"],
+        "ratio": ["ratio_spread"], "ratio_spread": ["ratio_spread"],
+        "zero_dte": ["zero_dte"], "0dte": ["zero_dte"],
+        "leap": ["leap"], "earnings": ["earnings"],
+        "all": ["iron_condor", "iron_butterfly", "calendar", "diagonal", "ratio_spread", "earnings"],
+    }
+    plays = play_map.get(play)
+    if plays is None:
+        return [_error(f"Unknown play: '{play}'. Use: ic, ifly, calendar, diagonal, ratio, zero_dte, leap, earnings, all")]
+
+    blocks: list[dict] = [_header(f"{ticker} - Option Play Assessment")]
+
+    for p in plays:
+        try:
+            method = getattr(ma.opportunity, f"assess_{p}")
+            result = method(ticker)
+
+            v_color = {"go": "green", "caution": "yellow", "no_go": "red"}.get(result.verdict.value, "")
+            name = p.replace("_", " ").title()
+
+            blocks.append(_section(f"{name}: {result.verdict.value.upper()} ({result.confidence:.0%})"))
+
+            if result.hard_stops:
+                for hs in result.hard_stops[:2]:
+                    blocks.append(_text(f"STOP: {hs.description}", "red"))
+
+            if hasattr(result, "strategy") and result.verdict.value != "no_go":
+                items = [
+                    _kv_item("Strategy", result.strategy.name),
+                    _kv_item("Structure", result.strategy.structure[:80]),
+                ]
+                if result.strategy.risk_notes:
+                    items.append(_kv_item("Risk", result.strategy.risk_notes[0]))
+                blocks.append(_kv(items))
+
+            # Iron condor wings
+            if hasattr(result, "wing_width_suggestion") and result.verdict.value != "no_go":
+                blocks.append(_kv_item("Wings", result.wing_width_suggestion))
+
+            # Trade spec
+            if hasattr(result, "trade_spec") and result.trade_spec is not None:
+                ts = result.trade_spec
+                spec_items = []
+                if ts.target_expiration:
+                    spec_items.append(_kv_item("Expiry", f"{ts.target_expiration} ({ts.target_dte}d)"))
+                if ts.front_expiration and ts.back_expiration:
+                    spec_items.append(_kv_item("Front", f"{ts.front_expiration} ({ts.front_dte}d, IV {ts.iv_at_front:.1%})"))
+                    spec_items.append(_kv_item("Back", f"{ts.back_expiration} ({ts.back_dte}d, IV {ts.iv_at_back:.1%})"))
+                if ts.wing_width_points:
+                    spec_items.append(_kv_item("Wing Width", f"${ts.wing_width_points:.0f}"))
+                if spec_items:
+                    blocks.append(_kv(spec_items))
+
+                blocks.append(_text(f"Legs: {' | '.join(ts.leg_codes)}"))
+                if ts.max_profit_desc or ts.max_loss_desc:
+                    blocks.append(_text(f"Max P: {ts.max_profit_desc or 'N/A'} | Max L: {ts.max_loss_desc or 'N/A'}"))
+                if ts.exit_summary:
+                    blocks.append(_text(f"Exit: {ts.exit_summary}", "dim"))
+
+            # Ratio spread margin
+            if hasattr(result, "margin_warning") and result.margin_warning:
+                blocks.append(_text(f"MARGIN: {result.margin_warning}", "yellow"))
+
+        except Exception as exc:
+            blocks.append(_text(f"{p.replace('_', ' ').title()}: {exc}", "red"))
+
     return blocks
 
 
@@ -533,9 +864,13 @@ def _handle_help(args: list[str], ma: MarketAnalyzer) -> list[dict]:
                 ["entry", "entry SPY breakout", "Confirm entry signal"],
                 ["strategy", "strategy SPY", "Strategy recommendation + sizing"],
                 ["exit_plan", "exit_plan SPY 580", "Exit plan for a position"],
+                ["plan", "plan [SPY GLD ...] [--date YYYY-MM-DD]", "Daily trading plan"],
                 ["rank", "rank [SPY GLD ...]", "Rank trades across tickers"],
                 ["regime", "regime [SPY GLD ...]", "Detect regime for tickers"],
                 ["technicals", "technicals SPY", "Technical snapshot"],
+                ["vol", "vol SPY", "Volatility surface & term structure"],
+                ["setup", "setup SPY [breakout|momentum|mr|orb|all]", "Price-based setup assessment"],
+                ["opportunity", "opportunity SPY [ic|ifly|calendar|diagonal|ratio|leap|all]", "Option play assessment"],
                 ["levels", "levels SPY", "Support/resistance levels"],
                 ["macro", "macro", "Macro economic calendar"],
                 ["stress", "stress", "Black swan / tail-risk alert"],
@@ -572,7 +907,11 @@ def create_terminal_router(engine: 'WorkflowEngine') -> APIRouter:
         "entry": _handle_entry,
         "strategy": _handle_strategy,
         "exit_plan": _handle_exit_plan,
+        "plan": _handle_plan,
         "rank": _handle_rank,
+        "vol": _handle_vol,
+        "setup": _handle_setup,
+        "opportunity": _handle_opportunity,
         "regime": _handle_regime,
         "technicals": _handle_technicals,
         "levels": _handle_levels,
