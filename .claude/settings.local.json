@@ -95,7 +95,10 @@
       "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/pip.exe uninstall market_regime -y 2>&1)",
       "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/pip.exe install --force-reinstall --no-deps -e ../market_analyzer 2>&1)",
       "Bash(echo === $agent ===:*)",
-      "Bash(echo \"=== web/ ===\" && ls /c/Users/nitin/PythonProjects/eTrading/trading_cotrader/web/*.py 2>/dev/null | xargs -I{} basename {} && echo \"=== ui/ ===\" && ls /c/Users/nitin/PythonProjects/eTrading/trading_cotrader/ui/*.py 2>/dev/null | xargs -I{} basename {} && echo \"=== frontend/ ===\" && ls /c/Users/nitin/PythonProjects/eTrading/frontend/src/ 2>/dev/null)"
+      "Bash(echo \"=== web/ ===\" && ls /c/Users/nitin/PythonProjects/eTrading/trading_cotrader/web/*.py 2>/dev/null | xargs -I{} basename {} && echo \"=== ui/ ===\" && ls /c/Users/nitin/PythonProjects/eTrading/trading_cotrader/ui/*.py 2>/dev/null | xargs -I{} basename {} && echo \"=== frontend/ ===\" && ls /c/Users/nitin/PythonProjects/eTrading/frontend/src/ 2>/dev/null)",
+      "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/python.exe -m trading_cotrader.scripts.diagnose_broker 2>&1)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(pkill:*)"
     ]
   }
 }

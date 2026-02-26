@@ -835,7 +835,6 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
                     'regime_id': entry.hmm_regime_id,
                     'phase': entry.phase_name,
                     'rsi': entry.rsi_14,
-                    'iv_rank': entry.iv_rank,
                     'price': entry.current_price,
                     'atr': entry.atr,
                     'opp_zero_dte_verdict': entry.opp_zero_dte_verdict,

@@ -124,8 +124,11 @@ def main():
         try:
             from trading_cotrader.adapters.tastytrade_adapter import TastytradeAdapter
             broker = TastytradeAdapter()
-            broker.authenticate()
-            logger.info("Broker authenticated")
+            if not broker.authenticate():
+                logger.warning("Broker authenticate() returned False. Running without broker.")
+                broker = None
+            else:
+                logger.info(f"Broker authenticated: account={broker.account_id}")
         except Exception as e:
             logger.warning(f"Broker auth failed: {e}. Running without broker.")
             broker = None

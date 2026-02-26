@@ -61,7 +61,7 @@ class MaverickAgent(BaseAgent):
 
         For each underlying in each portfolio bundle, produces a signal with:
         - Position summary (net delta, count) from Steward's containers
-        - Market context (regime, phase, iv_rank, direction) from Scout's containers
+        - Market context (regime, phase, rsi, direction) from Scout's containers
         """
         if not self._container_manager:
             return AgentResult(
@@ -90,7 +90,7 @@ class MaverickAgent(BaseAgent):
                     signal.update({
                         'regime': entry.hmm_regime_label,
                         'phase': entry.phase_name,
-                        'iv_rank': entry.iv_rank,
+                        'rsi': entry.rsi_14,
                         'levels_direction': entry.levels_direction,
                     })
 

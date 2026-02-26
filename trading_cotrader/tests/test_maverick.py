@@ -94,7 +94,7 @@ class TestMaverickRun:
         mock_entry = MagicMock()
         mock_entry.hmm_regime_label = 'R1_LOW_VOL_MR'
         mock_entry.phase_name = 'Accumulation'
-        mock_entry.iv_rank = 25.0
+        mock_entry.rsi_14 = 45.0
         mock_entry.levels_direction = 'bullish'
 
         mock_cm.research.get.side_effect = lambda u: mock_entry if u == 'SPY' else None
