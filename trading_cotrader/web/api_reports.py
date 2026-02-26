@@ -19,7 +19,6 @@ from trading_cotrader.core.database.schema import (
     TradeORM,
     LegORM,
     StrategyORM,
-    RecommendationORM,
     DecisionLogORM,
     DailyPerformanceORM,
     GreeksHistoryORM,
@@ -371,64 +370,11 @@ def create_reports_router() -> APIRouter:
 
     @router.get("/recommendations")
     async def recommendations_report(
-        status: Optional[str] = Query(None),
-        source: Optional[str] = Query(None),
-        underlying: Optional[str] = Query(None),
-        date_from: Optional[str] = Query(None),
-        date_to: Optional[str] = Query(None),
         limit: int = Query(200, ge=1, le=1000),
         offset: int = Query(0, ge=0),
     ):
-        """Full recommendation lifecycle with filters."""
-        with session_scope() as session:
-            q = session.query(RecommendationORM).order_by(RecommendationORM.created_at.desc())
-
-            if status and status != 'all':
-                q = q.filter(RecommendationORM.status == status)
-            if source:
-                q = q.filter(RecommendationORM.source == source)
-            if underlying:
-                q = q.filter(RecommendationORM.underlying == underlying)
-            if date_from:
-                try:
-                    q = q.filter(RecommendationORM.created_at >= datetime.fromisoformat(date_from))
-                except ValueError:
-                    pass
-            if date_to:
-                try:
-                    q = q.filter(RecommendationORM.created_at <= datetime.fromisoformat(date_to) + timedelta(days=1))
-                except ValueError:
-                    pass
-
-            total = q.count()
-            recs = q.offset(offset).limit(limit).all()
-
-            return {
-                'total': total,
-                'recommendations': [
-                    {
-                        'id': r.id,
-                        'recommendation_type': r.recommendation_type,
-                        'source': r.source,
-                        'screener_name': r.screener_name,
-                        'underlying': r.underlying,
-                        'strategy_type': r.strategy_type,
-                        'confidence': r.confidence,
-                        'rationale': r.rationale,
-                        'risk_category': r.risk_category,
-                        'suggested_portfolio': r.suggested_portfolio,
-                        'status': r.status,
-                        'created_at': _iso(r.created_at),
-                        'reviewed_at': _iso(r.reviewed_at),
-                        'portfolio_name': r.portfolio_name,
-                        'trade_id_to_close': r.trade_id_to_close,
-                        'exit_action': r.exit_action,
-                        'exit_urgency': r.exit_urgency,
-                        'triggered_rules': r.triggered_rules,
-                    }
-                    for r in recs
-                ],
-            }
+        """Recommendations (deprecated — returns empty)."""
+        return {'total': 0, 'recommendations': []}
 
     # ------------------------------------------------------------------
     # Trade Events

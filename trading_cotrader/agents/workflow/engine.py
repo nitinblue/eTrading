@@ -24,7 +24,7 @@ import logging
 
 from transitions import Machine
 
-from trading_cotrader.workflow.states import WorkflowStates, TRANSITIONS
+from trading_cotrader.agents.workflow.states import WorkflowStates, TRANSITIONS
 from trading_cotrader.agents.protocol import AgentStatus
 from trading_cotrader.agents.messages import UserIntent, SystemResponse
 from trading_cotrader.config.workflow_config_loader import load_workflow_config, WorkflowConfig
@@ -38,7 +38,7 @@ from trading_cotrader.agents.domain.atlas import AtlasAgent
 
 # Non-agent utilities used by engine
 from trading_cotrader.adapters.broker_router import BrokerRouter
-from trading_cotrader.workflow.interaction import InteractionManager
+from trading_cotrader.agents.workflow.interaction import InteractionManager
 
 # Services replacing former agents (calendar, market_data, macro)
 from trading_cotrader.services.macro_context_service import MacroContextService, MacroOverride

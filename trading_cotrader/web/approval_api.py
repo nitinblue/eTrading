@@ -24,7 +24,7 @@ from trading_cotrader.agents.messages import UserIntent
 from trading_cotrader.core.database.session import session_scope
 
 if TYPE_CHECKING:
-    from trading_cotrader.workflow.engine import WorkflowEngine
+    from trading_cotrader.agents.workflow.engine import WorkflowEngine
 
 logger = logging.getLogger(__name__)
 

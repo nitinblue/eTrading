@@ -27,7 +27,7 @@ from trading_cotrader.core.database.session import session_scope
 from trading_cotrader.core.database.schema import AgentRunORM, AgentObjectiveORM
 
 if TYPE_CHECKING:
-    from trading_cotrader.workflow.engine import WorkflowEngine
+    from trading_cotrader.agents.workflow.engine import WorkflowEngine
 
 logger = logging.getLogger(__name__)
 

@@ -30,7 +30,7 @@ from trading_cotrader.containers.position_container import PositionState
 from trading_cotrader.containers.trade_container import TradeState
 
 if TYPE_CHECKING:
-    from trading_cotrader.workflow.engine import WorkflowEngine
+    from trading_cotrader.agents.workflow.engine import WorkflowEngine
 
 logger = logging.getLogger(__name__)
 

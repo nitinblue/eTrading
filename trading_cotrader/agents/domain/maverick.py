@@ -43,7 +43,6 @@ class MaverickAgent(BaseAgent):
         "PortfolioBundle (via ContainerManager)",
         "ResearchContainer (via ContainerManager)",
         "DecisionLogORM",
-        "RecommendationORM",
         "Broker adapters",
     ]
     boundaries: ClassVar[List[str]] = [

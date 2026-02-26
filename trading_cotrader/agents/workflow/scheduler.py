@@ -18,7 +18,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from trading_cotrader.config.workflow_config_loader import WorkflowConfig
 
 if TYPE_CHECKING:
-    from trading_cotrader.workflow.engine import WorkflowEngine
+    from trading_cotrader.agents.workflow.engine import WorkflowEngine
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class WorkflowScheduler:
 
     def _eod_trigger(self):
         """Trigger EOD evaluation if engine is in monitoring state."""
-        from trading_cotrader.workflow.states import WorkflowStates
+        from trading_cotrader.agents.workflow.states import WorkflowStates
         if self.engine.state == WorkflowStates.MONITORING.value:
             try:
                 self.engine.eod()
@@ -121,7 +121,7 @@ class WorkflowScheduler:
 
     def _report_trigger(self):
         """Trigger daily report."""
-        from trading_cotrader.workflow.states import WorkflowStates
+        from trading_cotrader.agents.workflow.states import WorkflowStates
         if self.engine.state in (
             WorkflowStates.EOD_EVALUATION.value,
             WorkflowStates.MONITORING.value,

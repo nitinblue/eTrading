@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from market_analyzer import MarketAnalyzer, DataService
 
 if TYPE_CHECKING:
-    from trading_cotrader.workflow.engine import WorkflowEngine
+    from trading_cotrader.agents.workflow.engine import WorkflowEngine
 
 logger = logging.getLogger(__name__)
 

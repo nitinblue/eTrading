@@ -276,7 +276,7 @@ class TestWorkflowEngineWiring:
 
     def test_engine_instantiates_scout(self):
         import inspect
-        from trading_cotrader.workflow.engine import WorkflowEngine
+        from trading_cotrader.agents.workflow.engine import WorkflowEngine
         source = inspect.getsource(WorkflowEngine.__init__)
         assert 'scout' in source
         assert 'ScoutAgent' in source

@@ -173,7 +173,7 @@ class TestStewardEngineWiring:
 
     def test_engine_instantiates_steward(self):
         import inspect
-        from trading_cotrader.workflow.engine import WorkflowEngine
+        from trading_cotrader.agents.workflow.engine import WorkflowEngine
         source = inspect.getsource(WorkflowEngine.__init__)
         assert 'steward' in source
         assert 'StewardAgent' in source

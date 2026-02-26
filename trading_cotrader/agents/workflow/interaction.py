@@ -16,7 +16,7 @@ import trading_cotrader.core.models.domain as dm
 from trading_cotrader.agents.messages import UserIntent, SystemResponse
 
 if TYPE_CHECKING:
-    from trading_cotrader.workflow.engine import WorkflowEngine
+    from trading_cotrader.agents.workflow.engine import WorkflowEngine
 
 logger = logging.getLogger(__name__)
 

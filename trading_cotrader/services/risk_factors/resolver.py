@@ -9,16 +9,12 @@ from decimal import Decimal
 from typing import List, Optional
 import logging
 
-from services.risk_factors.models import (
+from trading_cotrader.services.risk_factors.models import (
     RiskFactor, RiskFactorType, InstrumentSensitivity,
     create_underlying_price_factor
 )
 
-# Import domain models
-try:
-    import core.models.domain as dm
-except ImportError:
-    dm = None
+import trading_cotrader.core.models.domain as dm
 
 logger = logging.getLogger(__name__)
 

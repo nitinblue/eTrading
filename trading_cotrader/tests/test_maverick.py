@@ -143,7 +143,7 @@ class TestMaverickEngineWiring:
 
     def test_engine_instantiates_maverick_with_container_manager(self):
         import inspect
-        from trading_cotrader.workflow.engine import WorkflowEngine
+        from trading_cotrader.agents.workflow.engine import WorkflowEngine
         source = inspect.getsource(WorkflowEngine.__init__)
         assert 'maverick' in source
         assert 'MaverickAgent' in source

@@ -36,10 +36,7 @@ from trading_cotrader.harness.base import (
 from trading_cotrader.harness.steps.step01_imports import ImportStep
 from trading_cotrader.harness.steps.step02_broker import BrokerConnectionStep
 from trading_cotrader.harness.steps.step03_portfolio import PortfolioSyncStep
-from trading_cotrader.harness.steps.step04_market_data import MarketDataContainerStep
 from trading_cotrader.harness.steps.step05_risk_aggregation import RiskAggregationStep
-from trading_cotrader.harness.steps.step06_hedging import HedgeCalculatorStep
-from trading_cotrader.harness.steps.step07_risk_limits import RiskLimitsStep
 from trading_cotrader.harness.steps.step08_trades import TradeHistoryStep
 from trading_cotrader.harness.steps.step09_events import EventsStep
 from trading_cotrader.harness.steps.step10_ml_status import MLStatusStep
@@ -72,10 +69,7 @@ def run_harness(skip_sync: bool = False, use_mock: bool = False):
         ImportStep(context),
         BrokerConnectionStep(context),
         PortfolioSyncStep(context),
-        MarketDataContainerStep(context),
         RiskAggregationStep(context),
-        HedgeCalculatorStep(context),
-        RiskLimitsStep(context),
         TradeHistoryStep(context),
         EventsStep(context),
         MLStatusStep(context),

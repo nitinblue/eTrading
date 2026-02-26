@@ -131,7 +131,7 @@ def main():
             broker = None
 
     # Initialize engine
-    from trading_cotrader.workflow.engine import WorkflowEngine
+    from trading_cotrader.agents.workflow.engine import WorkflowEngine
     engine = WorkflowEngine(
         broker=broker,
         use_mock=args.mock or args.no_broker,
@@ -167,7 +167,7 @@ def main():
         return
 
     # Start scheduler for continuous mode
-    from trading_cotrader.workflow.scheduler import WorkflowScheduler
+    from trading_cotrader.agents.workflow.scheduler import WorkflowScheduler
     scheduler = WorkflowScheduler(engine, engine.config)
     scheduler.start()
 

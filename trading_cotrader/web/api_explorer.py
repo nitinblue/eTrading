@@ -46,8 +46,6 @@ from trading_cotrader.core.database.schema import (
     GreeksHistoryORM,
     WhatIfPortfolioConfigORM,
     MarketDataSnapshotORM,
-    RecommendationORM,
-    WatchlistORM,
     WorkflowStateORM,
     DecisionLogORM,
 )
@@ -121,8 +119,6 @@ _ORM_CLASSES = [
     GreeksHistoryORM,
     WhatIfPortfolioConfigORM,
     MarketDataSnapshotORM,
-    RecommendationORM,
-    WatchlistORM,
     WorkflowStateORM,
     DecisionLogORM,
 ]

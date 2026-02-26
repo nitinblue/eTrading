@@ -1,18 +1,17 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 25, 2026 (session 35e)
+# Last Updated: February 26, 2026 (session 36)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log s1-s26)
 
 ## STANDING INSTRUCTIONS
-- **ALWAYS update CLAUDE.md** after major changes — update: code map, agent flow, UI pages, open items.
+- **ALWAYS update CLAUDE.md** after major changes — update: code map, open items, session log.
 - **ALWAYS update MEMORY.md** (`~/.claude/projects/.../memory/MEMORY.md`) with session summary.
-- **Append new architecture decisions to CLAUDE_ARCHIVE.md**, not here.
 - **Force reinstall market_analyzer** at start of each session: `pip install --force-reinstall --no-deps -e ../market_analyzer`
 - If context is running low, prioritize writing updates BEFORE doing more work.
 
 ---
 
-## [NITIN OWNS] WHY THIS EXISTS
+## WHY THIS EXISTS
 
 20 years pricing and risk analytics on institutional trading floors — IR, commodities, FX, mortgages.
 The gap: 1. Time flies by, opportunity cost enormous. 2. Believes in systems and automation — now possible with Agentic AI. 3. Failing in managing own money is a behaviour problem, not knowledge. 4. Institutional discipline never applied to personal wealth. 250K sits idle (50K personal, 200K self-directed IRA).
@@ -21,493 +20,208 @@ Mental model: Macro Context -> My Exposure -> Action Required. Never "I have an 
 
 ---
 
-## [NITIN OWNS] UI PAGE ARCHITECTURE
+## APPROACH — BUILD AGENTS ONE AT A TIME
 
-### Primary Pages (always in sidebar)
+We are building core agents **one at a time, in a controlled way**. There is only ONE workflow agent: **Maverick (Trader)**. No plans to prioritize beyond what's described here.
 
-| # | Page | Route | What It Shows | Data Source |
-|---|------|-------|---------------|-------------|
-| 1 | **Market Analysis** | `/` (landing) | Watchlist grid with column groups: Core, Regime, Technicals, Momentum, Fundamentals, Opportunities, Smart Money, Levels. Macro strip. Signals badges. | **Scout** (Quant) -> ResearchContainer -> `api_research.py` |
-| 2 | **Ticker Detail** | `/market/:ticker` | Deep-dive single ticker: regime, phase, technicals, levels, opportunities, chart | Scout -> ResearchContainer + MarketAnalyzer endpoints |
-| 3 | **Portfolio** | `/portfolio` | Live broker positions, Greeks, P&L, risk factors, agent-booked trades | **Steward** (PortfolioManager) -> PortfolioBundle containers -> `api_v2.py` |
-| 4 | **Agents** | `/agents` | Agent cards: status, last run, grade, responsibilities, run history | `api_agents.py` -> AgentRunORM + BaseAgent metadata |
-
-### Archived Pages (under "Other" menu item, keep APIs)
-
-| Page | Route | Status |
-|------|-------|--------|
-| Trading / WhatIf | `/trading` | Keep API (`api_trading_sheet.py`), archive UI |
-| Capital | `/capital` | Move under Other |
-| Recommendations | `/recommendations` | Move under Other |
-| Reports | `/reports` | Move under Other |
-| Data Explorer | `/data` | Move under Other |
-| Funds | `/funds` | Move under Other |
-
-### Removed from Sidebar (hide, keep code for later)
-
-| Page | Route | Why |
-|------|-------|-----|
-| Workflow | `/workflow` | Not useful as standalone page yet |
-| Risk | `/risk` | Risk data should live on Portfolio page |
-| Performance | `/performance` | Performance data should live on Portfolio page |
-
-### Config (expandable submenu)
-- `/settings/portfolios`, `/settings/risk`, `/settings/workflow`, `/settings/capital`
-
-### UI Data Flow Pattern (QuantAgent exemplar — ALL pages must follow this)
-```
-MarketAnalyzer (external lib)
-  |
-  v
-Agent.populate()          <-- agent owns the data pipeline
-  |
-  v
-Container (in-memory)     <-- agent writes to its container
-  |
-  v
-Container.save_to_db()    <-- persist for cold start
-  |
-  v
-API endpoint              <-- reads from container (instant), never calls library directly
-  |
-  v
-React Frontend            <-- renders from API response
-```
-**Every page renders from its respective agent's container. No page calls services directly.**
-
----
-
-## [CLAUDE OWNS] AGENT ARCHITECTURE — THE 5 DOMAIN AGENTS
-
-### Naming Conventions
-- **Agent files = NOUNS** (what it IS): `steward.py`, `sentinel.py`, `scout.py`, `maverick.py`, `atlas.py`
-- **Service files = VERBS** (what it DOES): `portfolio_sync.py`, `condition_evaluator.py`
-- **Agent = decision authority.** If it doesn't make autonomous decisions, it's a service, not an agent.
+**Maverick is the only agent that runs in the workflow state machine.** Scout, Steward, and Sentinel are data/analysis agents that Maverick orchestrates. Atlas is infrastructure — no autonomous decisions.
 
 ### The 5 Domain Agents
 
-| ID | Fun Name | Role | File | Container | Status |
-|----|----------|------|------|-----------|--------|
-| `steward` | **Steward** | PortfolioManager — portfolio state, positions, P&L, capital utilization | `agents/domain/steward.py` | PortfolioBundle (via ContainerManager) | DONE (populate + run) |
-| `sentinel` | **Sentinel** | RiskManager — VaR, circuit breakers, fitness checks, execution gatekeeper | `agents/domain/sentinel.py` | (future) | Done (merged Guardian+Risk) |
-| `scout` | **Scout** | Quant — market analysis, screening, ranking, black swan | `agents/domain/scout.py` | **ResearchContainer** | EXEMPLAR (done) |
-| `maverick` | **Maverick** | Trader — domain orchestrator, cross-references Scout+Steward, trading signals | `agents/domain/maverick.py` | Reads from PortfolioBundle + ResearchContainer | WIRED (run: boot+monitoring) |
-| `atlas` | **Atlas** | TechArchitect — infrastructure, reporting, QA, system health | `agents/domain/atlas.py` | (future) | Skeleton |
+| Agent | Role | Status | What's Done |
+|-------|------|--------|-------------|
+| **Scout** (Quant) | Market analysis, screening, ranking | DONE | populate() fills ResearchContainer from MarketAnalyzer. run() does screening + ranking + black swan + context. |
+| **Steward** (PortfolioManager) | Portfolio state, positions, P&L, capital | DONE | populate() fills PortfolioBundle from DB. run() does capital utilization analysis. |
+| **Sentinel** (RiskManager) | Circuit breakers, constraints, risk reads | DONE | Merged Guardian+Risk. Reads risk from containers, falls back to DB. |
+| **Maverick** (Trader) | **THE workflow agent** — orchestrates everything | WIRED | run() cross-references Steward+Scout containers, produces trading signals. Next: build out execution, notifications, discipline. |
+| **Atlas** (TechArchitect) | Infrastructure, system health | Skeleton | Not prioritized. |
 
-### Non-Agent Services (tools agents can use, not autonomous)
-- **AgentBrain** (`services/agent_brain.py`) — LLM chat/analysis via Claude API. Infrastructure service, not an agent.
-- **CalendarAgent** — will become a simple service call in engine (is trading day? yes/no)
-
-### Agent Pattern (Scout = exemplar, ALL agents must follow)
-
-```python
-class Scout(BaseAgent):  # QuantResearchAgent — THE EXEMPLAR
-    """
-    1. Owns a Container (ResearchContainer)
-    2. populate() fills container from external data (MarketAnalyzer)
-    3. run() screens watchlist + ranks candidates via MarketAnalyzer
-    4. Container persists to DB for cold start
-    5. API reads from container, NEVER from external lib directly
-    6. get_metadata() classmethod returns agent card info
-    """
-
-    def populate(self, context: dict) -> AgentResult:
-        # Called during boot + every 30min monitoring
-        # Fills ResearchContainer from MarketAnalyzer facade
-        # Persists to research_snapshots DB table
-
-    def run(self, context: dict) -> AgentResult:
-        # Screens watchlist via ma.screening.scan()
-        # Ranks candidates via ma.ranking.rank()
-        # Checks black swan + market context
-        # Stores results in context for Maverick
+### Agent Pattern (Scout = exemplar)
 ```
-
-**ALL agents must follow this exact pattern:**
-1. Own a container
-2. `populate()` fills container from data sources
-3. `run()` makes decisions based on container data
-4. Container persists to DB for instant cold start
-5. API reads from container (never the external data source)
-
-### Legacy Agents (8 remaining in engine.py, to be absorbed into the 5 domain agents)
-
-3 legacy agents **removed in s35**: CalendarAgent (inlined in engine), MarketDataAgent (Scout handles it), MacroAgent (replaced by direct MacroContextService call).
-
-| Legacy File | Absorb Into | Role |
-|-------------|-------------|------|
-| ~~`perception/portfolio_state.py`~~ | ~~**Steward** (populate)~~ | DONE (s35b) — deleted |
-| `analysis/screener.py` | **Scout** (run) | Run screeners |
-| `analysis/evaluator.py` | **Sentinel** | Evaluate positions for exits |
-| ~~`analysis/capital.py`~~ | ~~**Steward** (run)~~ | DONE (s35b) — deleted |
-| `execution/executor.py` | **Maverick** | Place orders |
-| `execution/notifier.py` | **Maverick** | Send alerts |
-| `execution/reporter.py` | **Atlas** | Generate reports |
-| `learning/accountability.py` | **Maverick** | Trading discipline |
-| `learning/session_objectives.py` | **Maverick** | Daily objectives |
-| `learning/qa_agent.py` | **Atlas** | QA assessment |
+Agent owns Container -> populate() fills from data source -> save_to_db() -> API reads from container -> UI renders
+```
+Every agent follows this. No exceptions. No page calls services directly.
 
 ---
 
-## [CLAUDE OWNS] CONTAINER ARCHITECTURE
-
-### What a Container Is
-A container is an **in-memory data store** that an agent owns. It:
-- Gets populated by the agent's `populate()` method
-- Persists to DB for instant cold start (`save_to_db()` / `load_from_db()`)
-- Is read by API endpoints (never the external data source directly)
-- Lives in `containers/` directory
-
-### Current Containers
-
-| Container | Owner Agent | DB Table | Fields | API |
-|-----------|------------|----------|--------|-----|
-| **ResearchContainer** | Scout (Quant) | `research_snapshots` (~155 cols) + `macro_snapshots` | Per-symbol: technicals, regime, phase, opportunities, smart money, levels, fundamentals | `api_research.py` (3 endpoints) |
-| **PortfolioBundle** | Steward (PortfolioManager, future) | PositionORM, TradeORM, PortfolioORM | Per-portfolio: positions, trades, risk factors, Greeks, P&L | `api_v2.py` + `api_trading_sheet.py` |
-| **ContainerManager** | Engine | — | Orchestrates all bundles + research container | Internal |
-
-### ResearchContainer Detail (Scout's container — the exemplar)
+## DIRECTORY STRUCTURE
 
 ```
-ResearchEntry (per symbol):
-  # Core
-  symbol, last_updated, data_source
-
-  # Technicals (from MarketAnalyzer.technicals)
-  price, rsi, atr, iv_rank, sma_20/50/200, bollinger_*, vwap, volume, macd_*
-
-  # Regime (from MarketAnalyzer.regime)
-  regime_id (R1-R4), regime_label, confidence, trend, volatility_state
-
-  # Phase (from MarketAnalyzer.phase)
-  phase_name (Wyckoff), phase_confidence, phase_age_days, phase_strategy
-
-  # Opportunities (from MarketAnalyzer.opportunity)
-  opp_zero_dte_verdict/confidence/strategy/summary
-  opp_leap_verdict/confidence/strategy/summary
-  opp_breakout_verdict/confidence/strategy/summary
-  opp_momentum_verdict/confidence/strategy/summary
-
-  # Smart Money (from MarketAnalyzer.technicals)
-  smart_money_score, unfilled_fvg_count, active_ob_count
-
-  # Levels (from MarketAnalyzer.levels) — added s34
-  levels_direction, levels_stop_price, levels_best_target_price/rr
-  levels_s1/s2/s3 (price, strength, sources, confluence)
-  levels_r1/r2/r3 (price, strength, sources, confluence)
-  levels_summary
-
-  # Fundamentals (from MarketAnalyzer.fundamentals)
-  market_cap, pe_ratio, dividend_yield, sector, earnings_date
-
-MacroContext (global):
-  vix, vix_regime, macro_events (30d calendar)
-```
-
-### Data Pipeline: How Scout Populates ResearchContainer
-
-```
-Scout.populate(context):
-  1. Load watchlist from config/market_watchlist.yaml
-  2. ma = MarketAnalyzer()
-  3. Batch regime detection: ma.regime.detect_batch(tickers)
-  4. Per-ticker:
-     a. ma.technicals.snapshot(ticker) -> container.update_technicals()
-     b. ma.phase.detect(ticker) -> container.update_phase()
-     c. ma.opportunity.assess_*(ticker) -> container.update_opportunities()
-     d. ma.levels.analyze(ticker) -> container.update_levels()
-     e. ma.fundamentals.fetch(ticker) -> container.update_fundamentals()
-  5. ma.macro.calendar() -> container.update_macro()
-  6. container.save_to_db(session) -> research_snapshots table
+trading_cotrader/
+  agents/                    # THE agent system
+    base.py                  #   BaseAgent ABC
+    protocol.py              #   AgentResult/AgentStatus
+    messages.py              #   Message types
+    domain/                  #   5 domain agents
+      scout.py               #     Quant (EXEMPLAR)
+      steward.py             #     PortfolioManager
+      sentinel.py            #     RiskManager
+      maverick.py            #     Trader (THE workflow agent)
+      atlas.py               #     TechArchitect (skeleton)
+    workflow/                #   State machine + scheduling
+      engine.py              #     12-state orchestrator
+      states.py              #     State definitions
+      scheduler.py           #     APScheduler (30min cycle)
+      interaction.py         #     CLI command router
+  adapters/                  # Broker abstraction
+    base.py                  #   ABC + Manual + ReadOnly
+    factory.py               #   Create adapters by broker
+    broker_router.py         #   Route to correct adapter
+    tastytrade_adapter.py    #   TastyTrade (primary, 40+ methods)
+  containers/                # In-memory data stores
+    container_manager.py     #   Orchestrates all bundles + research
+    research_container.py    #   Scout's container (~155 fields)
+    portfolio_bundle.py      #   Steward's container (per-portfolio)
+    position_container.py    #   Individual positions
+    portfolio_container.py   #   Portfolio state
+    risk_factor_container.py #   Risk aggregation + limits
+    trade_container.py       #   Trade tracking
+    market_data_container.py #   Technicals cross-portfolio
+  services/                  # Tools agents use (not autonomous)
+    agent_brain.py           #   LLM via Claude API
+    macro_context_service.py #   VIX regime, macro gates
+    performance_metrics_service.py  # Win rate, Sharpe, drawdown
+    portfolio_manager.py     #   Portfolio state management
+    portfolio_sync.py        #   Broker -> DB sync
+    snapshot_service.py      #   Daily portfolio snapshots
+    trade_booking_service.py #   Book trades with legs + Greeks
+    risk/                    #   Risk calculations
+    risk_factors/            #   Risk factor models + resolver
+  web/                       # FastAPI endpoints
+    approval_api.py          #   Server factory + CORS
+    api_v2.py                #   MarketAnalyzer facade (25+ endpoints)
+    api_research.py          #   Research container endpoints
+    api_agents.py            #   Agent registry + status
+    api_trading_sheet.py     #   Trading hub (positions, WhatIf, risk)
+    api_reports.py           #   Portfolio reports
+    api_terminal.py          #   Terminal/CLI endpoints
+    api_explorer.py          #   Data query builder
+    api_admin.py             #   Admin/config endpoints
+  core/                      # Database + domain models
+    database/schema.py       #   21 SQLAlchemy ORM tables
+    database/session.py      #   DB session factory
+    models/domain.py         #   Frozen dataclasses
+    models/events.py         #   Event domain models
+    models/strategy_templates.py  # Trade templates
+  config/                    # Configuration
+    risk_config.yaml         #   15 portfolios (5 real + 5 WhatIf + 5 research)
+    brokers.yaml             #   4 brokers
+    workflow_rules.yaml      #   Circuit breakers, limits
+    market_watchlist.yaml    #   Watchlist tickers for Scout
+  repositories/              # DB repository layer (7 files)
+  cli/                       # CLI commands (4 commands)
+  runners/run_workflow.py    # THE main entry point
+  harness/                   # Integration test harness (9 steps)
+  tests/                     # 149 pytest (9 files)
+  frontend/                  # Vite + React 18 + TS + Tailwind + AG Grid
+  playground/                # Archived code (math + screeners)
 ```
 
 ---
 
-## [CLAUDE OWNS] WORKFLOW ENGINE — State Machine
+## MARKET ANALYZER — External Library
 
-### 12 States, 17 Transitions
+**Location**: `../market_analyzer` (editable install in eTrading venv)
 
-```
-IDLE -> BOOTING -> MACRO_CHECK -> SCREENING -> RECOMMENDATION_REVIEW (human pause)
-                                      |                    |
-                                      v                    v
-                                 MONITORING <---------- EXECUTION
-                                   |    |
-                                   |    v
-                                   |  TRADE_MANAGEMENT -> TRADE_REVIEW (human pause)
-                                   |                           |
-                                   v                           v
-                              EOD_EVALUATION              EXECUTION
-                                   |
-                                   v
-                               REPORTING -> IDLE
-
-From anywhere: -> HALTED (circuit breaker) -> resume -> MONITORING
-```
-
-### Agent Call Matrix (which agent runs in which state)
-
-| State | Agent Called | Method | Type |
-|-------|-------------|--------|------|
-| **BOOTING** | CalendarAgent | _check_trading_day() | Inlined (s35) |
-| | PortfolioSyncService | sync | Service |
-| | **Steward** | populate() | BaseAgent (DONE s35b) |
-| | **Sentinel** | run() | BaseAgent |
-| | **Steward** | run() | BaseAgent (capital util, DONE s35b) |
-| | SessionObjectivesAgent | set_objectives() | Legacy -> Maverick |
-| | **Scout** (Quant) | populate() | BaseAgent (DONE) |
-| | **Maverick** | run() | BaseAgent (DONE s35c) |
-| **MACRO_CHECK** | MacroAgent | run() | Legacy -> Scout |
-| **SCREENING** | ScreenerAgent | run() | Legacy -> Scout |
-| | RiskAgent (Sentinel) | run() | BaseAgent |
-| **REC_REVIEW** | (human pause — approve/reject) | | |
-| **EXECUTION** | Guardian.check_constraints() | per-action | BaseAgent |
-| | ExecutorAgent | run() | Legacy -> Maverick |
-| **MONITORING** | PortfolioSyncService | sync | Service |
-| (30min cycle) | **Steward** | populate() + run() | BaseAgent (DONE s35b) |
-| | **Sentinel** | run() | BaseAgent |
-| | **Scout** | run() + populate() | BaseAgent (DONE) |
-| | **Maverick** | run() | BaseAgent (DONE s35c) |
-| **TRADE_MGMT** | PortfolioState, EvaluatorAgent | run() | Legacy |
-| **EOD_EVAL** | PortfolioState, EvaluatorAgent | run() | Legacy |
-| **REPORTING** | Accountability, Capital, SessionObj, QA, Reporter | run() | Legacy |
-
-### Boot Sequence (what happens on engine start)
-1. `_init_container_manager()` — create ContainerManager, initialize bundles per portfolio
-2. `_load_research_from_db()` — instant cold start: ResearchContainer loads from `research_snapshots`
-3. `_refresh_containers()` — load portfolio bundles from DB
-4. Create all agents (5 core BaseAgent + 11 legacy)
-5. Authenticate broker adapters
-6. Start APScheduler (30min monitoring cycle)
-7. Transition: IDLE -> BOOTING -> state handlers take over
-
-### Monitoring Cycle (every 30 minutes)
-1. Refresh market data (MarketDataAgent)
-2. Sync broker positions (PortfolioSyncService)
-3. Refresh portfolio state (PortfolioStateAgent)
-4. Refresh containers from DB
-5. Capital check, safety check (Sentinel)
-6. Scout.run() — evaluate research templates
-7. Scout.populate() — refresh ResearchContainer + persist to DB
-8. Transition to TRADE_MANAGEMENT
-
----
-
-## [CLAUDE OWNS] MARKET ANALYZER — External Library
-
-**Location**: `C:\Users\nitin\PythonProjects\market_analyzer` (editable install in eTrading venv)
-**Force reinstall each session**: `pip install --force-reinstall --no-deps -e ../market_analyzer`
-
-### MarketAnalyzer Facade
 ```python
 ma = MarketAnalyzer()
 ma.regime.detect(ticker)           # R1-R4 regime classification
-ma.regime.detect_batch(tickers)    # batch detection
-ma.regime.research(ticker)         # full research with transitions
 ma.technicals.snapshot(ticker)     # TechnicalSnapshot (price, RSI, ATR, etc.)
 ma.phase.detect(ticker)            # Wyckoff phase detection
-ma.opportunity.assess_zero_dte(t)  # 0DTE assessment (GO/CAUTION/NO_GO)
-ma.opportunity.assess_leap(t)      # LEAP assessment
-ma.opportunity.assess_breakout(t)  # Breakout assessment
-ma.opportunity.assess_momentum(t)  # Momentum assessment
-ma.levels.analyze(ticker)          # Support/resistance, stop loss, targets, R:R
+ma.opportunity.assess_*(ticker)    # 10 strategy assessments (GO/CAUTION/NO_GO)
+ma.levels.analyze(ticker)          # Support/resistance, stop loss, targets
 ma.fundamentals.fetch(ticker)      # Market cap, P/E, dividend, sector
 ma.macro.calendar()                # 30-day macro event calendar
+ma.screening.scan(tickers)         # Screen watchlist
+ma.ranking.rank(tickers)           # Rank candidates
+ma.black_swan.alert(tickers)       # Black swan detection
+ma.context.assess(tickers)         # Market context assessment
 ```
 
-### API Endpoints (in api_v2.py)
-| Method | Path | Source |
-|--------|------|--------|
-| GET | `/api/v2/regime/{ticker}` | ma.regime.detect() |
-| POST | `/api/v2/regime/batch` | ma.regime.detect_batch() |
-| GET | `/api/v2/regime/{ticker}/research` | ma.regime.research() |
-| POST | `/api/v2/regime/research` | batch research |
-| GET | `/api/v2/phase/{ticker}` | ma.phase.detect() |
-| GET | `/api/v2/opportunity/zero-dte/{ticker}` | ma.opportunity.assess_zero_dte() |
-| GET | `/api/v2/opportunity/leap/{ticker}` | ma.opportunity.assess_leap() |
-| GET | `/api/v2/opportunity/breakout/{ticker}` | ma.opportunity.assess_breakout() |
-| GET | `/api/v2/opportunity/momentum/{ticker}` | ma.opportunity.assess_momentum() |
-| GET | `/api/v2/levels/{ticker}` | ma.levels.analyze() |
-| GET | `/api/v2/technicals/{ticker}` | ma.technicals.snapshot() |
-| GET | `/api/v2/fundamentals/{ticker}` | ma.fundamentals.fetch() |
-| GET | `/api/v2/macro/calendar` | ma.macro.calendar() |
+---
+
+## WORKFLOW ENGINE
+
+Maverick is the only workflow agent. Engine runs in `agents/workflow/engine.py`.
+
+**Active states:** BOOTING and MONITORING call agents. All other states are stubs (legacy agents deleted).
+
+| State | What Happens |
+|-------|-------------|
+| **BOOTING** | Calendar check -> PortfolioSync -> Steward.populate() -> Sentinel.run() -> Steward.run() -> Scout.populate() -> Maverick.run() |
+| **MONITORING** (30min) | PortfolioSync -> Steward.populate()+run() -> Sentinel.run() -> Scout.run()+populate() -> Maverick.run() |
+| **Others** | Stubs — no agents wired yet |
 
 ---
 
-## [CLAUDE OWNS] CODE MAP
+## UI PAGES
 
-| Area | Key Files |
-|------|-----------|
-| **Scout (Quant)** | `agents/domain/scout.py`, `containers/research_container.py`, `web/api_research.py`, `repositories/research_snapshot.py` |
-| **Steward (PortfolioManager)** | `agents/domain/steward.py`, `containers/portfolio_bundle.py` |
-| **Sentinel (RiskManager)** | `agents/domain/sentinel.py` (merged Guardian+Risk), `services/portfolio_fitness.py`, `services/risk/var_calculator.py`, `config/workflow_rules.yaml` |
-| **Maverick (Trader)** | `agents/domain/maverick.py` (orchestrator — reads PortfolioBundle + ResearchContainer) |
-| **Atlas (TechArchitect)** | `agents/domain/atlas.py` (skeleton) |
-| **Agent Framework** | `agents/base.py` (BaseAgent ABC), `agents/protocol.py` (AgentResult/AgentStatus) |
-| **Agent API** | `web/api_agents.py` (9 endpoints, dynamic registry from BaseAgent metadata) |
-| **Containers** | `containers/container_manager.py`, `containers/portfolio_bundle.py`, `containers/research_container.py` |
-| **Workflow Engine** | `workflow/engine.py` (orchestrator), `workflow/states.py` (12 states), `workflow/scheduler.py` |
-| **Trading Sheet** | `web/api_trading_sheet.py` (4 endpoints: dashboard, evaluate, add-whatif, book) |
-| **Market Analyzer** | External lib `market_analyzer` (editable from `../market_analyzer`). Endpoints in `web/api_v2.py` |
-| **Research Templates** | RETIRED (s35e) — replaced by MarketAnalyzer screening/ranking services |
-| **Broker Adapters** | `adapters/base.py` (ABC), `adapters/factory.py`, `adapters/tastytrade_adapter.py` |
-| **Pricing** | `services/pricing/probability.py` (POP/EV), `services/pricing/black_scholes.py` |
-| **DB/ORM** | `core/database/schema.py` (23 tables), `core/database/session.py`, `repositories/` |
-| **Web Server** | `web/approval_api.py` (FastAPI factory), `web/api_v2.py`, `web/api_research.py`, `web/api_agents.py`, `web/api_trading_sheet.py` |
-| **Config** | `config/risk_config.yaml` (15 portfolios), `config/brokers.yaml`, `config/workflow_rules.yaml`, `config/market_watchlist.yaml` |
-| **Frontend** | `frontend/` (Vite + React 18 + TS + Tailwind + AG Grid + Recharts) |
-| **Tests** | `tests/` (270 pytest), `harness/` (integration) |
+### Primary (always in sidebar)
+| Page | Route | Data Source |
+|------|-------|-------------|
+| Market Analysis | `/` (landing) | Scout -> ResearchContainer -> `api_research.py` |
+| Ticker Detail | `/market/:ticker` | Scout + MarketAnalyzer endpoints |
+| Portfolio | `/portfolio` | Steward -> PortfolioBundle -> `api_v2.py` |
+| Agents | `/agents` | `api_agents.py` -> BaseAgent metadata |
 
-### Frontend Files
-| Page | File | Route |
-|------|------|-------|
-| Market Analysis (landing) | `pages/ResearchDashboardPage.tsx` | `/` |
-| Ticker Detail | `pages/ResearchPage.tsx` | `/market/:ticker` |
-| Portfolio | `pages/PortfolioPage.tsx` | `/portfolio` |
-| Agents | `pages/AgentsPage.tsx` | `/agents` |
-| Agent Detail | `pages/AgentDetailPage.tsx` | `/agents/:name` |
-| Trading | `pages/TradingDashboardPage.tsx` | `/trading` |
-| All others | see `App.tsx` | various |
-| Sidebar | `layout/Sidebar.tsx` | — |
+### Archived (under "Other" menu)
+Trading/WhatIf, Capital, Reports, Data Explorer, Funds
+
+### Config
+`/settings/portfolios`, `/settings/risk`, `/settings/workflow`, `/settings/capital`
 
 ---
 
-## [CLAUDE OWNS] CODING STANDARDS
+## CODING STANDARDS
 
-### General
 - `Decimal` for ALL money/price values. Never float.
-- `UUID` strings for all entity IDs
-- Type hints on every function signature
-- `dataclass` for domain models, prefer `frozen=True` for value objects
-- Specific exceptions only, never bare `Exception`
-- Always use `session_scope()` for DB — never raw sessions
-- Import order: stdlib -> third-party -> local (`trading_cotrader.`)
-- **ALL imports at top of file.** No inline/deferred imports unless there is a specific design reason (circular import avoidance). This is mandatory.
-- Schema change: ORM in `schema.py` -> domain in `domain.py` -> `setup_database.py`
-
-### Naming Conventions
-- **Agent files = NOUNS** (what it is): `guardian.py`, `scout.py`, `warden.py`
-- **Service files = VERBS** (what it does): `portfolio_sync.py`, `condition_evaluator.py`, `trade_booking_service.py`
-- Agent classes: `SentinelAgent`, `ScoutAgent`, etc.
-- Service classes: `PortfolioFitnessChecker`, etc.
-
-### ZERO DEAD CODE POLICY (Nitin mandate)
-- **NEVER create code that is not immediately used end-to-end.** Every file, class, function must be imported and called.
-- **NEVER create placeholder/stub agents, services, or files** "for future use."
-- **Before creating a new file:** Verify it will be imported and used. If not, don't create it.
-- **Before deleting functionality from UI:** Delete the corresponding backend code too.
-- **Metadata lives WITH the code.** Agent descriptions, icons, boundaries belong in the agent class (`get_metadata()`).
-- **After every change:** Run `pytest` + `pnpm build`. Fix broken imports immediately.
+- Type hints on every function signature. `dataclass` for domain models.
+- Always use `session_scope()` for DB — never raw sessions.
+- **ALL imports at top of file.** No inline/deferred imports unless circular import avoidance.
+- **Agent files = NOUNS** (what it is). **Service files = VERBS** (what it does).
+- **ZERO DEAD CODE POLICY**: Every file, class, function must be imported and called. Never create stubs "for future use." After every change: `pytest` + `pnpm build`.
+- **ZERO local math**: Greeks and prices ALWAYS come from the broker (TastyTrade DXLink streaming). No Black-Scholes, no POP/EV, no VaR calculations.
 
 ---
 
-## [CLAUDE OWNS] DEV COMMANDS
+## DEV COMMANDS
 
 ```bash
-# Force reinstall market_analyzer (EVERY SESSION)
-pip install --force-reinstall --no-deps -e ../market_analyzer
-
-# Core
-python -m trading_cotrader.scripts.setup_database
-pytest trading_cotrader/tests/ -v
-
-# Workflow engine + web (THE MAIN WAY TO RUN)
-python -m trading_cotrader.runners.run_workflow --paper --web                 # with broker
-python -m trading_cotrader.runners.run_workflow --paper --no-broker --web     # without broker
-python -m trading_cotrader.runners.run_workflow --once --no-broker --mock     # single cycle test
-
-# React frontend
-cd frontend && pnpm dev                                  # dev server at localhost:5173
-cd frontend && pnpm build                                # production build
-
-# Screeners (CLI)
-python -m trading_cotrader.cli.run_screener --screener all --symbols SPY,QQQ --no-broker
-
-# Harness
-python -m trading_cotrader.harness.runner --skip-sync
+pip install --force-reinstall --no-deps -e ../market_analyzer  # EVERY SESSION
+pytest trading_cotrader/tests/ -v                               # 149 tests
+python -m trading_cotrader.scripts.setup_database               # create DB tables
+python -m trading_cotrader.runners.run_workflow --paper --web    # with broker
+python -m trading_cotrader.runners.run_workflow --paper --no-broker --web  # without broker
+python -m trading_cotrader.runners.run_workflow --once --no-broker --mock  # single cycle
+python -m trading_cotrader.harness.runner --skip-sync            # integration harness
+cd frontend && pnpm dev                                          # React dev at :5173
+cd frontend && pnpm build                                        # production build
 ```
 
-### Critical Runtime Notes
-- Greeks come from DXLink streaming, NOT REST API
-- Always test with `IS_PAPER_TRADING=true` before live
-- Never store credentials in code — use `.env`
-- **Harness vs Engine rule:** Every feature working in harness MUST be verified in workflow engine + API
+---
+
+## OPEN ITEMS
+
+### Maverick (Trader) — THE priority
+Only workflow agent. Currently wired: run() produces trading signals from Steward+Scout containers. Next: build out execution (place orders via broker adapter), notifications, trading discipline. Build one capability at a time.
+
+### AgentBrain Service
+LLM chat via Claude API (`services/agent_brain.py`). 3 methods without endpoints, stateless chat, uses raw broker data not containers. Requires `ANTHROPIC_API_KEY`.
+
+### UI
+- Sidebar: restructure per primary/archived/config layout
+- Portfolio page: should read from Steward's container
+- Market Analysis: click-through to ticker detail needs polish
 
 ---
 
-## [CLAUDE OWNS] EXISTING INFRASTRUCTURE (Not Yet Wired to Agents)
-
-| Service | File | What It Does | Wire Into |
-|---------|------|-------------|-----------|
-| P&L Attribution | `analytics/pricing/pnl_calculator.py` | Greek decomposition of P&L | Steward |
-| Portfolio Evaluation | `services/portfolio_evaluation_service.py` | Exit rules (TP, SL, DTE, delta) | Sentinel |
-| Macro Context | `services/macro_context_service.py` | VIX regime, macro gates | Scout or Sentinel |
-| Performance Metrics | `services/performance_metrics_service.py` | Win rate, Sharpe, drawdown | Maverick |
-| Liquidity | `services/liquidity_service.py` | OI, spread, volume thresholds | Scout |
-| Order Execution | `adapters/tastytrade_adapter.py` (place_order) | 2-step LIMIT orders | Maverick |
-| Trade Booking | `services/trade_booking_service.py` | Book trades with legs, Greeks | Maverick |
-| Snapshots | `services/snapshot_service.py` | Daily portfolio snapshots | Atlas |
-| Earnings Calendar | `services/earnings_calendar_service.py` | yfinance earnings dates | Scout |
-| Agent Intelligence | `services/agent_brain.py` | LLM via Claude API | Service (any agent) |
-| Portfolio Fitness | `services/portfolio_fitness.py` | Margin/delta/concentration checks | Maverick |
-
-### Archived Math (moved to `playground/archived_math/` — s35d)
-All mathematical pricing/risk models moved out. **Greeks and prices come from broker, not math.**
-- `black_scholes.py`, `probability.py`, `implied_vol.py`, `greeks.py`, `scenarios.py` (pricing models)
-- `var_calculator.py`, `portfolio_risk.py` (VaR/risk models)
-- `greeks_engine.py`, `option_pricer.py` (analytics math)
-- `strategy_builder.py`, `greeks_service.py`, `functional_portfolio.py`, `calculations.py`
-- `test_numerics.py`, `test_var_calculator.py` (tests for above)
-
----
-
-## [CLAUDE OWNS] OPEN ITEMS
-
-### Agent Definition & Implementation — IN PROGRESS (open-ended)
-Agent definitions are evolving. Scout (Quant) is the exemplar. Other 4 agents (Steward, Sentinel, Maverick, Atlas) have roles defined but implementation is open. Next session continues building Scout.
-
-**Current state (s35e):**
-- **Scout** (Quant) — DONE: populate() fills ResearchContainer from MarketAnalyzer. run() uses ma.screening + ma.ranking + ma.black_swan + ma.context. Research templates RETIRED (s35e). File: `agents/domain/scout.py`
-- **Sentinel** (RiskManager) — DONE: Merged Guardian+Risk. Circuit breakers + constraints + container-based risk reads. File: `agents/domain/sentinel.py`
-- **Steward** (PortfolioManager) — DONE: populate() fills PortfolioBundle from DB, run() does capital utilization analysis. Absorbed portfolio_state + capital agents. File: `agents/domain/steward.py`
-- **Maverick** (Trader) — WIRED (s35c): Domain orchestrator. run() cross-references Steward's PortfolioBundle with Scout's ResearchContainer to produce trading signals. Runs during boot + monitoring. `api_trading_sheet.py` GET reads entirely from containers. Next: absorb executor + notifier + accountability + objectives.
-- **Atlas** (TechArchitect) — Skeleton. Needs: absorb reporter + QA, own container for system health
-
-### Math Purge (s35d) — ZERO local math for pricing/Greeks/VaR
-All mathematical models (Black-Scholes, POP/EV calculations, VaR, IV solver, strike selection) removed from live code and moved to `playground/archived_math/`. **Greeks and prices ALWAYS come from the broker (TastyTrade DXLink streaming).** No exceptions.
-
-### AgentBrain Service — Unfinished
-- 3 methods have no API endpoints
-- Chat is stateless
-- Uses raw broker data, not container data
-- Requires `ANTHROPIC_API_KEY`
-- Decision: service (not an agent) — any agent can use it as a tool
-
-### UI Enhancements Pending
-- Market Analysis page: click-through to ticker detail needs polish
-- Portfolio page: all data should come from Steward's container
-- Agents page: needs enhancements (TBD by Nitin)
-- Sidebar: restructure per UI Architecture section (primary/archived/removed)
-- Agent file renames to nouns — DONE (s35): all 5 domain agents in `agents/domain/`
-
----
-
-## [CLAUDE OWNS] SESSION LOG (recent)
+## SESSION LOG (recent)
 
 | Session | Date | What |
 |---------|------|------|
-| s35e | Feb 25 | MarketAnalyzer upgrade + research template retirement. Force-reinstalled market_analyzer with new services (BlackSwan, Context, Screening, Ranking + 5 new opportunity assessments). Added 8 API endpoints (black-swan, context, screening, 5 opportunity). Frontend: BlackSwanBar + MarketContextStrip components, useBlackSwan/useMarketContext hooks, ResearchDashboardPage redesigned for max density. Retired research templates: deleted ConditionEvaluator, template_loader, research_templates.yaml, scenario_templates.yaml, 2 test files. Rewrote Scout.run() to use ma.screening + ma.ranking. Removed evaluate endpoint from api_trading_sheet.py. Container-first trading dashboard (zero DB calls). 166 tests pass. |
-| s35d | Feb 23 | Math purge: removed ALL mathematical pricing/risk models from live code. Moved 14 files to `playground/archived_math/` (Black-Scholes, ProbabilityCalculator, VaRCalculator, GreeksEngine, ImpliedVolSolver, ScenarioEngine, OptionPricer, strategy_builder, greeks_service, functional_portfolio, calculations + 2 test files). Removed ProbabilityCalculator from api_trading_sheet.py (add-whatif payoff, template eval). Removed strategy proposals endpoint from api_research.py. Removed _construct_legs strike approximation. Cleaned up services/pricing/__init__.py and services/risk/__init__.py. 257 tests pass. |
-| s35c | Feb 23 | Wired Maverick as domain orchestrator. MaverickAgent.run() cross-references Steward's PortfolioBundle with Scout's ResearchContainer to produce trading signals. Rewired `api_trading_sheet.py` GET endpoint: ALL reads from containers (no DB queries). Added `market_context` (Scout's research) to trading dashboard response. Rewired `evaluate` endpoint to use ResearchContainer instead of TechnicalAnalysisService. Engine passes container_manager to Maverick, calls in boot + monitoring. Updated api_agents.py registry. 11 new tests. 296 tests pass. |
-| s35b | Feb 23 | Built out Steward (PortfolioManager). populate() absorbs PortfolioStateAgent (fills PortfolioBundle from DB), run() absorbs CapitalUtilizationAgent (capital analysis + alerts). Enhanced Sentinel with container_manager (reads risk from containers, falls back to DB). Added PortfolioRiskLimits + concentration_pct + to_summary() to RiskFactorContainer. Deleted 2 legacy files (portfolio_state.py, capital.py). 13 new tests. 285 tests pass. |
-| s35 | Feb 23 | Agent architecture reorganization. Created `agents/domain/` with 5 renamed agents (scout, sentinel, steward, maverick, atlas). Merged Guardian+Risk into Sentinel. Converted 3 legacy agents to services (calendar inlined, market_data removed, macro uses service). Deleted 8 old files. Updated engine, APIs, 3 test files, 12 frontend files. 272 tests pass. |
-| s34 | Feb 22 | LevelsService integration (ResearchContainer + schema + Scout + API + UI). CLAUDE.md rewrite. |
-| s33 | Feb 22 | MarketAnalyzer full integration — phase + opportunities + smart money. 9 API endpoints. |
-| s32 | Feb 22 | Agent framework refactor — BaseAgent ABC + QuantResearchAgent exemplar. |
-| s31 | Feb 22 | DB-backed ResearchContainer — instant cold start from research_snapshots. |
-| s30 | Feb 22 | ResearchContainer + API + UI. ResearchDashboardPage as landing. |
-| s29 | Feb 21 | Market regime integration. 4 regime endpoints. |
-| s28 | Feb 21 | P&L + duplication postmortem. 5 critical bug fixes. |
-| s27 | Feb 19 | THE PIVOT — Trading Sheet as product. 1 feature at a time. |
-| s26 | Feb 19 | Trading Sheet v1. Probability, fitness checker. |
-| s25 | Feb 18 | Full frontend. Critical broker/container fix in engine.py. |
+| s36 | Feb 26 | Tech debt mega-cleanup. 3 phases: (1) Deleted 8 legacy agents + 7 empty dirs, moved BrokerRouter→adapters/, InteractionManager→agents/workflow/. (2) Deleted ai_cotrader ML pipeline. (3) Killed recommendation service + screeners. Then: deleted analytics/ (empty), services/pricing/ (empty), 11 dead services, 3 harness-only service dirs, 4 harness steps, dead CLI/scripts. Moved workflow/→agents/workflow/. Fixed bare imports in risk_factors/resolver.py. services/ went from 35→16 files. 149 tests pass. |
+| s35e | Feb 25 | MarketAnalyzer upgrade + research template retirement. New services: BlackSwan, Context, Screening, Ranking + 5 opportunity assessments. 8 new API endpoints. Frontend: BlackSwanBar + MarketContextStrip. Retired research templates. Rewrote Scout.run(). 166 tests. |
+| s35d | Feb 23 | Math purge: moved 14 files to playground/archived_math/. Zero local math policy. 257 tests. |
+| s35c | Feb 23 | Wired Maverick as domain orchestrator. Container-first trading dashboard. 296 tests. |
+| s35b | Feb 23 | Built Steward + enhanced Sentinel with containers. 285 tests. |
+| s35 | Feb 23 | Agent architecture reorganization. 5 domain agents in agents/domain/. 272 tests. |
