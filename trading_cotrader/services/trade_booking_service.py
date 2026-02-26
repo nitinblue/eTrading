@@ -536,7 +536,7 @@ class TradeBookingService:
             logger.warning(f"Container refresh failed: {e}")
 
     def _update_snapshot_and_ml(self, trade: dm.Trade) -> None:
-        """Capture snapshot for the trade's portfolio and feed ML pipeline."""
+        """Capture snapshot for the trade's portfolio."""
         try:
             with session_scope() as session:
                 from trading_cotrader.services.snapshot_service import SnapshotService
@@ -546,23 +546,6 @@ class TradeBookingService:
                 logger.info(f"Snapshot captured for {ok}/{len(results)} portfolios")
         except Exception as e:
             logger.warning(f"Snapshot capture failed (non-blocking): {e}")
-
-        try:
-            from trading_cotrader.ai_cotrader.data_pipeline import MLDataPipeline
-            from trading_cotrader.core.database.schema import PortfolioORM
-            with session_scope() as session:
-                ml_pipeline = MLDataPipeline(session)
-                portfolio = session.query(PortfolioORM).filter(
-                    PortfolioORM.portfolio_type == 'real'
-                ).first()
-                if portfolio:
-                    ml_pipeline.accumulate_training_data(
-                        portfolio=portfolio,
-                        positions=portfolio.positions or [],
-                    )
-                logger.info("ML pipeline updated")
-        except Exception as e:
-            logger.warning(f"ML pipeline update failed (non-blocking): {e}")
 
 
 # =============================================================================

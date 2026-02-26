@@ -8,6 +8,7 @@ Existing /api/* endpoints remain unchanged.
 from datetime import date as date_cls, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Optional
+import asyncio
 import logging
 
 from fastapi import APIRouter, Query, HTTPException
@@ -22,7 +23,6 @@ from trading_cotrader.core.database.schema import (
     LegORM,
     StrategyORM,
     SymbolORM,
-    RecommendationORM,
     DecisionLogORM,
     WorkflowStateORM,
     DailyPerformanceORM,
@@ -422,119 +422,6 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                 'total': total,
                 'trades': [_serialize_trade(t) for t in trades],
             }
-
-    # ------------------------------------------------------------------
-    # Recommendations
-    # ------------------------------------------------------------------
-
-    def _serialize_recommendation(r):
-        """Serialize a RecommendationORM to dict with full reasoning data."""
-        # Calculate age for pending recs
-        age_hours = None
-        if r.created_at:
-            from datetime import datetime
-            age_hours = round((datetime.utcnow() - r.created_at).total_seconds() / 3600, 1)
-
-        return {
-            'id': r.id,
-            'recommendation_type': r.recommendation_type,
-            'source': r.source,
-            'screener_name': r.screener_name,
-            'underlying': r.underlying,
-            'strategy_type': r.strategy_type,
-            'legs': r.legs,
-            'confidence': r.confidence,
-            'rationale': r.rationale,
-            'risk_category': r.risk_category,
-            'suggested_portfolio': r.suggested_portfolio,
-            'status': r.status,
-            'created_at': _iso(r.created_at),
-            'reviewed_at': _iso(r.reviewed_at),
-            'age_hours': age_hours,
-            'portfolio_name': r.portfolio_name,
-            'trade_id': r.trade_id,
-            'accepted_notes': r.accepted_notes,
-            'rejection_reason': r.rejection_reason,
-            'trade_id_to_close': r.trade_id_to_close,
-            'exit_action': r.exit_action,
-            'exit_urgency': r.exit_urgency,
-            'triggered_rules': r.triggered_rules,
-            # Full reasoning data
-            'market_context': r.market_context,
-            'scenario_template_name': getattr(r, 'scenario_template_name', None),
-            'scenario_type': getattr(r, 'scenario_type', None),
-            'trigger_conditions_met': getattr(r, 'trigger_conditions_met', None),
-        }
-
-    @router.get("/recommendations")
-    async def get_recommendations(
-        status: Optional[str] = Query(None, description="pending, accepted, rejected, all"),
-        source: Optional[str] = Query(None),
-        underlying: Optional[str] = Query(None),
-    ):
-        """All recommendations with full reasoning data."""
-        with session_scope() as session:
-            q = session.query(RecommendationORM).order_by(RecommendationORM.created_at.desc())
-            if status and status != 'all':
-                q = q.filter(RecommendationORM.status == status)
-            if source:
-                q = q.filter(RecommendationORM.source == source)
-            if underlying:
-                q = q.filter(RecommendationORM.underlying == underlying)
-            recs = q.limit(200).all()
-            return [_serialize_recommendation(r) for r in recs]
-
-    @router.get("/recommendations/{rec_id}")
-    async def get_recommendation_detail(rec_id: str):
-        """Single recommendation with full detail + LLM explanation."""
-        with session_scope() as session:
-            r = session.query(RecommendationORM).filter_by(id=rec_id).first()
-            if not r:
-                return {"error": "Not found"}
-
-            detail = _serialize_recommendation(r)
-
-            # Add LLM explanation if available
-            try:
-                from trading_cotrader.services.agent_brain import get_agent_brain
-                brain = get_agent_brain()
-                if brain.is_available:
-                    # Build portfolio context for impact assessment
-                    portfolio_state = None
-                    if r.suggested_portfolio:
-                        try:
-                            p = session.query(PortfolioORM).filter_by(
-                                name=r.suggested_portfolio
-                            ).first()
-                            if p:
-                                portfolio_state = {
-                                    'name': p.name,
-                                    'total_equity': float(p.total_equity or 0),
-                                    'deployed_capital': float(p.deployed_capital or 0),
-                                    'portfolio_delta': float(p.portfolio_delta or 0),
-                                    'portfolio_theta': float(p.portfolio_theta or 0),
-                                    'portfolio_gamma': float(p.portfolio_gamma or 0),
-                                    'portfolio_vega': float(p.portfolio_vega or 0),
-                                    'max_portfolio_delta': float(p.max_portfolio_delta or 0),
-                                    'buying_power_used_pct': float(p.buying_power_used_pct or 0),
-                                }
-                        except Exception:
-                            pass
-
-                    explanation = brain.explain_recommendation(
-                        recommendation=detail,
-                        portfolio_state=portfolio_state,
-                        market_context=r.market_context,
-                    )
-                    detail['agent_explanation'] = explanation
-                else:
-                    detail['agent_explanation'] = None
-            except Exception as e:
-                logger.warning(f"Agent explanation failed: {e}")
-                detail['agent_explanation'] = None
-
-            return detail
-
     # ------------------------------------------------------------------
     # Workflow & Agents
     # ------------------------------------------------------------------
@@ -546,15 +433,6 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         macro = ctx.get('macro_assessment', {})
 
         pending_count = 0
-        try:
-            with session_scope() as session:
-                pending_count = (
-                    session.query(func.count(RecommendationORM.id))
-                    .filter(RecommendationORM.status == 'pending')
-                    .scalar() or 0
-                )
-        except Exception:
-            pass
 
         return {
             'current_state': engine.state,
@@ -937,25 +815,6 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                     except Exception as e:
                         logger.warning(f"Failed to get data from {name}: {e}")
 
-            # Get pending recommendations
-            with session_scope() as session:
-                recs = (
-                    session.query(RecommendationORM)
-                    .filter(RecommendationORM.status == 'pending')
-                    .order_by(RecommendationORM.created_at.desc())
-                    .limit(5)
-                    .all()
-                )
-                for r in recs:
-                    pending_recs.append({
-                        'id': r.id,
-                        'type': r.recommendation_type,
-                        'underlying': r.underlying_symbol,
-                        'strategy': r.strategy_type,
-                        'rationale': r.rationale,
-                        'confidence': float(r.confidence) if r.confidence else None,
-                        'created': r.created_at.isoformat() if r.created_at else None,
-                    })
 
             # Get capital alerts from engine context
             if engine and hasattr(engine, 'context'):
@@ -1292,7 +1151,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         if missing_tickers:
             try:
                 ma = _get_market_analyzer()
-                results = ma.regime.detect_batch(tickers=missing_tickers)
+                results = await asyncio.to_thread(ma.regime.detect_batch, tickers=missing_tickers)
                 for ticker_key, r in results.items():
                     regime_map[ticker_key] = {
                         'regime': r.regime.value,
@@ -1308,7 +1167,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                 ma = _get_market_analyzer()
                 for t in missing_tickers:
                     try:
-                        research = ma.regime.research(t)
+                        research = await asyncio.to_thread(ma.regime.research, t)
                         strategy_map[t] = research.strategy_comment
                     except Exception:
                         strategy_map[t] = ''
@@ -1360,7 +1219,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """
         try:
             ma = _get_market_analyzer()
-            result = ma.regime.detect(ticker.upper())
+            result = await asyncio.to_thread(ma.regime.detect, ticker.upper())
             return {
                 'ticker': result.ticker,
                 'regime': result.regime.value,
@@ -1390,7 +1249,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
 
         try:
             ma = _get_market_analyzer()
-            results = ma.regime.detect_batch(tickers=[t.upper() for t in tickers])
+            results = await asyncio.to_thread(ma.regime.detect_batch, tickers=[t.upper() for t in tickers])
             return {
                 'results': {
                     ticker: {
@@ -1421,7 +1280,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """
         try:
             ma = _get_market_analyzer()
-            r = ma.regime.research(ticker.upper())
+            r = await asyncio.to_thread(ma.regime.research, ticker.upper())
             return r.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Regime research failed for {ticker}: {e}")
@@ -1439,8 +1298,8 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         import base64
         try:
             ma = _get_market_analyzer()
-            explanation = ma.regime.explain(ticker.upper())
-            ohlcv = ma.data.get_ohlcv(ticker.upper())
+            explanation = await asyncio.to_thread(ma.regime.explain, ticker.upper())
+            ohlcv = await asyncio.to_thread(ma.data.get_ohlcv, ticker.upper())
 
             # Generate chart to BytesIO
             from market_analyzer.cli.plot import plot_ticker as _plot_ticker
@@ -1568,7 +1427,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
 
         try:
             ma = _get_market_analyzer()
-            report = ma.regime.research_batch(tickers=[t.upper() for t in tickers])
+            report = await asyncio.to_thread(ma.regime.research_batch, tickers=[t.upper() for t in tickers])
             return report.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Batch regime research failed: {e}")
@@ -1588,7 +1447,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """
         try:
             ma = _get_market_analyzer()
-            snapshot = ma.technicals.snapshot(ticker.upper())
+            snapshot = await asyncio.to_thread(ma.technicals.snapshot, ticker.upper())
             return snapshot.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Technicals failed for {ticker}: {e}")
@@ -1603,7 +1462,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Stock fundamentals: valuation, earnings, margins, cash, debt, dividends, 52w range."""
         try:
             ma = _get_market_analyzer()
-            snapshot = ma.fundamentals.get(ticker.upper())
+            snapshot = await asyncio.to_thread(ma.fundamentals.get, ticker.upper())
             return snapshot.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Fundamentals failed for {ticker}: {e}")
@@ -1618,7 +1477,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Macro economic calendar: FOMC, CPI, NFP, PCE, GDP events."""
         try:
             ma = _get_market_analyzer()
-            cal = ma.macro.calendar(lookahead_days=lookahead_days)
+            cal = await asyncio.to_thread(ma.macro.calendar, lookahead_days=lookahead_days)
             return cal.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Macro calendar failed: {e}")
@@ -1647,7 +1506,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                 kwargs['direction'] = direction
             if entry_price is not None:
                 kwargs['entry_price'] = entry_price
-            result = ma.levels.analyze(ticker.upper(), **kwargs)
+            result = await asyncio.to_thread(ma.levels.analyze, ticker.upper(), **kwargs)
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Levels analysis failed for {ticker}: {e}")
@@ -1662,7 +1521,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Wyckoff phase detection: accumulation/markup/distribution/markdown."""
         try:
             ma = _get_market_analyzer()
-            result = ma.phase.detect(ticker.upper())
+            result = await asyncio.to_thread(ma.phase.detect, ticker.upper())
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Phase detection failed for {ticker}: {e}")
@@ -1677,7 +1536,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """0DTE opportunity assessment: verdict, strategy, signals."""
         try:
             ma = _get_market_analyzer()
-            result = ma.opportunity.assess_zero_dte(ticker.upper())
+            result = await asyncio.to_thread(ma.opportunity.assess_zero_dte, ticker.upper())
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"0DTE opportunity failed for {ticker}: {e}")
@@ -1688,7 +1547,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """LEAP opportunity assessment: verdict, strategy, fundamental score."""
         try:
             ma = _get_market_analyzer()
-            result = ma.opportunity.assess_leap(ticker.upper())
+            result = await asyncio.to_thread(ma.opportunity.assess_leap, ticker.upper())
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"LEAP opportunity failed for {ticker}: {e}")
@@ -1699,7 +1558,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Breakout opportunity assessment: VCP, squeeze, pivot."""
         try:
             ma = _get_market_analyzer()
-            result = ma.opportunity.assess_breakout(ticker.upper())
+            result = await asyncio.to_thread(ma.opportunity.assess_breakout, ticker.upper())
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Breakout opportunity failed for {ticker}: {e}")
@@ -1710,7 +1569,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Momentum opportunity assessment: trend continuation, pullback."""
         try:
             ma = _get_market_analyzer()
-            result = ma.opportunity.assess_momentum(ticker.upper())
+            result = await asyncio.to_thread(ma.opportunity.assess_momentum, ticker.upper())
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Momentum opportunity failed for {ticker}: {e}")
@@ -1732,7 +1591,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             if not tickers:
                 from market_analyzer.config import get_settings
                 tickers = get_settings().display.default_tickers
-            result = ma.ranking.rank(tickers)
+            result = await asyncio.to_thread(ma.ranking.rank, tickers)
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Ranking failed: {e}")
@@ -1747,7 +1606,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Tail-risk alert: composite score, stress indicators, circuit breakers."""
         try:
             ma = _get_market_analyzer()
-            alert = ma.black_swan.alert()
+            alert = await asyncio.to_thread(ma.black_swan.alert)
             return alert.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Black swan alert failed: {e}")
@@ -1762,7 +1621,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Pre-trade gate: environment label, trading allowed, size factor, intermarket."""
         try:
             ma = _get_market_analyzer()
-            ctx = ma.context.assess()
+            ctx = await asyncio.to_thread(ma.context.assess)
             return ctx.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Market context failed: {e}")
@@ -1781,7 +1640,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Find setups across tickers: breakout, momentum, mean_reversion, income."""
         try:
             ma = _get_market_analyzer()
-            result = ma.screening.scan(body.tickers, screens=body.screens)
+            result = await asyncio.to_thread(ma.screening.scan, body.tickers, screens=body.screens)
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Screening failed: {e}")
@@ -1796,7 +1655,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Iron condor opportunity with trade spec (strikes, expiry, sizing)."""
         try:
             ma = _get_market_analyzer()
-            result = ma.opportunity.assess_iron_condor(ticker.upper())
+            result = await asyncio.to_thread(ma.opportunity.assess_iron_condor, ticker.upper())
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Iron condor opportunity failed for {ticker}: {e}")
@@ -1807,7 +1666,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Iron butterfly opportunity assessment."""
         try:
             ma = _get_market_analyzer()
-            result = ma.opportunity.assess_iron_butterfly(ticker.upper())
+            result = await asyncio.to_thread(ma.opportunity.assess_iron_butterfly, ticker.upper())
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Iron butterfly opportunity failed for {ticker}: {e}")
@@ -1818,7 +1677,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Calendar spread opportunity with IV differential."""
         try:
             ma = _get_market_analyzer()
-            result = ma.opportunity.assess_calendar(ticker.upper())
+            result = await asyncio.to_thread(ma.opportunity.assess_calendar, ticker.upper())
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Calendar opportunity failed for {ticker}: {e}")
@@ -1829,7 +1688,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Diagonal spread opportunity assessment."""
         try:
             ma = _get_market_analyzer()
-            result = ma.opportunity.assess_diagonal(ticker.upper())
+            result = await asyncio.to_thread(ma.opportunity.assess_diagonal, ticker.upper())
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Diagonal opportunity failed for {ticker}: {e}")
@@ -1840,7 +1699,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         """Mean reversion opportunity: RSI extreme, Bollinger squeeze."""
         try:
             ma = _get_market_analyzer()
-            result = ma.opportunity.assess_mean_reversion(ticker.upper())
+            result = await asyncio.to_thread(ma.opportunity.assess_mean_reversion, ticker.upper())
             return result.model_dump(mode='json')
         except Exception as e:
             logger.error(f"Mean reversion opportunity failed for {ticker}: {e}")

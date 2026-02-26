@@ -77,7 +77,6 @@ export const endpoints = {
   // Trading Dashboard
   tradingDashboard: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}`,
   refreshDashboard: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/refresh`,
-  evaluateTemplate: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/evaluate`,
   addWhatIf: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/add-whatif`,
   bookTrade: (portfolio: string) => `${V2}/trading-dashboard/${portfolio}/book`,
   deleteWhatIf: (portfolio: string, tradeId: string) => `${V2}/trading-dashboard/${portfolio}/whatif/${tradeId}`,

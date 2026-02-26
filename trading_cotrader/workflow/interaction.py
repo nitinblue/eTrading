@@ -152,16 +152,6 @@ class InteractionManager:
                 requires_action=True,
             )
 
-        # Log decision
-        self.engine.accountability.log_decision(
-            rec_id=intent.target,
-            response='approved',
-            rationale=intent.rationale or 'Approved via workflow',
-            presented_at=datetime.utcnow(),  # approximation
-            responded_at=datetime.utcnow(),
-            decision_type=intent.parameters.get('type', 'entry'),
-        )
-
         # Add to approved actions — resolve portfolio alias to config key
         raw_portfolio = intent.parameters.get('portfolio')
         resolved_portfolio = resolve_portfolio_name(raw_portfolio) if raw_portfolio else None
@@ -185,28 +175,6 @@ class InteractionManager:
         if not intent.target:
             return SystemResponse(message="Usage: reject <recommendation_id>")
 
-        self.engine.accountability.log_decision(
-            rec_id=intent.target,
-            response='rejected',
-            rationale=intent.rationale or 'Rejected via workflow',
-            presented_at=datetime.utcnow(),
-            responded_at=datetime.utcnow(),
-        )
-
-        # Try to reject in DB
-        try:
-            from trading_cotrader.core.database.session import session_scope
-            from trading_cotrader.services.recommendation_service import RecommendationService
-
-            with session_scope() as session:
-                svc = RecommendationService(session, broker=self.engine.broker)
-                svc.reject_recommendation(
-                    intent.target,
-                    reason=intent.rationale or 'Rejected via workflow',
-                )
-        except Exception as e:
-            logger.warning(f"Could not reject rec in DB: {e}")
-
         return SystemResponse(
             message=f"Rejected recommendation {intent.target[:8]}...",
         )
@@ -215,14 +183,6 @@ class InteractionManager:
         """Defer a decision for later."""
         if not intent.target:
             return SystemResponse(message="Usage: defer <recommendation_id>")
-
-        self.engine.accountability.log_decision(
-            rec_id=intent.target,
-            response='deferred',
-            rationale=intent.rationale or 'Deferred via workflow',
-            presented_at=datetime.utcnow(),
-            responded_at=datetime.utcnow(),
-        )
 
         return SystemResponse(
             message=f"Deferred recommendation {intent.target[:8]}... "
@@ -917,70 +877,35 @@ class InteractionManager:
         return SystemResponse(message="\n".join(lines))
 
     def _pending(self, intent: UserIntent = None) -> SystemResponse:
-        """Enhanced pending: entry recs + exit signals with market context."""
-        from trading_cotrader.core.database.session import session_scope
-        from trading_cotrader.repositories.recommendation import RecommendationRepository
+        """Show pending decisions from workflow context."""
+        ctx = self.engine.context
+        recs = ctx.get('pending_recommendations', [])
+        exits = ctx.get('exit_signals', [])
 
-        with session_scope() as session:
-            repo = RecommendationRepository(session)
-            recs = repo.get_pending()
+        if not recs and not exits:
+            return SystemResponse(message="No pending decisions.")
 
-        if not recs:
-            return SystemResponse(message="No pending recommendations.")
-
-        lines = ["PENDING RECOMMENDATIONS", "\u2550" * 90]
-
-        for r in recs:
-            age_mins = int((datetime.utcnow() - r.created_at).total_seconds() / 60)
-            age_str = f"{age_mins}m" if age_mins < 60 else f"{age_mins // 60}h {age_mins % 60}m"
-
-            badge = r.recommendation_type.value.upper()
-            lines.append(
-                f"\n  [{badge:^7}] {r.underlying} — {r.strategy_type}"
-            )
-            lines.append(
-                f"    ID: {r.id[:8]}    Confidence: {r.confidence}/10    "
-                f"Risk: {r.risk_category}    Age: {age_str}"
-            )
-            if r.suggested_portfolio:
-                lines.append(f"    Suggested portfolio: {r.suggested_portfolio}")
-
-            # Market context
-            mc = r.market_context
-            ctx_parts = []
-            if mc.vix is not None:
-                ctx_parts.append(f"VIX={mc.vix:.1f}")
-            if mc.iv_rank is not None:
-                ctx_parts.append(f"IVR={mc.iv_rank:.0f}")
-            if mc.rsi is not None:
-                ctx_parts.append(f"RSI={mc.rsi:.0f}")
-            if mc.market_trend:
-                ctx_parts.append(f"Trend={mc.market_trend}")
-            if ctx_parts:
-                lines.append(f"    Market: {', '.join(ctx_parts)}")
-
-            # Rationale (truncated)
-            if r.rationale:
-                lines.append(f"    Rationale: {r.rationale[:120]}")
-
-            # Exit-specific info
-            if r.trade_id_to_close:
+        lines = []
+        if recs:
+            lines.append(f"PENDING RECOMMENDATIONS: {len(recs)}")
+            for r in recs:
                 lines.append(
-                    f"    Closes trade: {r.trade_id_to_close[:8]}  "
-                    f"Urgency: {r.exit_urgency or '—'}  "
-                    f"Action: {r.exit_action or '—'}"
+                    f"  [{r.get('id', '?')[:8]}] {r.get('underlying', '?')} "
+                    f"{r.get('strategy_type', '?')} conf={r.get('confidence', '?')}"
                 )
-            if r.triggered_rules:
-                lines.append(f"    Triggered: {', '.join(r.triggered_rules)}")
-
-        lines.append(f"\n{'─' * 90}")
-        lines.append(f"Total pending: {len(recs)}")
+        if exits:
+            lines.append(f"EXIT SIGNALS: {len(exits)}")
+            for s in exits:
+                lines.append(
+                    f"  [{s.get('id', '?')[:8]}] {s.get('underlying', '?')} "
+                    f"{s.get('type', '?')} urgency={s.get('exit_urgency', '?')}"
+                )
 
         return SystemResponse(
             message="\n".join(lines),
-            pending_decisions=[r.to_dict() for r in recs],
+            pending_decisions=[*recs, *exits],
             requires_action=True,
-            data={'pending_count': len(recs)},
+            data={'pending_count': len(recs) + len(exits)},
         )
 
     def _trades(self, intent: UserIntent = None) -> SystemResponse:

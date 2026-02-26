@@ -1,37 +1,31 @@
 """
-Tests for ScoutAgent — research template evaluation pipeline.
+Tests for ScoutAgent — market analysis, screening, and ranking pipeline.
 
-Migrated from screener-based tests to research template tests (session 24).
-Config-driven via config/research_templates.yaml.
+Scout owns the ResearchContainer and uses market_analyzer's screening + ranking
+services to find actionable setups.
 
 Tests:
-1. Agent loads research templates from YAML
-2. Agent evaluates entry conditions and generates recommendations
-3. Agent auto-accepts recommendations into research portfolios
-4. Parameter variants generate separate evaluations
-5. Disabled templates are skipped
-6. Agent handles missing symbols gracefully
-7. Research portfolios exist in risk_config.yaml
-8. TradeSource enum values
-9. Agent registry includes quant_research
-10. Agent wired into workflow engine
+1. Agent config and metadata
+2. Agent run() with mocked market_analyzer screening/ranking
+3. Agent populate() requires container
+4. Research portfolios exist in risk_config.yaml
+5. TradeSource enum values
+6. Agent registry includes scout
+7. Agent wired into workflow engine
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, PropertyMock
 from decimal import Decimal
 from pathlib import Path
 
 from trading_cotrader.agents.domain.scout import ScoutAgent
 from trading_cotrader.agents.protocol import AgentStatus
 from trading_cotrader.core.models.domain import TradeSource
-from trading_cotrader.services.research.template_loader import (
-    load_research_templates, ResearchTemplate, ParameterVariant,
-)
 
 
 class TestScoutAgentConfig:
-    """Test research template loading and validation."""
+    """Test ScoutAgent metadata and configuration."""
 
     def test_agent_has_correct_name(self):
         agent = ScoutAgent()
@@ -43,144 +37,147 @@ class TestScoutAgentConfig:
         assert ok is True
         assert reason == ""
 
-    def test_loads_research_templates(self):
-        templates = load_research_templates()
-        assert isinstance(templates, dict)
-        assert len(templates) >= 7
+    def test_agent_metadata(self):
+        meta = ScoutAgent.get_metadata()
+        assert meta['name'] == 'scout'
+        assert meta['display_name'] == 'Scout (Quant)'
+        assert meta['category'] == 'domain'
+        assert 'monitoring' in meta['runs_during']
 
-    def test_templates_have_expected_names(self):
-        templates = load_research_templates()
-        assert 'correction_premium_sell' in templates
-        assert 'earnings_iv_crush' in templates
-        assert 'black_swan_hedge' in templates
-        assert 'vol_arbitrage_calendar' in templates
+    def test_agent_responsibilities(self):
+        meta = ScoutAgent.get_metadata()
+        assert 'Market screening (breakout, momentum, mean-reversion, income)' in meta['responsibilities']
+        assert 'Candidate ranking' in meta['responsibilities']
 
-    def test_templates_have_required_fields(self):
-        templates = load_research_templates()
-        for name, t in templates.items():
-            assert t.target_portfolio, f"{name} missing target_portfolio"
-            assert len(t.entry_conditions) > 0, f"{name} missing entry_conditions"
-            assert len(t.exit_conditions) > 0, f"{name} missing exit_conditions"
-
-    def test_variants_have_variant_id(self):
-        templates = load_research_templates()
-        for name, t in templates.items():
-            for variant in t.variants:
-                assert variant.variant_id, f"{name} variant missing variant_id"
-
-    def test_correction_has_parameter_variants(self):
-        templates = load_research_templates()
-        t = templates['correction_premium_sell']
-        assert len(t.variants) >= 2, "Expected at least base + 1 variant"
-        variant_ids = [v.variant_id for v in t.variants]
-        assert 'base' in variant_ids
-        assert 'delta_tight' in variant_ids
+    def test_agent_datasources(self):
+        meta = ScoutAgent.get_metadata()
+        assert 'market_analyzer library' in meta['datasources']
+        assert 'ResearchContainer' in meta['datasources']
 
 
-class TestScoutAgentExecution:
-    """Test agent execution with mocked evaluation."""
+class TestScoutAgentRun:
+    """Test agent run() with mocked market_analyzer."""
 
-    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
-    def test_disabled_returns_early(self, mock_enabled):
-        mock_enabled.return_value = False
-        agent = ScoutAgent()
+    def test_no_container_returns_error(self):
+        agent = ScoutAgent(container=None)
+        result = agent.run({})
+        assert result.status == AgentStatus.ERROR
+
+    def test_empty_watchlist_returns_completed(self):
+        container = MagicMock()
+        container.symbols = []
+        agent = ScoutAgent(container=container)
         result = agent.run({})
         assert result.status == AgentStatus.COMPLETED
-        assert result.data.get('enabled') is False
+        assert result.data['tickers'] == 0
 
-    @patch('trading_cotrader.agents.domain.scout.get_enabled_templates')
-    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
-    def test_no_templates_returns_early(self, mock_enabled, mock_templates):
-        mock_enabled.return_value = True
-        mock_templates.return_value = {}
-        agent = ScoutAgent()
-        result = agent.run({})
-        assert result.status == AgentStatus.COMPLETED
-        assert result.data.get('template_count') == 0
+    def test_screening_and_ranking(self):
+        """Test run() calls screening and ranking."""
+        container = MagicMock()
+        container.symbols = ['SPY', 'QQQ']
 
-    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._evaluate_template_variant')
-    @patch('trading_cotrader.agents.domain.scout.get_enabled_templates')
-    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
-    def test_runs_all_enabled_templates(self, mock_enabled, mock_templates, mock_eval):
-        mock_enabled.return_value = True
-        mock_templates.return_value = {
-            'correction': ResearchTemplate(
-                name='correction', enabled=True, universe=['SPY', 'QQQ'],
-                target_portfolio='research_correction',
-                variants=[ParameterVariant(variant_id='base')],
-            ),
-            'arbitrage': ResearchTemplate(
-                name='arbitrage', enabled=True, universe=['SPY'],
-                target_portfolio='research_arbitrage',
-                variants=[ParameterVariant(variant_id='base')],
-            ),
-        }
-        mock_eval.return_value = (3, 3, 0)
-        agent = ScoutAgent()
-        result = agent.run({})
-        assert result.status == AgentStatus.COMPLETED
-        assert mock_eval.call_count == 2
-        assert result.data['trades_booked'] == 6  # 3 per template
+        # Mock market_analyzer
+        mock_ma = MagicMock()
 
-    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._evaluate_template_variant')
-    @patch('trading_cotrader.agents.domain.scout.get_enabled_templates')
-    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
-    def test_variants_each_trigger_evaluation(self, mock_enabled, mock_templates, mock_eval):
-        mock_enabled.return_value = True
-        mock_templates.return_value = {
-            'correction': ResearchTemplate(
-                name='correction', enabled=True, universe=['SPY'],
-                target_portfolio='research_correction',
-                variants=[
-                    ParameterVariant(variant_id='base'),
-                    ParameterVariant(variant_id='tight', overrides={'short_delta': 0.25}),
-                    ParameterVariant(variant_id='wide', overrides={'short_delta': 0.35}),
-                ],
-            ),
-        }
-        mock_eval.return_value = (1, 1, 0)
-        agent = ScoutAgent()
-        result = agent.run({})
-        assert mock_eval.call_count == 3  # One per variant
-        assert result.data['trades_booked'] == 3
+        # Mock screening result
+        mock_candidate = MagicMock()
+        mock_candidate.model_dump.return_value = {'ticker': 'SPY', 'screen': 'momentum', 'score': 0.8}
+        mock_scan = MagicMock()
+        mock_scan.candidates = [mock_candidate]
+        mock_scan.tickers_scanned = 2
+        mock_ma.screening.scan.return_value = mock_scan
 
-    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._evaluate_template_variant')
-    @patch('trading_cotrader.agents.domain.scout.get_enabled_templates')
-    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
-    def test_context_updated_with_booked_trades(self, mock_enabled, mock_templates, mock_eval):
-        mock_enabled.return_value = True
-        mock_templates.return_value = {
-            'correction_premium_sell': ResearchTemplate(
-                name='correction_premium_sell', enabled=True,
-                universe=['SPY'], target_portfolio='research_correction',
-                variants=[ParameterVariant(variant_id='base')],
-            ),
-        }
-        mock_eval.return_value = (2, 2, 0)
+        # Mock ranking result
+        mock_ranked = MagicMock()
+        mock_ranked.model_dump.return_value = {'ticker': 'SPY', 'score': 0.9, 'rank': 1}
+        mock_rank_result = MagicMock()
+        mock_rank_result.ranked = [mock_ranked]
+        mock_ma.ranking.rank.return_value = mock_rank_result
+
+        # Mock black swan
+        mock_bs = MagicMock()
+        mock_bs.alert_level = 'NORMAL'
+        mock_bs.composite_score = 0.1
+        mock_ma.black_swan.alert.return_value = mock_bs
+
+        # Mock context
+        mock_ctx = MagicMock()
+        mock_ctx.environment_label = 'risk-on'
+        mock_ctx.trading_allowed = True
+        mock_ctx.position_size_factor = 1.0
+        mock_ma.context.assess.return_value = mock_ctx
+
+        agent = ScoutAgent(container=container)
+        agent._market_analyzer = mock_ma
+
         context = {}
-        agent = ScoutAgent()
-        agent.run(context)
-        assert 'research_trades_booked' in context
-        assert len(context['research_trades_booked']) == 1
-        assert context['research_trades_booked'][0]['template'] == 'correction_premium_sell'
-        assert context['research_trades_booked'][0]['count'] == 2
+        result = agent.run(context)
 
-    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._evaluate_template_variant')
-    @patch('trading_cotrader.agents.domain.scout.get_enabled_templates')
-    @patch('trading_cotrader.agents.domain.scout.ScoutAgent._is_research_enabled')
-    def test_empty_universe_skipped(self, mock_enabled, mock_templates, mock_eval):
-        mock_enabled.return_value = True
-        mock_templates.return_value = {
-            'empty': ResearchTemplate(
-                name='empty', enabled=True, universe=[],
-                target_portfolio='research_custom',
-                variants=[ParameterVariant(variant_id='base')],
-            ),
-        }
-        agent = ScoutAgent()
+        assert result.status == AgentStatus.COMPLETED
+        assert result.data['candidates'] == 1
+        assert result.data['ranked'] == 1
+        assert result.data['black_swan'] == 'NORMAL'
+        assert 'screening_candidates' in context
+        assert 'ranking' in context
+        assert context['trading_allowed'] is True
+
+    def test_screening_failure_handled_gracefully(self):
+        """Test run() handles screening failure without crashing."""
+        container = MagicMock()
+        container.symbols = ['SPY']
+
+        mock_ma = MagicMock()
+        mock_ma.screening.scan.side_effect = Exception("API timeout")
+        mock_ma.ranking.rank.return_value = MagicMock(ranked=[])
+        mock_ma.black_swan.alert.return_value = MagicMock(alert_level='NORMAL', composite_score=0.0)
+        mock_ma.context.assess.return_value = MagicMock(
+            environment_label='cautious', trading_allowed=True, position_size_factor=0.8
+        )
+
+        agent = ScoutAgent(container=container)
+        agent._market_analyzer = mock_ma
+
         result = agent.run({})
-        # No symbols → no evaluation
-        assert mock_eval.call_count == 0
+        assert result.status == AgentStatus.COMPLETED
+        assert result.data['candidates'] == 0
+
+    def test_context_stores_black_swan_level(self):
+        """Test elevated black swan level stored in context."""
+        container = MagicMock()
+        container.symbols = ['SPY']
+
+        mock_ma = MagicMock()
+        mock_ma.screening.scan.return_value = MagicMock(candidates=[], tickers_scanned=1)
+        mock_ma.ranking.rank.return_value = MagicMock(ranked=[])
+        mock_ma.black_swan.alert.return_value = MagicMock(alert_level='ELEVATED', composite_score=0.35)
+        mock_ma.context.assess.return_value = MagicMock(
+            environment_label='cautious', trading_allowed=True, position_size_factor=0.7
+        )
+
+        agent = ScoutAgent(container=container)
+        agent._market_analyzer = mock_ma
+
+        context = {}
+        agent.run(context)
+        assert context['black_swan_level'] == 'ELEVATED'
+
+
+class TestScoutAgentPopulate:
+    """Test populate() behavior."""
+
+    def test_populate_without_container_returns_error(self):
+        agent = ScoutAgent(container=None)
+        result = agent.populate({})
+        assert result.status == AgentStatus.ERROR
+
+    def test_populate_empty_watchlist(self):
+        container = MagicMock()
+        container.watchlist_config = True
+        container.symbols = []
+        agent = ScoutAgent(container=container)
+        result = agent.populate({})
+        assert result.status == AgentStatus.COMPLETED
+        assert result.data['tickers'] == 0
 
 
 class TestTradeSourceEnum:
@@ -242,7 +239,7 @@ class TestResearchPortfolioConfig:
 
 
 class TestAgentRegistry:
-    """Test quant_research is in the agent registry."""
+    """Test scout is in the agent registry."""
 
     def test_agent_in_registry(self):
         from trading_cotrader.web.api_agents import AGENT_REGISTRY
@@ -253,7 +250,7 @@ class TestAgentRegistry:
         entry = AGENT_REGISTRY['scout']
         assert entry['category'] == 'domain'
         assert 'monitoring' in entry['runs_during']
-        assert 'Auto-booking' in entry['responsibilities']
+        assert 'Candidate ranking' in entry['responsibilities']
 
     def test_agent_class_metadata(self):
         """Test metadata comes from BaseAgent.get_metadata() classmethod."""

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { endpoints } from '../api/endpoints'
-import type { TradingDashboardData, RefreshResult, TemplateEvaluationResult } from '../api/types'
+import type { TradingDashboardData, RefreshResult } from '../api/types'
 
 export function useTradingDashboard(portfolio: string) {
   return useQuery<TradingDashboardData>({
@@ -24,21 +24,6 @@ export function useRefreshDashboard(portfolio: string) {
       const { data } = await api.post(
         endpoints.refreshDashboard(portfolio) + (snapshot ? '?snapshot=true' : ''),
       )
-      return data
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['trading-dashboard', portfolio] })
-    },
-  })
-}
-
-export function useEvaluateTemplate(portfolio: string) {
-  const qc = useQueryClient()
-  return useMutation<TemplateEvaluationResult, Error, string>({
-    mutationFn: async (templateName: string) => {
-      const { data } = await api.post(endpoints.evaluateTemplate(portfolio), {
-        template_name: templateName,
-      })
       return data
     },
     onSuccess: () => {

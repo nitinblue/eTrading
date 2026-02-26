@@ -104,14 +104,10 @@ qa:
   fail_on_regression: false  # halt if tests fail
 
 # =============================================================================
-# QUANT RESEARCH — Auto-book pipeline for ML training data
+# QUANT RESEARCH — Scout agent screening + ranking pipeline
 # =============================================================================
-# Templates are defined in config/research_templates.yaml.
-# Universe, entry/exit conditions, strategies, and variants are all in the template.
-# QuantResearchAgent evaluates templates every MONITORING cycle.
+# Scout uses market_analyzer screening + ranking services.
+# Research templates retired in s35e — replaced by market_analyzer strategies.
 
 research:
   enabled: true
-  # All template config now lives in config/research_templates.yaml
-  # This flag controls whether the QuantResearchAgent runs at all
-  templates_enabled: true

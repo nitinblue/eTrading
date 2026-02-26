@@ -93,6 +93,8 @@ class ContainerManager:
         self._bundles: Dict[str, PortfolioBundle] = {}
         # Maps whatif config_name → real config_name for bundle lookup
         self._whatif_to_real: Dict[str, str] = {}
+        # Maps DB portfolio name → bundle config name (populated during load_from_repositories)
+        self._db_name_to_bundle: Dict[str, str] = {}
 
         self._event_listeners: List[Callable] = []
 
@@ -144,15 +146,19 @@ class ContainerManager:
 
     def get_bundle(self, config_name: str) -> Optional[PortfolioBundle]:
         """
-        Get bundle by config name. Resolves whatif names to parent bundle.
+        Get bundle by config name, DB portfolio name, or whatif name.
         """
-        # Direct lookup
+        # Direct lookup by config name
         if config_name in self._bundles:
             return self._bundles[config_name]
         # WhatIf → parent
         real_name = self._whatif_to_real.get(config_name)
         if real_name:
             return self._bundles.get(real_name)
+        # DB portfolio name → config name (e.g. "Tastytrade 5WZ78765" → "tastytrade")
+        mapped = self._db_name_to_bundle.get(config_name)
+        if mapped:
+            return self._bundles.get(mapped)
         return None
 
     def get_all_bundles(self) -> List[PortfolioBundle]:
@@ -304,11 +310,23 @@ class ContainerManager:
                     bundle.add_portfolio_id(portfolio_orm.id)
                     logger.info(f"Bundle '{bundle.config_name}' matched to DB portfolio {portfolio_orm.id} "
                                 f"(broker={bundle.broker_firm}, account={bundle.account_number})")
+
+            # Fallback: match by config name (works when broker/account not synced yet)
+            if not portfolio_orm:
+                portfolio_orm = session.query(PortfolioORM).filter(
+                    PortfolioORM.name == bundle.config_name
+                ).first()
+                if portfolio_orm:
+                    bundle.add_portfolio_id(portfolio_orm.id)
+                    logger.info(f"Bundle '{bundle.config_name}' matched to DB portfolio by name: {portfolio_orm.id}")
                 else:
-                    logger.debug(f"No DB portfolio for bundle '{bundle.config_name}' "
-                                 f"(broker={bundle.broker_firm}, account={bundle.account_number}) — not synced yet")
+                    logger.debug(f"No DB portfolio for bundle '{bundle.config_name}' — not synced yet")
 
         if portfolio_orm:
+            # Store DB name → config name mapping for get_bundle() lookups
+            if portfolio_orm.name != bundle.config_name:
+                self._db_name_to_bundle[portfolio_orm.name] = bundle.config_name
+
             changes = bundle.portfolio.load_from_orm(portfolio_orm)
             for field_name, change in changes.items():
                 all_cell_updates.append(CellUpdate(

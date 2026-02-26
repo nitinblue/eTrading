@@ -909,40 +909,6 @@ export interface RefreshResult {
   snapshot_captured: boolean
 }
 
-export interface TemplateConditionResult {
-  passed: boolean
-  actual: number | string | null
-  target: number | string | null
-  operator: string
-}
-
-export interface EvaluatedSymbol {
-  symbol: string
-  triggered: boolean
-  conditions: Record<string, TemplateConditionResult>
-  snapshot?: { price: number; rsi_14: number | null; iv_rank: number | null }
-  proposed_trade?: {
-    strategy_type: string
-    legs: Array<{ strike: number; option_type: string; quantity: number; side: string }>
-    dte: number
-    pop?: number
-    expected_value?: number
-    max_profit?: number
-    max_loss?: number
-    breakevens?: number[]
-    fits_portfolio?: boolean
-    fitness_reasons?: string[]
-    fitness_warnings?: string[]
-  }
-  error?: string
-}
-
-export interface TemplateEvaluationResult {
-  template: { name: string; display_name: string; description: string; universe: string[] }
-  evaluated_symbols: EvaluatedSymbol[]
-  summary: string
-}
-
 // ---------------------------------------------------------------------------
 // Research Container Types
 // ---------------------------------------------------------------------------

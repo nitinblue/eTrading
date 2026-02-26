@@ -7,10 +7,12 @@ export function usePortfolios() {
   return useQuery<Portfolio[]>({
     queryKey: ['portfolios'],
     queryFn: async () => {
-      const { data } = await api.get(endpoints.portfolios)
+      const { data } = await api.get(endpoints.portfolios, { timeout: 30_000 })
       return data
     },
     refetchInterval: 15_000,
+    retry: 2,
+    retryDelay: 3_000,
   })
 }
 

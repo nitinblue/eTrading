@@ -59,7 +59,7 @@ export function useTerminal() {
     try {
       const { data } = await api.post<TerminalResponse>(endpoints.terminalExecute, {
         command: trimmed,
-      })
+      }, { timeout: 60_000 })
 
       // Handle clear command
       if (data.blocks.some((b) => b.type === 'clear')) {

@@ -8,6 +8,7 @@ Single endpoint: POST /terminal/execute  {"command": "analyze SPY"}
 """
 
 from typing import TYPE_CHECKING
+import asyncio
 import logging
 from datetime import date
 
@@ -603,7 +604,10 @@ def create_terminal_router(engine: 'WorkflowEngine') -> APIRouter:
             )
 
         try:
-            blocks = handler(args, _get_ma())
+            # Run in thread pool — MarketAnalyzer calls are synchronous and can
+            # take 10-30s.  Without to_thread() this blocks the entire event loop,
+            # starving every other request (portfolios, dashboard, etc.).
+            blocks = await asyncio.to_thread(handler, args, _get_ma())
             return TerminalResponse(blocks=blocks, command=body.command, success=True)
         except Exception as e:
             logger.error(f"Terminal command '{body.command}' failed: {e}", exc_info=True)

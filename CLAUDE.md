@@ -1,6 +1,6 @@
 # CLAUDE.md
 # Project: Trading CoTrader
-# Last Updated: February 23, 2026 (session 35d)
+# Last Updated: February 25, 2026 (session 35e)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log s1-s26)
 
 ## STANDING INSTRUCTIONS
@@ -90,7 +90,7 @@ React Frontend            <-- renders from API response
 |----|----------|------|------|-----------|--------|
 | `steward` | **Steward** | PortfolioManager — portfolio state, positions, P&L, capital utilization | `agents/domain/steward.py` | PortfolioBundle (via ContainerManager) | DONE (populate + run) |
 | `sentinel` | **Sentinel** | RiskManager — VaR, circuit breakers, fitness checks, execution gatekeeper | `agents/domain/sentinel.py` | (future) | Done (merged Guardian+Risk) |
-| `scout` | **Scout** | Quant — research, screening, templates, market analysis | `agents/domain/scout.py` | **ResearchContainer** | EXEMPLAR (done) |
+| `scout` | **Scout** | Quant — market analysis, screening, ranking, black swan | `agents/domain/scout.py` | **ResearchContainer** | EXEMPLAR (done) |
 | `maverick` | **Maverick** | Trader — domain orchestrator, cross-references Scout+Steward, trading signals | `agents/domain/maverick.py` | Reads from PortfolioBundle + ResearchContainer | WIRED (run: boot+monitoring) |
 | `atlas` | **Atlas** | TechArchitect — infrastructure, reporting, QA, system health | `agents/domain/atlas.py` | (future) | Skeleton |
 
@@ -105,11 +105,10 @@ class Scout(BaseAgent):  # QuantResearchAgent — THE EXEMPLAR
     """
     1. Owns a Container (ResearchContainer)
     2. populate() fills container from external data (MarketAnalyzer)
-    3. run() evaluates templates against container data
-    4. analyze() does deep single-symbol analysis
-    5. Container persists to DB for cold start
-    6. API reads from container, NEVER from external lib directly
-    7. get_metadata() classmethod returns agent card info
+    3. run() screens watchlist + ranks candidates via MarketAnalyzer
+    4. Container persists to DB for cold start
+    5. API reads from container, NEVER from external lib directly
+    6. get_metadata() classmethod returns agent card info
     """
 
     def populate(self, context: dict) -> AgentResult:
@@ -118,11 +117,10 @@ class Scout(BaseAgent):  # QuantResearchAgent — THE EXEMPLAR
         # Persists to research_snapshots DB table
 
     def run(self, context: dict) -> AgentResult:
-        # Evaluates research templates via ConditionEvaluator
-        # Auto-books triggered trades into research portfolios
-
-    def analyze(self, symbol: str) -> dict:
-        # Deep analysis of single symbol
+        # Screens watchlist via ma.screening.scan()
+        # Ranks candidates via ma.ranking.rank()
+        # Checks black swan + market context
+        # Stores results in context for Maverick
 ```
 
 **ALL agents must follow this exact pattern:**
@@ -351,7 +349,7 @@ ma.macro.calendar()                # 30-day macro event calendar
 | **Workflow Engine** | `workflow/engine.py` (orchestrator), `workflow/states.py` (12 states), `workflow/scheduler.py` |
 | **Trading Sheet** | `web/api_trading_sheet.py` (4 endpoints: dashboard, evaluate, add-whatif, book) |
 | **Market Analyzer** | External lib `market_analyzer` (editable from `../market_analyzer`). Endpoints in `web/api_v2.py` |
-| **Research Templates** | `config/research_templates.yaml` (7 templates), `services/research/template_loader.py`, `services/research/condition_evaluator.py` |
+| **Research Templates** | RETIRED (s35e) — replaced by MarketAnalyzer screening/ranking services |
 | **Broker Adapters** | `adapters/base.py` (ABC), `adapters/factory.py`, `adapters/tastytrade_adapter.py` |
 | **Pricing** | `services/pricing/probability.py` (POP/EV), `services/pricing/black_scholes.py` |
 | **DB/ORM** | `core/database/schema.py` (23 tables), `core/database/session.py`, `repositories/` |
@@ -391,7 +389,7 @@ ma.macro.calendar()                # 30-day macro event calendar
 - **Agent files = NOUNS** (what it is): `guardian.py`, `scout.py`, `warden.py`
 - **Service files = VERBS** (what it does): `portfolio_sync.py`, `condition_evaluator.py`, `trade_booking_service.py`
 - Agent classes: `SentinelAgent`, `ScoutAgent`, etc.
-- Service classes: `PortfolioFitnessChecker`, `ConditionEvaluator`, etc.
+- Service classes: `PortfolioFitnessChecker`, etc.
 
 ### ZERO DEAD CODE POLICY (Nitin mandate)
 - **NEVER create code that is not immediately used end-to-end.** Every file, class, function must be imported and called.
@@ -468,8 +466,8 @@ All mathematical pricing/risk models moved out. **Greeks and prices come from br
 ### Agent Definition & Implementation — IN PROGRESS (open-ended)
 Agent definitions are evolving. Scout (Quant) is the exemplar. Other 4 agents (Steward, Sentinel, Maverick, Atlas) have roles defined but implementation is open. Next session continues building Scout.
 
-**Current state (s35d):**
-- **Scout** (Quant) — DONE: BaseAgent + populate() + ResearchContainer + DB persistence + API. File: `agents/domain/scout.py`
+**Current state (s35e):**
+- **Scout** (Quant) — DONE: populate() fills ResearchContainer from MarketAnalyzer. run() uses ma.screening + ma.ranking + ma.black_swan + ma.context. Research templates RETIRED (s35e). File: `agents/domain/scout.py`
 - **Sentinel** (RiskManager) — DONE: Merged Guardian+Risk. Circuit breakers + constraints + container-based risk reads. File: `agents/domain/sentinel.py`
 - **Steward** (PortfolioManager) — DONE: populate() fills PortfolioBundle from DB, run() does capital utilization analysis. Absorbed portfolio_state + capital agents. File: `agents/domain/steward.py`
 - **Maverick** (Trader) — WIRED (s35c): Domain orchestrator. run() cross-references Steward's PortfolioBundle with Scout's ResearchContainer to produce trading signals. Runs during boot + monitoring. `api_trading_sheet.py` GET reads entirely from containers. Next: absorb executor + notifier + accountability + objectives.
@@ -498,6 +496,7 @@ All mathematical models (Black-Scholes, POP/EV calculations, VaR, IV solver, str
 
 | Session | Date | What |
 |---------|------|------|
+| s35e | Feb 25 | MarketAnalyzer upgrade + research template retirement. Force-reinstalled market_analyzer with new services (BlackSwan, Context, Screening, Ranking + 5 new opportunity assessments). Added 8 API endpoints (black-swan, context, screening, 5 opportunity). Frontend: BlackSwanBar + MarketContextStrip components, useBlackSwan/useMarketContext hooks, ResearchDashboardPage redesigned for max density. Retired research templates: deleted ConditionEvaluator, template_loader, research_templates.yaml, scenario_templates.yaml, 2 test files. Rewrote Scout.run() to use ma.screening + ma.ranking. Removed evaluate endpoint from api_trading_sheet.py. Container-first trading dashboard (zero DB calls). 166 tests pass. |
 | s35d | Feb 23 | Math purge: removed ALL mathematical pricing/risk models from live code. Moved 14 files to `playground/archived_math/` (Black-Scholes, ProbabilityCalculator, VaRCalculator, GreeksEngine, ImpliedVolSolver, ScenarioEngine, OptionPricer, strategy_builder, greeks_service, functional_portfolio, calculations + 2 test files). Removed ProbabilityCalculator from api_trading_sheet.py (add-whatif payoff, template eval). Removed strategy proposals endpoint from api_research.py. Removed _construct_legs strike approximation. Cleaned up services/pricing/__init__.py and services/risk/__init__.py. 257 tests pass. |
 | s35c | Feb 23 | Wired Maverick as domain orchestrator. MaverickAgent.run() cross-references Steward's PortfolioBundle with Scout's ResearchContainer to produce trading signals. Rewired `api_trading_sheet.py` GET endpoint: ALL reads from containers (no DB queries). Added `market_context` (Scout's research) to trading dashboard response. Rewired `evaluate` endpoint to use ResearchContainer instead of TechnicalAnalysisService. Engine passes container_manager to Maverick, calls in boot + monitoring. Updated api_agents.py registry. 11 new tests. 296 tests pass. |
 | s35b | Feb 23 | Built out Steward (PortfolioManager). populate() absorbs PortfolioStateAgent (fills PortfolioBundle from DB), run() absorbs CapitalUtilizationAgent (capital analysis + alerts). Enhanced Sentinel with container_manager (reads risk from containers, falls back to DB). Added PortfolioRiskLimits + concentration_pct + to_summary() to RiskFactorContainer. Deleted 2 legacy files (portfolio_state.py, capital.py). 13 new tests. 285 tests pass. |

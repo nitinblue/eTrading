@@ -20,7 +20,7 @@ from trading_cotrader.config.broker_config_loader import (
 from trading_cotrader.config.risk_config_loader import (
     PortfolioConfig, PortfoliosConfig, PortfolioRiskLimits,
 )
-from trading_cotrader.agents.execution.broker_router import BrokerRouter, ExecutionResult
+from trading_cotrader.adapters.broker_router import BrokerRouter, ExecutionResult
 from trading_cotrader.services.portfolio_manager import PortfolioManager
 
 
@@ -655,22 +655,6 @@ class TestContainerBundles:
         ps = PortfolioState(portfolio_id='1', name='test', currency='INR')
         d = ps.to_dict()
         assert d['currency'] == 'INR'
-
-
-class TestQAAgent:
-    """QA agent basic tests."""
-
-    def test_qa_agent_creates(self):
-        from trading_cotrader.agents.learning.qa_agent import QAAgent
-        qa = QAAgent()
-        assert qa.name == 'qa_agent'
-        assert qa._min_coverage_pct == 70.0
-
-    def test_qa_agent_safety_check(self):
-        from trading_cotrader.agents.learning.qa_agent import QAAgent
-        qa = QAAgent()
-        ok, reason = qa.safety_check({})
-        assert ok is True
 
 
 class TestLoadBrokerRegistryFromYAML:

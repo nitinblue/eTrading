@@ -4,7 +4,6 @@ Trading Dashboard API — Single comprehensive view for trading decisions.
 Endpoints:
   GET  /api/v2/trading-dashboard/{portfolio}          — Full trading view
   POST /api/v2/trading-dashboard/{portfolio}/refresh   — Broker sync + container refresh
-  POST /api/v2/trading-dashboard/{portfolio}/evaluate  — Evaluate a research template
   POST /api/v2/trading-dashboard/{portfolio}/add-whatif — Add proposed trade
   POST /api/v2/trading-dashboard/{portfolio}/book       — Convert WhatIf to real
 
@@ -61,7 +60,12 @@ def _dte_from_expiry(expiry) -> Optional[int]:
     if expiry is None:
         return None
     today = date_cls.today()
-    if isinstance(expiry, datetime):
+    if isinstance(expiry, str):
+        try:
+            expiry = datetime.fromisoformat(expiry).date()
+        except ValueError:
+            return None
+    elif isinstance(expiry, datetime):
         expiry = expiry.date()
     return max(0, (expiry - today).days)
 
@@ -695,10 +699,6 @@ def _build_risk_factors_from_container(risk_factor_container) -> List[Dict]:
 # Request models
 # ---------------------------------------------------------------------------
 
-class EvaluateTemplateRequest(BaseModel):
-    template_name: str
-
-
 class AddWhatIfRequest(BaseModel):
     underlying: str
     strategy_type: str
@@ -736,13 +736,22 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
             raise HTTPException(503, "Container manager not initialized")
 
         bundle = cm.get_bundle(portfolio_name)
+
+        # If bundle not found, DB name→config name mapping may not be populated yet.
+        # Load all bundles from DB to populate the mapping, then retry.
+        if not bundle:
+            try:
+                with session_scope() as session:
+                    cm.load_all_bundles(session)
+                bundle = cm.get_bundle(portfolio_name)
+            except Exception as e:
+                logger.warning(f"Trading dashboard DB fallback failed: {e}")
+
         if not bundle:
             raise HTTPException(404, f"Portfolio bundle '{portfolio_name}' not found")
 
         pstate = bundle.portfolio.state
 
-        # If Steward hasn't populated yet (engine still booting), return empty dashboard
-        # instantly — no DB fallback, no blocking.  Frontend shows "No live data" gracefully.
         if not pstate:
             return {
                 'portfolio': {
@@ -908,97 +917,6 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
             'broker_synced': sync_count > 0,
             'containers_refreshed': True,
             'snapshot_captured': snapshot_result is not None,
-        }
-
-    # -----------------------------------------------------------------------
-    # POST /trading-dashboard/{portfolio_name}/evaluate
-    # -----------------------------------------------------------------------
-    @router.post("/trading-dashboard/{portfolio_name}/evaluate")
-    async def evaluate_template(portfolio_name: str, body: EvaluateTemplateRequest):
-        """Evaluate a research template against the portfolio.
-
-        Uses ResearchContainer (Scout's data) instead of TechnicalAnalysisService.
-        Portfolio state comes from containers (Steward's data).
-        """
-        try:
-            from trading_cotrader.services.research.template_loader import load_research_templates
-            from trading_cotrader.services.research.condition_evaluator import ConditionEvaluator
-        except ImportError as e:
-            raise HTTPException(500, f"Missing dependency: {e}")
-
-        templates = load_research_templates()
-        template = templates.get(body.template_name)
-        if not template:
-            raise HTTPException(404, f"Template '{body.template_name}' not found. Available: {list(templates.keys())}")
-
-        # Portfolio state from containers
-        cm = engine.container_manager
-        if not cm:
-            raise HTTPException(503, "Container manager not initialized")
-
-        bundle = cm.get_bundle(portfolio_name)
-        if not bundle:
-            raise HTTPException(404, f"Portfolio bundle '{portfolio_name}' not found")
-
-        # Use Scout's ResearchContainer + adapter for condition evaluation
-        research = cm.research
-        evaluator = ConditionEvaluator()
-        global_ctx = {}
-        if hasattr(engine, 'context'):
-            global_ctx['vix'] = engine.context.get('vix', 20)
-
-        evaluated = []
-        triggered_count = 0
-
-        for symbol in template.universe:
-            entry = research.get(symbol)
-            if not entry:
-                evaluated.append({'symbol': symbol, 'triggered': False, 'conditions': {}, 'error': 'No research data'})
-                continue
-
-            # Use Scout's _ResearchEntryAdapter to bridge ResearchEntry -> ConditionEvaluator
-            snapshot = engine.scout._make_snapshot_adapter(entry)
-
-            all_passed, details = evaluator.evaluate_all(template.entry_conditions, snapshot, global_ctx)
-            conditions_display = {}
-            for indicator, detail in details.items():
-                conditions_display[indicator] = {
-                    'passed': detail.get('passed', False),
-                    'actual': detail.get('actual'),
-                    'target': detail.get('target'),
-                    'operator': detail.get('operator', ''),
-                }
-
-            symbol_result = {
-                'symbol': symbol,
-                'triggered': all_passed,
-                'conditions': conditions_display,
-                'snapshot': {
-                    'price': float(entry.current_price) if entry.current_price else 0.0,
-                    'rsi_14': entry.rsi_14,
-                    'iv_rank': entry.iv_rank,
-                },
-            }
-
-            if all_passed:
-                triggered_count += 1
-
-            evaluated.append(symbol_result)
-
-        summary_parts = [f"{triggered_count} of {len(template.universe)} symbols triggered."]
-        for ev in evaluated:
-            if ev.get('triggered'):
-                summary_parts.append(f"{ev['symbol']} triggered.")
-
-        return {
-            'template': {
-                'name': template.name,
-                'display_name': template.display_name,
-                'description': template.description,
-                'universe': template.universe,
-            },
-            'evaluated_symbols': evaluated,
-            'summary': ' '.join(summary_parts),
         }
 
     # -----------------------------------------------------------------------

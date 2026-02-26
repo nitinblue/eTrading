@@ -1,12 +1,11 @@
 """
-Step 10: AI/ML Status
-======================
+Step 10: Trade & Event Stats
+=============================
 
 Shows:
-- ML data readiness (event counts, snapshot counts)
+- Event counts and snapshot counts
 - Trade table stats (total trades, by type, by status)
 - Top 5 recent trades
-- Feature extraction readiness
 """
 
 from trading_cotrader.harness.base import (
@@ -15,10 +14,10 @@ from trading_cotrader.harness.base import (
 
 
 class MLStatusStep(TestStep):
-    """Harness step for AI/ML status and data readiness."""
+    """Harness step for trade and event statistics."""
 
-    name = "Step 10: AI/ML Status"
-    description = "Show ML data readiness, trade stats, and feature extraction status"
+    name = "Step 10: Trade & Event Stats"
+    description = "Show trade stats, event counts, and recent trades"
 
     def execute(self) -> StepResult:
         from trading_cotrader.core.database.session import session_scope
@@ -31,7 +30,7 @@ class MLStatusStep(TestStep):
         messages = []
 
         with session_scope() as session:
-            # 1. ML Data Pipeline stats
+            # Event stats
             total_events = session.query(func.count(TradeEventORM.event_id)).scalar() or 0
             events_with_outcomes = (
                 session.query(func.count(TradeEventORM.event_id))
@@ -39,7 +38,7 @@ class MLStatusStep(TestStep):
                 .scalar()
             ) or 0
 
-            # Snapshot count (from MarketDataSnapshotORM if available)
+            # Snapshot count
             total_snapshots = 0
             try:
                 from trading_cotrader.core.database.schema import MarketDataSnapshotORM
@@ -64,27 +63,18 @@ class MLStatusStep(TestStep):
                 .all()
             )
 
-            # ML readiness table
-            ready_supervised = events_with_outcomes >= 100
-            ready_rl = events_with_outcomes >= 500
-
-            ml_data = [
+            stats_data = [
                 ["Total Events", total_events, ""],
                 ["Events with Outcomes", events_with_outcomes,
                  "OK" if events_with_outcomes > 0 else "None yet"],
                 ["Portfolio Snapshots", total_snapshots, ""],
                 ["Total Trades", total_trades, ""],
-                ["", "", ""],
-                ["Supervised Learning", "READY" if ready_supervised else "NOT READY",
-                 f"Need {max(0, 100 - events_with_outcomes)} more outcomes"],
-                ["Reinforcement Learning", "READY" if ready_rl else "NOT READY",
-                 f"Need {max(0, 500 - events_with_outcomes)} more outcomes"],
             ]
 
             tables.append(rich_table(
-                ml_data,
+                stats_data,
                 headers=["Metric", "Value", "Note"],
-                title="ML Data Readiness"
+                title="Data Stats"
             ))
 
             # Trade stats table
@@ -135,29 +125,6 @@ class MLStatusStep(TestStep):
                                  "Delta", "Theta", "Created"],
                         title="5 Most Recent Trades"
                     ))
-
-            # 2. Feature extraction check
-            try:
-                from trading_cotrader.ai_cotrader.feature_engineering.feature_extractor import FeatureExtractor
-                extractor = FeatureExtractor()
-                messages.append("FeatureExtractor: importable, 55-dim state vectors")
-            except ImportError:
-                messages.append("FeatureExtractor: import failed")
-
-            # 3. Model check
-            try:
-                from trading_cotrader.ai_cotrader.learning.supervised import PatternRecognizer
-                recognizer = PatternRecognizer()
-                fitted = "TRAINED" if recognizer.is_fitted else "NOT TRAINED"
-                messages.append(f"PatternRecognizer: {fitted}")
-            except ImportError:
-                messages.append("PatternRecognizer: import failed")
-
-            try:
-                from trading_cotrader.ai_cotrader.learning.reinforcement import TradingAdvisor
-                messages.append("TradingAdvisor: importable")
-            except ImportError:
-                messages.append("TradingAdvisor: import failed")
 
             messages.append(f"Summary: {total_trades} trades, {total_events} events, "
                           f"{events_with_outcomes} with outcomes, {total_snapshots} snapshots")

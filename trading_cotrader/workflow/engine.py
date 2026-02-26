@@ -36,25 +36,13 @@ from trading_cotrader.agents.domain.steward import StewardAgent
 from trading_cotrader.agents.domain.maverick import MaverickAgent
 from trading_cotrader.agents.domain.atlas import AtlasAgent
 
-# Non-agent utilities still used by engine
-from trading_cotrader.agents.execution.broker_router import BrokerRouter
-from trading_cotrader.agents.decision.interaction import InteractionManager
+# Non-agent utilities used by engine
+from trading_cotrader.adapters.broker_router import BrokerRouter
+from trading_cotrader.workflow.interaction import InteractionManager
 
 # Services replacing former agents (calendar, market_data, macro)
 from trading_cotrader.services.macro_context_service import MacroContextService, MacroOverride
 
-# Legacy agents kept temporarily — engine still calls them in state handlers.
-# These are NOT BaseAgent subclasses yet. They'll be absorbed into the 5 domain
-# agents or converted to services over time.
-# Removed (s35b): PortfolioStateAgent (-> Steward.populate), CapitalUtilizationAgent (-> Steward.run)
-from trading_cotrader.agents.analysis.screener import ScreenerAgent
-from trading_cotrader.agents.analysis.evaluator import EvaluatorAgent
-from trading_cotrader.agents.execution.executor import ExecutorAgent
-from trading_cotrader.agents.execution.notifier import NotifierAgent
-from trading_cotrader.agents.execution.reporter import ReporterAgent
-from trading_cotrader.agents.learning.accountability import AccountabilityAgent
-from trading_cotrader.agents.learning.session_objectives import SessionObjectivesAgent
-from trading_cotrader.agents.learning.qa_agent import QAAgent
 
 logger = logging.getLogger(__name__)
 
@@ -145,17 +133,6 @@ class WorkflowEngine:
         # Service replacing MacroAgent
         self._macro_service = MacroContextService(broker=broker)
 
-        # Legacy agents — still called in state handlers, will be absorbed over time
-        # Removed (s35b): PortfolioStateAgent (-> Steward.populate), CapitalUtilizationAgent (-> Steward.run)
-        self.screener = ScreenerAgent(broker)
-        self.evaluator = EvaluatorAgent(broker)
-        self.executor = ExecutorAgent(broker, paper_mode, broker_router=self.broker_router)
-        self.notifier = NotifierAgent(self.config)
-        self.reporter = ReporterAgent()
-        self.accountability = AccountabilityAgent()
-        self.session_objectives = SessionObjectivesAgent()
-        self.qa_agent = QAAgent(self.config)
-
         # Interaction manager (command router, not an agent)
         self.interaction = InteractionManager(self)
 
@@ -204,8 +181,8 @@ class WorkflowEngine:
     # -----------------------------------------------------------------
 
     def on_enter_booting(self, event):
-        """Boot sequence: calendar → portfolio state → safety."""
-        logger.info("=== WORKFLOW BOOT ===")
+        """Boot sequence: infrastructure only — all agents disabled."""
+        logger.info("=== WORKFLOW BOOT (agents disabled) ===")
         self.context['cycle_count'] = self.context.get('cycle_count', 0) + 1
 
         # Calendar check (inlined — was CalendarAgent)
@@ -216,92 +193,28 @@ class WorkflowEngine:
             self.go_idle()
             return
 
-        # Sync positions from broker(s) into DB (before reading state)
+        # Sync positions from broker(s) into DB
         self._sync_broker_positions()
 
-        # Steward populates portfolio state from DB (replaces PortfolioStateAgent)
-        self._run_agent(self.steward, self.context, method='populate')
+        # Refresh containers from DB so API has data
+        self._refresh_containers()
 
-        # Safety check
-        safety = self._run_agent(self.sentinel, self.context)
-
-        if safety.status == AgentStatus.BLOCKED:
-            logger.warning(f"Sentinel blocked boot: {safety.messages}")
-            self.halt()
-            return
-
-        # Capital utilization check at boot (Steward.run replaces CapitalUtilizationAgent)
-        self._run_agent(self.steward, self.context)
-
-        # Set session objectives for the day
-        obj_result = self._run_agent(self.session_objectives, self.context, method='set_objectives')
-
-        # Notify if capital alerts exist
-        alerts = self.context.get('capital_alerts', [])
-        if alerts:
-            self.notifier.notify_idle_capital(alerts)
-
+        # Skip all agents — go straight to monitoring
         self.check_macro()
 
-        # Refresh research container via agent.populate()
-        self._run_agent(self.scout, self.context, method='populate')
-
-        # Maverick cross-references Scout + Steward to generate trading signals
-        self._run_agent(self.maverick, self.context)
-
     def on_enter_macro_check(self, event):
-        """Evaluate macro conditions (direct service call, was MacroAgent)."""
-        try:
-            override = None
-            override_data = self.context.get('macro_override')
-            if override_data and isinstance(override_data, dict):
-                override = MacroOverride(**override_data)
-
-            assessment = self._macro_service.evaluate(override=override)
-
-            self.context['macro_assessment'] = {
-                'regime': assessment.regime,
-                'should_screen': assessment.should_screen,
-                'confidence_modifier': assessment.confidence_modifier,
-                'rationale': assessment.rationale,
-                'vix_level': float(assessment.vix_level) if assessment.vix_level else None,
-                'override_applied': assessment.override_applied,
-            }
-            logger.info(f"Macro: {assessment.regime} — {assessment.rationale}")
-        except Exception as e:
-            logger.error(f"Macro evaluation failed: {e}")
-            self.context['macro_assessment'] = {
-                'regime': 'neutral',
-                'should_screen': True,
-                'confidence_modifier': 1.0,
-                'rationale': f'Macro evaluation failed ({e}), defaulting to neutral',
-            }
-
-        should_screen = self.context.get('macro_assessment', {}).get('should_screen', True)
-        if not should_screen:
-            logger.info("Macro: risk_off — skipping screeners, going to monitoring")
-            self.skip_to_monitor()
-        else:
-            self.screen()
+        """Macro check — agents disabled, skip straight to monitoring."""
+        logger.info("Macro check skipped (agents disabled) — going to monitoring")
+        self.skip_to_monitor()
 
     def on_enter_screening(self, event):
-        """Run screeners and calculate risk."""
-        result = self._run_agent(self.screener, self.context)
-
-        risk_result = self._run_agent(self.sentinel, self.context)
-
-        recs = self.context.get('pending_recommendations', [])
-        if recs:
-            logger.info(f"Screening produced {len(recs)} recommendations")
-            self.review_recs()
-        else:
-            logger.info("No recommendations from screeners")
-            self.skip_to_monitor()
+        """Screening — agents disabled, skip to monitoring."""
+        logger.info("Screening skipped (agents disabled)")
+        self.skip_to_monitor()
 
     def on_enter_recommendation_review(self, event):
         """HUMAN PAUSE — present recommendations and wait for user input."""
         recs = self.context.get('pending_recommendations', [])
-        self.notifier.notify_recommendations(recs)
         self._persist_state()
         logger.info(
             f"WAITING FOR USER: {len(recs)} recommendation(s) pending. "
@@ -314,39 +227,13 @@ class WorkflowEngine:
         self._persist_state()
 
     def on_enter_trade_management(self, event):
-        """
-        Trade management — evaluate ALL open positions for:
-            - Roll opportunities (approaching expiration)
-            - Adjustments (rebalancing legs, delta correction)
-            - Profit targets (take profit)
-            - Stop losses (book loss)
-            - DTE-based exits (time decay)
-            - Delta breach (hedging failure)
-            - Liquidity check (illiquid → force close)
-
-        Uses PortfolioEvaluationService which wires RulesEngine
-        to live trade data.
-        """
-        logger.info("=== TRADE MANAGEMENT ===")
-
-        # Refresh portfolio state before evaluation (Steward replaces PortfolioStateAgent)
-        self._run_agent(self.steward, self.context, method='populate')
-
-        # Run evaluation across all portfolios
-        result = self._run_agent(self.evaluator, self.context)
-
-        signals = self.context.get('exit_signals', [])
-        if signals:
-            logger.info(f"Trade management found {len(signals)} signal(s) (roll/adjust/exit)")
-            self.review_trades()
-        else:
-            logger.info("No trade management signals — back to monitoring")
-            self.skip_to_monitor()
+        """Trade management — agents disabled, skip to monitoring."""
+        logger.info("Trade management skipped (agents disabled)")
+        self.skip_to_monitor()
 
     def on_enter_trade_review(self, event):
         """HUMAN PAUSE — present roll/adjust/exit signals and wait for user input."""
         signals = self.context.get('exit_signals', [])
-        self.notifier.notify_exits(signals)
         self._persist_state()
         logger.info(
             f"WAITING FOR USER: {len(signals)} trade management signal(s) pending review. "
@@ -354,75 +241,25 @@ class WorkflowEngine:
         )
 
     def on_enter_execution(self, event):
-        """Execute all approved actions."""
-        approved = self.context.get('approved_actions', [])
-        executed = 0
-
-        for action in approved:
-            # Guardian constraint check per action
-            ok, reason = self.sentinel.check_trading_constraints(action, self.context)
-            if ok:
-                self.context['action'] = action
-                result = self._run_agent(self.executor, self.context)
-                if result.status == AgentStatus.COMPLETED:
-                    executed += 1
-            else:
-                logger.warning(f"Guardian blocked action: {reason}")
-
-        # Clear approved actions
+        """Execution — agents disabled, go to monitoring."""
+        logger.info("Execution skipped (agents disabled)")
         self.context['approved_actions'] = []
-        logger.info(f"Executed {executed}/{len(approved)} approved actions")
-
-        # Refresh portfolio state after execution (Steward replaces PortfolioStateAgent)
-        self._run_agent(self.steward, self.context, method='populate')
         self.monitor()
 
     def on_enter_eod_evaluation(self, event):
-        """End-of-day evaluation — run one final exit check."""
-        logger.info("=== EOD EVALUATION ===")
-
-        # Final portfolio state refresh (Steward replaces PortfolioStateAgent)
-        self._run_agent(self.steward, self.context, method='populate')
-
-        # Run evaluator one more time
-        self._run_agent(self.evaluator, self.context)
-
-        # Generate report
+        """EOD evaluation — agents disabled, skip to reporting."""
+        logger.info("=== EOD EVALUATION (agents disabled) ===")
         self.report()
 
     def on_enter_reporting(self, event):
-        """Generate reports, run accountability, capture snapshots, send notifications."""
-        logger.info("=== REPORTING ===")
-
-        # Accountability metrics first (reporter needs them)
-        self._run_agent(self.accountability, self.context)
-
-        # Final capital utilization snapshot (Steward replaces CapitalUtilizationAgent)
-        self._run_agent(self.steward, self.context)
-
-        # Capture daily snapshots for all portfolios (feeds analytics + ML)
-        snapshot_results = self._capture_snapshots()
-        self.context['snapshot_results'] = snapshot_results
-
-        # Accumulate ML training data
-        self._accumulate_ml_data()
-
-        # Session performance evaluation (objectives vs actuals)
-        perf_result = self._run_agent(self.session_objectives, self.context, method='evaluate_performance')
-
-        # QA assessment
-        qa_result = self._run_agent(self.qa_agent, self.context)
-
-        # Generate report (now includes capital + session + QA sections)
-        self._run_agent(self.reporter, self.context)
-        self.notifier.send_daily_summary(self.context)
+        """Reporting — agents disabled, go idle."""
+        logger.info("=== REPORTING (agents disabled) ===")
         self.go_idle()
 
     def on_enter_halted(self, event):
-        """Trading halted — notify and persist."""
+        """Trading halted — persist state."""
         reason = self.context.get('halt_reason', 'Unknown')
         logger.warning(f"=== HALTED: {reason} ===")
-        self.notifier.notify_halt(reason)
         self._persist_state()
 
     # -----------------------------------------------------------------
@@ -463,10 +300,9 @@ class WorkflowEngine:
         """
         Called periodically (every 30 min) by APScheduler during market hours.
 
-        Refreshes market data, portfolio state, checks safety,
-        and evaluates positions for exit signals.
+        All agents disabled — only sync broker positions and refresh containers.
         """
-        logger.info("--- Monitoring cycle ---")
+        logger.info("--- Monitoring cycle (agents disabled) ---")
 
         # Only run if in monitoring state
         current = self.state
@@ -474,35 +310,9 @@ class WorkflowEngine:
             logger.debug(f"Skip monitoring cycle: state is {current}")
             return
 
-        # Refresh — sync broker positions, then Steward populates containers from DB
+        # Infrastructure only: sync broker + refresh containers
         self._sync_broker_positions()
-        self._run_agent(self.steward, self.context, method='populate')
-
-        # Capital utilization check (Steward.run replaces CapitalUtilizationAgent)
-        self._run_agent(self.steward, self.context)
-
-        # Notify if capital alerts (respects nag frequency via severity escalation)
-        alerts = self.context.get('capital_alerts', [])
-        if alerts:
-            self.notifier.notify_idle_capital(alerts)
-
-        # Safety check
-        safety = self._run_agent(self.sentinel, self.context)
-        if safety.status == AgentStatus.BLOCKED:
-            self.halt()
-            return
-
-        # Scout research pipeline (auto-book into research portfolios)
-        self._run_agent(self.scout, self.context)
-
-        # Refresh research container via agent.populate() + persist to DB
-        self._run_agent(self.scout, self.context, method='populate')
-
-        # Maverick cross-references Scout + Steward to generate trading signals
-        self._run_agent(self.maverick, self.context)
-
-        # Trade management (rolls, adjustments, exits)
-        self.manage_trades()
+        self._refresh_containers()
 
     def run_once(self):
         """Run a single complete cycle for testing."""
@@ -808,36 +618,6 @@ class WorkflowEngine:
         except Exception as e:
             logger.error(f"Snapshot capture failed: {e}")
             return {}
-
-    def _accumulate_ml_data(self) -> None:
-        """Feed ML pipeline with latest snapshot data."""
-        try:
-            from trading_cotrader.core.database.session import session_scope
-            from trading_cotrader.ai_cotrader.data_pipeline import MLDataPipeline
-            from trading_cotrader.core.database.schema import PortfolioORM
-
-            with session_scope() as session:
-                pipeline = MLDataPipeline(session)
-
-                # Get first real portfolio for ML accumulation
-                portfolio = session.query(PortfolioORM).filter(
-                    PortfolioORM.portfolio_type == 'real'
-                ).first()
-
-                if portfolio:
-                    pipeline.accumulate_training_data(
-                        portfolio=portfolio,
-                        positions=portfolio.positions or [],
-                    )
-
-                status = pipeline.get_ml_status()
-                self.context['ml_status'] = status
-                logger.info(
-                    f"ML pipeline: {status.get('snapshots', 0)} snapshots, "
-                    f"{status.get('events_with_outcomes', 0)} labeled events"
-                )
-        except Exception as e:
-            logger.warning(f"ML pipeline update failed (non-blocking): {e}")
 
     def _run_agent(self, agent, context: dict, method: str = 'run') -> 'AgentResult':
         """

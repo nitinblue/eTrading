@@ -65,12 +65,12 @@ AGENT_REGISTRY: dict[str, dict] = {
     'scout': {
         'display_name': 'Scout (Quant)',
         'category': 'domain',
-        'role': 'Research pipeline executor',
-        'intro': 'I run scenario-based research. 7 templates, parameter variants, auto-booking into research portfolios.',
-        'description': 'Owns ResearchContainer. Populates from market_analyzer library, evaluates templates, auto-books.',
-        'responsibilities': ['Watchlist data population', 'Scenario screening', 'Auto-booking', 'Parameter variants', 'Research trade tracking'],
-        'datasources': ['market_analyzer library', 'research_templates.yaml', 'ConditionEvaluator', 'ResearchContainer'],
-        'boundaries': ['Books into research portfolios only (not live)', 'Cannot modify templates', 'Auto-accept only for research'],
+        'role': 'Research pipeline — market analysis, screening, ranking',
+        'intro': 'I own the ResearchContainer and populate it from MarketAnalyzer. I screen the watchlist for setups and rank candidates for Maverick.',
+        'description': 'Owns ResearchContainer. Populates from market_analyzer library, screens for setups, ranks candidates.',
+        'responsibilities': ['Watchlist data population', 'Market screening (breakout, momentum, mean-reversion, income)', 'Candidate ranking', 'Black swan monitoring', 'Market context assessment'],
+        'datasources': ['market_analyzer library', 'ResearchContainer'],
+        'boundaries': ['Read-only — does not book trades', 'Produces signals for Maverick to act on'],
         'runs_during': ['monitoring'],
     },
     'steward': {

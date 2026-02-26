@@ -93,7 +93,8 @@
       "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/python.exe -c \"\nfrom market_analyzer import MarketAnalyzer, DataService\nma = MarketAnalyzer\\(data_service=DataService\\(\\)\\)\na = ma.levels.analyze\\('SPY'\\)\nimport json\n\n# Dump full structure\nd = a.model_dump\\(mode='json'\\)\nprint\\(json.dumps\\(d, indent=2, default=str\\)\\)\n\" 2>&1)",
       "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/python.exe -c \"from trading_cotrader.workflow.engine import WorkflowEngine; print\\('Engine imports OK'\\)\" 2>&1)",
       "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/pip.exe uninstall market_regime -y 2>&1)",
-      "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/pip.exe install --force-reinstall --no-deps -e ../market_analyzer 2>&1)"
+      "Bash(cd /c/Users/nitin/PythonProjects/eTrading && .venv/Scripts/pip.exe install --force-reinstall --no-deps -e ../market_analyzer 2>&1)",
+      "Bash(echo === $agent ===:*)"
     ]
   }
 }

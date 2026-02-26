@@ -77,30 +77,6 @@ class Settings(BaseSettings):
     )
     
     # ========================================================================
-    # AI/ML Configuration
-    # ========================================================================
-    
-    enable_ai_learning: bool = Field(
-        default=True,
-        description="Enable AI learning from trades"
-    )
-    
-    ml_model_path: Path = Field(
-        default=Path("./ai_cotrader/models/"),
-        description="Path to store ML models"
-    )
-    
-    min_events_for_pattern: int = Field(
-        default=5,
-        description="Minimum events to recognize a pattern"
-    )
-    
-    pattern_confidence_threshold: float = Field(
-        default=0.7,
-        description="Minimum confidence to suggest a pattern (0-1)"
-    )
-    
-    # ========================================================================
     # Logging Configuration
     # ========================================================================
     
@@ -207,14 +183,7 @@ class Settings(BaseSettings):
             raise ValueError(f"log_level must be one of {valid_levels}")
         return v.upper()
     
-    @field_validator('pattern_confidence_threshold')
-    @classmethod
-    def validate_confidence(cls, v):
-        if not 0 <= v <= 1:
-            raise ValueError("pattern_confidence_threshold must be between 0 and 1")
-        return v
-    
-    @field_validator('ml_model_path', 'log_file')
+    @field_validator('log_file')
     @classmethod
     def ensure_path_exists(cls, v):
         if v:
@@ -349,12 +318,6 @@ TASTYTRADE_REFRESH_TOKEN=your_refresh_token_here
 TASTYTRADE_ACCOUNT_NUMBER=your_account_number
 IS_PAPER_TRADING=false
 
-# AI/ML
-ENABLE_AI_LEARNING=true
-ML_MODEL_PATH=./ai_cotrader/models/
-MIN_EVENTS_FOR_PATTERN=5
-PATTERN_CONFIDENCE_THRESHOLD=0.7
-
 # Logging
 LOG_LEVEL=INFO
 LOG_FILE=trading_cotrader.log
@@ -390,6 +353,5 @@ if __name__ == "__main__":
         print(f"✓ Settings loaded successfully")
         print(f"  Database: {settings.database_url}")
         print(f"  Paper Trading: {settings.is_paper_trading}")
-        print(f"  AI Learning: {settings.enable_ai_learning}")
     except Exception as e:
         print(f"✗ Settings validation failed: {e}")
