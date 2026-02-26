@@ -88,7 +88,7 @@ class MaverickAgent(BaseAgent):
                 entry = research.get(underlying)
                 if entry:
                     signal.update({
-                        'regime': entry.regime_label,
+                        'regime': entry.hmm_regime_label,
                         'phase': entry.phase_name,
                         'iv_rank': entry.iv_rank,
                         'levels_direction': entry.levels_direction,

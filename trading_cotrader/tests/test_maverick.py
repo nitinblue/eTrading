@@ -92,7 +92,7 @@ class TestMaverickRun:
 
         # Mock research entries
         mock_entry = MagicMock()
-        mock_entry.regime_label = 'R1_LOW_VOL_MR'
+        mock_entry.hmm_regime_label = 'R1_LOW_VOL_MR'
         mock_entry.phase_name = 'Accumulation'
         mock_entry.iv_rank = 25.0
         mock_entry.levels_direction = 'bullish'

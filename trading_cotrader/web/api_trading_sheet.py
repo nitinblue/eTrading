@@ -831,8 +831,8 @@ def create_trading_sheet_router(engine: 'WorkflowEngine') -> APIRouter:
             entry = research.get(underlying)
             if entry:
                 market_context[underlying] = {
-                    'regime': entry.regime_label,
-                    'regime_id': entry.regime_id,
+                    'regime': entry.hmm_regime_label,
+                    'regime_id': entry.hmm_regime_id,
                     'phase': entry.phase_name,
                     'rsi': entry.rsi_14,
                     'iv_rank': entry.iv_rank,
