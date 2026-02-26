@@ -205,23 +205,23 @@ class PortfolioSyncService:
         return stats
     
     def _validate_position(self, position: dm.Position) -> tuple:
-        """Validate a position from broker"""
+        """Validate a position from broker.
+
+        Zero Greeks on options is a warning, not a rejection — positions
+        should still appear in the portfolio even if DXLink streaming
+        failed to fetch Greeks for them.
+        """
         errors = []
-        
+
         if position.quantity == 0:
             errors.append("Zero quantity")
-        
+
         if not position.symbol:
             errors.append("Missing symbol")
-        
-        # For options, check Greeks
-        if position.symbol and position.symbol.asset_type == dm.AssetType.OPTION:
-            if not position.greeks or (position.greeks.delta == 0 and position.greeks.gamma == 0):
-                errors.append("Option has zero Greeks - likely not fetched from broker")
-        
+
         if not position.broker_position_id:
             errors.append("Missing broker_position_id")
-        
+
         return (len(errors) == 0, errors)
     
     def _update_portfolio_aggregates(self, portfolio: dm.Portfolio):
