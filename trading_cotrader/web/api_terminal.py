@@ -423,6 +423,8 @@ def _handle_plan(args: list[str], ma: MarketAnalyzer) -> list[dict]:
     if not plan.all_trades:
         blocks.append(_text("No actionable trades.", "dim"))
     else:
+        from market_analyzer.models.opportunity import get_structure_profile, RiskProfile
+
         horizon_labels = {
             PlanHorizon.ZERO_DTE: "0DTE",
             PlanHorizon.WEEKLY: "Weekly",
@@ -435,36 +437,33 @@ def _handle_plan(args: list[str], ma: MarketAnalyzer) -> list[dict]:
                 continue
             blocks.append(_section(f"{horizon_labels[h]} ({len(trades)} trades)"))
 
-            rows = []
             for t in trades:
-                v_color = {"go": "green", "caution": "yellow"}.get(t.verdict, "")
+                verdict_str = t.verdict.value.upper() if hasattr(t.verdict, 'value') else str(t.verdict).upper()
+
+                # Profile tag
+                tag = ""
                 legs = ""
-                max_info = ""
-                if t.trade_spec:
+                if t.trade_spec is not None:
                     legs = " | ".join(t.trade_spec.leg_codes)
-                    mp = t.trade_spec.max_profit_desc or ""
-                    ml = t.trade_spec.max_loss_desc or ""
-                    if mp or ml:
-                        max_info = f"P: {mp} / L: {ml}"
+                    if t.trade_spec.structure_type:
+                        p = get_structure_profile(
+                            t.trade_spec.structure_type,
+                            t.trade_spec.order_side,
+                            t.direction,
+                        )
+                        risk_str = ("UNDEFINED" if p.risk_profile == RiskProfile.UNDEFINED
+                                    else p.risk_profile.value)
+                        tag = f"{p.payoff_graph} {p.bias} / {risk_str}"
 
-                rows.append([
-                    f"#{t.rank}",
-                    t.ticker,
-                    str(t.strategy_type),
-                    t.verdict.value.upper() if hasattr(t.verdict, 'value') else str(t.verdict).upper(),
-                    f"{t.composite_score:.2f}",
-                    legs,
-                ])
+                blocks.append(_text(
+                    f"#{t.rank} {t.ticker}  {t.strategy_type}  {verdict_str}  {t.composite_score:.2f}"
+                ))
+                if tag:
+                    blocks.append(_text(f"  {tag}", "dim"))
+                if legs:
+                    blocks.append(_text(f"  {legs}"))
 
-                # Detail lines
-
-            blocks.append(_table(
-                ["#", "Ticker", "Strategy", "Verdict", "Score", "Legs"],
-                rows,
-            ))
-
-            # Detail per trade
-            for t in trades:
+                # Max profit/loss + exit
                 detail_items = []
                 if t.trade_spec:
                     mp = t.trade_spec.max_profit_desc or ""
@@ -478,7 +477,7 @@ def _handle_plan(args: list[str], ma: MarketAnalyzer) -> list[dict]:
                 if t.expiry_note:
                     detail_items.append(f"NOTE: {t.expiry_note}")
                 if detail_items:
-                    blocks.append(_text(f"  {t.ticker}: {' | '.join(detail_items)}", "dim"))
+                    blocks.append(_text(f"  {' | '.join(detail_items)}", "dim"))
 
     blocks.append(_text(plan.summary, "dim"))
     return blocks
@@ -494,15 +493,45 @@ def _handle_rank(args: list[str], ma: MarketAnalyzer) -> list[dict]:
     blocks: list[dict] = [_header(f"Trade Ranking ({result.as_of_date})")]
 
     if result.black_swan_gate:
-        blocks.append(_status("TRADING HALTED \u2014 Black Swan CRITICAL", "red"))
+        blocks.append(_status("TRADING HALTED - Black Swan CRITICAL", "red"))
 
     if result.top_trades:
-        rows = [
-            [str(e.rank), e.ticker, e.strategy_type, e.verdict, f"{e.composite_score:.2f}",
-             e.direction, e.rationale[:50]]
-            for e in result.top_trades[:10]
-        ]
-        blocks.append(_table(["#", "Ticker", "Strategy", "Verdict", "Score", "Direction", "Rationale"], rows))
+        from market_analyzer.models.opportunity import get_structure_profile, RiskProfile
+
+        rows = []
+        for e in result.top_trades[:10]:
+            legs_str = ""
+            exit_str = ""
+            graph = ""
+            risk = ""
+            if e.trade_spec is not None:
+                legs_str = " | ".join(e.trade_spec.leg_codes[:2])
+                if len(e.trade_spec.leg_codes) > 2:
+                    legs_str += " ..."
+                exit_str = e.trade_spec.exit_summary or ""
+                if e.trade_spec.structure_type:
+                    p = get_structure_profile(
+                        e.trade_spec.structure_type,
+                        e.trade_spec.order_side,
+                        e.direction,
+                    )
+                    graph = p.payoff_graph or ""
+                    risk = (p.risk_profile.value.upper()
+                            if p.risk_profile == RiskProfile.UNDEFINED
+                            else p.risk_profile.value)
+
+            rows.append([
+                str(e.rank), e.ticker, str(e.strategy_type),
+                graph or "-", e.direction, risk or "-",
+                str(e.verdict), f"{e.composite_score:.2f}",
+                legs_str or "-", exit_str or "-",
+            ])
+
+        blocks.append(_table(
+            ["#", "Ticker", "Strategy", "Payoff", "Bias", "Risk",
+             "Verdict", "Score", "Legs", "Exit"],
+            rows,
+        ))
 
     blocks.append(_text(result.summary, "dim"))
     return blocks
@@ -768,12 +797,13 @@ def _handle_technicals(args: list[str], ma: MarketAnalyzer) -> list[dict]:
         _kv_item("SMA 200", f"${ma_data.sma_200:.2f} ({ma_data.price_vs_sma_200_pct:+.1f}%)"),
     ]))
 
-    # Bollinger & Stochastic
+    # Bollinger, Stochastic & Phase
     blocks.append(_kv([
         _kv_item("Bollinger BW", f"{t.bollinger.bandwidth:.4f}"),
         _kv_item("Bollinger %B", f"{t.bollinger.percent_b:.2f}"),
         _kv_item("Stochastic K", f"{t.stochastic.k:.0f}"),
         _kv_item("Stochastic D", f"{t.stochastic.d:.0f}"),
+        _kv_item("Phase", f"{t.phase.phase.value} ({t.phase.confidence:.0%})"),
     ]))
 
     # Signals
