@@ -99,6 +99,79 @@ def _safe(val, fmt: str = ".2f", fallback: str = "N/A") -> str:
 
 
 # ---------------------------------------------------------------------------
+# Trade resolution helpers
+# ---------------------------------------------------------------------------
+
+def _resolve_trade(trade_id_prefix: str, session) -> 'TradeORM | None':
+    """Resolve a trade by partial ID (git-style prefix match)."""
+    from trading_cotrader.core.database.schema import TradeORM
+
+    trade = session.query(TradeORM).filter(TradeORM.id == trade_id_prefix).first()
+    if trade:
+        return trade
+
+    trades = (
+        session.query(TradeORM)
+        .filter(TradeORM.id.like(f"{trade_id_prefix}%"))
+        .all()
+    )
+    if len(trades) == 1:
+        return trades[0]
+    return None  # Not found or ambiguous
+
+
+def _trade_to_tradespec(trade: 'TradeORM'):
+    """Convert DB TradeORM + legs to MarketAnalyzer TradeSpec for adjustment analysis."""
+    from market_analyzer.models.opportunity import TradeSpec, LegSpec, LegAction
+
+    legs = []
+    for leg in trade.legs:
+        sym = leg.symbol
+        if not sym or sym.asset_type != 'option':
+            continue
+
+        side_lower = (leg.side or '').lower()
+        action = LegAction.STO if 'sell' in side_lower else LegAction.BTO
+
+        exp_date = sym.expiration.date() if sym.expiration else date.today()
+        dte = (exp_date - date.today()).days
+
+        legs.append(LegSpec(
+            role=f"{'short' if action == LegAction.STO else 'long'}_{sym.option_type or 'call'}",
+            action=action,
+            quantity=abs(leg.quantity),
+            option_type=sym.option_type or 'call',
+            strike=float(sym.strike or 0),
+            strike_label=f"${float(sym.strike or 0):.0f} {sym.option_type or '?'}",
+            expiration=exp_date,
+            days_to_expiry=max(dte, 0),
+            atm_iv_at_expiry=float(leg.entry_iv or 0.20),
+        ))
+
+    underlying_price = float(
+        trade.current_underlying_price or trade.entry_underlying_price or 0
+    )
+
+    strategy_type = None
+    if trade.strategy:
+        strategy_type = trade.strategy.strategy_type
+
+    target_exp = legs[0].expiration if legs else date.today()
+    target_dte = legs[0].days_to_expiry if legs else 0
+
+    return TradeSpec(
+        ticker=trade.underlying_symbol,
+        legs=legs,
+        underlying_price=underlying_price,
+        target_dte=target_dte,
+        target_expiration=target_exp,
+        structure_type=strategy_type,
+        order_side="credit" if trade.entry_price and float(trade.entry_price) > 0 else "debit",
+        spec_rationale="Loaded from DB for adjustment analysis",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Market Analysis command handlers — each returns list[dict] blocks
 # ---------------------------------------------------------------------------
 
@@ -930,7 +1003,20 @@ def _handle_help(args: list[str], ma: MarketAnalyzer) -> list[dict]:
                 ["morning", "morning", "Run morning trading workflow"],
             ],
         ),
+        _section("Trade Management"),
+        _table(
+            ["Command", "Usage", "Description"],
+            [
+                ["adjust", "adjust <id>", "Adjustment recommendations for open trade"],
+                ["close", "close <id> [--confirm]", "Close a position"],
+                ["chain", "chain <ticker> [exp]", "Option chain with broker Greeks"],
+                ["iv", "iv <ticker>", "IV rank, percentile, HV, beta"],
+                ["pnl", "pnl <id>", "Detailed P&L with Greek attribution"],
+                ["status", "status", "Broker connection & system state"],
+            ],
+        ),
         _text("Workflow: plan SPY \u2192 book 1 \u2192 execute <id> --confirm", "dim"),
+        _text("Monitor: positions \u2192 pnl <id> \u2192 adjust <id> \u2192 close <id>", "dim"),
         _text("help, clear", "dim"),
     ]
 
@@ -1515,6 +1601,424 @@ def _handle_t_morning(args: list[str], engine: 'WorkflowEngine', ma: MarketAnaly
 
 
 # ---------------------------------------------------------------------------
+# Trade Management command handlers
+# ---------------------------------------------------------------------------
+
+def _handle_t_adjust(args: list[str], engine: 'WorkflowEngine', ma: MarketAnalyzer) -> list[dict]:
+    """Adjustment recommendations for an open trade."""
+    if not args:
+        return [_error("Usage: adjust <trade_id>")]
+
+    from trading_cotrader.core.database.session import session_scope
+
+    with session_scope() as session:
+        trade = _resolve_trade(args[0], session)
+        if not trade:
+            return [_error(f"Trade '{args[0]}' not found (or ambiguous prefix).")]
+
+        if not trade.is_open:
+            return [_error(f"Trade {trade.id[:8]} is closed.")]
+
+        ticker = trade.underlying_symbol
+
+        try:
+            trade_spec = _trade_to_tradespec(trade)
+        except Exception as e:
+            return [_error(f"Cannot convert trade to spec: {e}")]
+
+        if not trade_spec.legs:
+            return [_error(f"Trade {trade.id[:8]} has no option legs to analyze.")]
+
+        regime = ma.regime.detect(ticker)
+        technicals = ma.technicals.snapshot(ticker)
+        analysis = ma.adjustment.analyze(trade_spec, regime, technicals)
+
+        strategy_name = trade.strategy.strategy_type if trade.strategy else 'unknown'
+        status_colors = {
+            'SAFE': 'green', 'TESTED': 'yellow', 'BREACHED': 'red', 'MAX_LOSS': 'red',
+        }
+        status_str = analysis.position_status.value if hasattr(analysis.position_status, 'value') else str(analysis.position_status)
+
+        blocks: list[dict] = [
+            _header(f"Adjustment Analysis \u2014 {ticker} {strategy_name}"),
+            _status(status_str.upper(), status_colors.get(status_str.upper(), 'yellow')),
+        ]
+
+        kv_items = [
+            _kv_item("Current Price", f"${analysis.current_price:.2f}"),
+            _kv_item("Entry Price", _safe(trade.entry_price, ".2f", "N/A")),
+            _kv_item("P&L Est",
+                     f"${analysis.pnl_estimate:.0f}" if analysis.pnl_estimate is not None else "N/A",
+                     "green" if (analysis.pnl_estimate or 0) > 0
+                     else "red" if (analysis.pnl_estimate or 0) < 0 else None),
+            _kv_item("DTE", str(analysis.remaining_dte)),
+            _kv_item("Regime", f"R{analysis.regime_id}"),
+        ]
+        if analysis.distance_to_short_put_pct is not None:
+            kv_items.append(_kv_item("Dist Short Put", f"{analysis.distance_to_short_put_pct:+.1f}%"))
+        if analysis.distance_to_short_call_pct is not None:
+            kv_items.append(_kv_item("Dist Short Call", f"{analysis.distance_to_short_call_pct:+.1f}%"))
+        blocks.append(_kv(kv_items))
+
+        if analysis.adjustments:
+            blocks.append(_section("Recommended Adjustments"))
+            rows = []
+            for adj in analysis.adjustments:
+                adj_type = adj.adjustment_type.value if hasattr(adj.adjustment_type, 'value') else str(adj.adjustment_type)
+                cost_str = f"${adj.estimated_cost:.0f}" if adj.estimated_cost is not None else "N/A"
+                rows.append([
+                    adj_type.replace('_', ' ').title(),
+                    adj.description[:50],
+                    cost_str,
+                    f"{adj.risk_change:+.0f}",
+                    adj.urgency,
+                ])
+            blocks.append(_table(["Type", "Description", "Cost", "Risk \u0394", "Urgency"], rows))
+        else:
+            blocks.append(_text("No adjustments needed.", "dim"))
+
+        blocks.append(_text(analysis.recommendation, "dim"))
+        return blocks
+
+
+def _handle_t_close(args: list[str], engine: 'WorkflowEngine') -> list[dict]:
+    """Close a position — preview or confirm."""
+    if not args:
+        return [_error("Usage: close <trade_id> [--confirm]")]
+
+    from trading_cotrader.core.database.session import session_scope
+
+    trade_id = args[0]
+    confirm = '--confirm' in args
+
+    with session_scope() as session:
+        trade = _resolve_trade(trade_id, session)
+        if not trade:
+            return [_error(f"Trade '{trade_id}' not found (or ambiguous prefix).")]
+
+        if not trade.is_open:
+            return [_error(f"Trade {trade.id[:8]} is already closed.")]
+
+        strategy_name = trade.strategy.strategy_type if trade.strategy else 'unknown'
+
+        if not confirm:
+            # Preview
+            blocks: list[dict] = [
+                _header(f"Close Preview \u2014 {trade.underlying_symbol} {strategy_name}"),
+                _kv([
+                    _kv_item("Trade ID", trade.id[:12]),
+                    _kv_item("Status", trade.trade_status or 'open'),
+                    _kv_item("Type", trade.trade_type or 'real'),
+                    _kv_item("Entry Price", _safe(trade.entry_price, ".2f", "N/A")),
+                    _kv_item("Current P&L", _safe(trade.total_pnl, ".0f", "N/A"),
+                             "green" if trade.total_pnl and float(trade.total_pnl) > 0
+                             else "red" if trade.total_pnl and float(trade.total_pnl) < 0 else None),
+                ]),
+            ]
+
+            if trade.legs:
+                rows = []
+                for leg in trade.legs:
+                    sym = leg.symbol
+                    desc = sym.ticker if sym else "?"
+                    if sym and sym.option_type:
+                        desc = f"{sym.ticker} {sym.option_type.upper()} ${float(sym.strike or 0):.0f}"
+                        if sym.expiration:
+                            desc += f" {sym.expiration.strftime('%m/%d')}"
+                    rows.append([
+                        leg.side or '?',
+                        str(leg.quantity),
+                        desc,
+                        _safe(leg.entry_price, ".2f", "N/A"),
+                        _safe(leg.current_price, ".2f", "N/A"),
+                    ])
+                blocks.append(_table(["Side", "Qty", "Description", "Entry", "Current"], rows))
+
+            if trade.trade_type == 'what_if' or trade.trade_status == 'intent':
+                blocks.append(_text("WhatIf trade \u2014 will be marked closed in DB.", "dim"))
+            elif trade.broker_trade_id:
+                blocks.append(_text("Live trade \u2014 will be marked closed in DB. Place closing order via broker manually.", "dim"))
+            else:
+                blocks.append(_text("No broker ID \u2014 will be marked closed in DB.", "dim"))
+
+            blocks.append(_text("Run: close <id> --confirm  to execute.", "dim"))
+            return blocks
+
+        # Confirm — close in DB
+        trade.trade_status = 'closed'
+        trade.is_open = False
+        trade.closed_at = datetime.utcnow()
+        trade.exit_reason = 'manual_close'
+        session.commit()
+
+        blocks = [
+            _header(f"Closed \u2014 {trade.underlying_symbol} {strategy_name}"),
+            _status("CLOSED", "green"),
+            _kv([
+                _kv_item("Trade ID", trade.id[:12]),
+                _kv_item("P&L", _safe(trade.total_pnl, ".0f", "N/A")),
+                _kv_item("Exit Reason", "manual_close"),
+            ]),
+        ]
+        if trade.broker_trade_id:
+            blocks.append(_text(
+                f"Note: Broker trade {trade.broker_trade_id} \u2014 place closing order via broker manually.",
+                "dim",
+            ))
+        return blocks
+
+
+def _handle_t_chain(args: list[str], ma: MarketAnalyzer) -> list[dict]:
+    """Option chain with broker Greeks."""
+    if not args:
+        return [_error("Usage: chain <ticker> [expiration YYYY-MM-DD]")]
+
+    ticker = args[0].upper()
+    exp = None
+    if len(args) > 1:
+        try:
+            exp = date.fromisoformat(args[1])
+        except ValueError:
+            return [_error(f"Invalid expiration date: {args[1]}. Use YYYY-MM-DD format.")]
+
+    try:
+        snapshot = ma.quotes.get_chain(ticker, expiration=exp)
+    except Exception as e:
+        return [_error(f"Failed to get chain for {ticker}: {e}")]
+
+    if not snapshot.quotes:
+        return [_text(f"No option chain data for {ticker}.")]
+
+    blocks: list[dict] = [
+        _header(f"{ticker} \u2014 Option Chain ({snapshot.source})"),
+        _kv([_kv_item("Underlying", f"${snapshot.underlying_price:.2f}")]),
+    ]
+
+    from collections import defaultdict
+    by_exp: dict[date, dict[str, list]] = defaultdict(lambda: {"call": [], "put": []})
+    for q in snapshot.quotes:
+        by_exp[q.expiration][q.option_type].append(q)
+
+    for exp_date in sorted(by_exp.keys()):
+        blocks.append(_section(f"Exp: {exp_date}"))
+
+        for otype in ("call", "put"):
+            quotes = sorted(by_exp[exp_date][otype], key=lambda q: q.strike)
+            if not quotes:
+                continue
+
+            blocks.append(_text(f"  {otype.upper()}S", "dim"))
+            rows = []
+            for q in quotes:
+                rows.append([
+                    f"${q.strike:.0f}",
+                    f"{q.bid:.2f}",
+                    f"{q.ask:.2f}",
+                    f"{q.mid:.2f}",
+                    f"{q.implied_volatility:.1%}" if q.implied_volatility else "N/A",
+                    f"{q.delta:+.3f}" if q.delta is not None else "N/A",
+                    f"{q.gamma:.4f}" if q.gamma is not None else "N/A",
+                    f"{q.theta:.3f}" if q.theta is not None else "N/A",
+                    f"{q.vega:.3f}" if q.vega is not None else "N/A",
+                    str(q.open_interest),
+                ])
+            blocks.append(_table(
+                ["Strike", "Bid", "Ask", "Mid", "IV", "Delta", "Gamma", "Theta", "Vega", "OI"],
+                rows,
+            ))
+
+    return blocks
+
+
+def _handle_t_iv(args: list[str], ma: MarketAnalyzer) -> list[dict]:
+    """IV rank, percentile, HV, beta for a ticker."""
+    if not args:
+        return [_error("Usage: iv <ticker>")]
+
+    ticker = args[0].upper()
+    metrics = ma.quotes.get_metrics(ticker)
+
+    if metrics is None:
+        return [_text(f"No IV metrics available for {ticker}. Broker may not be connected.")]
+
+    def _iv_color(val: float | None) -> str | None:
+        if val is None:
+            return None
+        return "green" if val > 50 else "red" if val < 20 else None
+
+    kv_items = [
+        _kv_item("IV Rank",
+                 f"{metrics.iv_rank:.0f}" if metrics.iv_rank is not None else "N/A",
+                 _iv_color(metrics.iv_rank)),
+        _kv_item("IV Percentile",
+                 f"{metrics.iv_percentile:.0f}" if metrics.iv_percentile is not None else "N/A",
+                 _iv_color(metrics.iv_percentile)),
+        _kv_item("IV 30d", f"{metrics.iv_30_day:.1%}" if metrics.iv_30_day is not None else "N/A"),
+        _kv_item("HV 30d", f"{metrics.hv_30_day:.1%}" if metrics.hv_30_day is not None else "N/A"),
+        _kv_item("HV 60d", f"{metrics.hv_60_day:.1%}" if metrics.hv_60_day is not None else "N/A"),
+        _kv_item("Beta", f"{metrics.beta:.2f}" if metrics.beta is not None else "N/A"),
+        _kv_item("Corr SPY", f"{metrics.corr_spy:.2f}" if metrics.corr_spy is not None else "N/A"),
+        _kv_item("Earnings", str(metrics.earnings_date) if metrics.earnings_date else "N/A"),
+    ]
+
+    blocks: list[dict] = [
+        _header(f"{ticker} \u2014 IV Metrics ({ma.quotes.source})"),
+        _kv(kv_items),
+    ]
+
+    if metrics.iv_30_day is not None and metrics.hv_30_day is not None:
+        spread = metrics.iv_30_day - metrics.hv_30_day
+        label = "overpriced" if spread > 0 else "underpriced"
+        blocks.append(_text(f"IV-HV spread: {spread:+.1%} ({label})", "dim"))
+
+    return blocks
+
+
+def _handle_t_pnl(args: list[str], engine: 'WorkflowEngine') -> list[dict]:
+    """Detailed P&L breakdown with Greek attribution."""
+    if not args:
+        return [_error("Usage: pnl <trade_id>")]
+
+    from trading_cotrader.core.database.session import session_scope
+
+    with session_scope() as session:
+        trade = _resolve_trade(args[0], session)
+        if not trade:
+            return [_error(f"Trade '{args[0]}' not found (or ambiguous prefix).")]
+
+        strategy_name = trade.strategy.strategy_type if trade.strategy else 'unknown'
+        status = 'OPEN' if trade.is_open else 'CLOSED'
+
+        opened = trade.opened_at or trade.created_at
+        duration_days = (datetime.utcnow() - opened).days if opened else 0
+
+        total_pnl = float(trade.total_pnl or 0)
+        pnl_color = "green" if total_pnl > 0 else "red" if total_pnl < 0 else None
+
+        blocks: list[dict] = [
+            _header(f"P&L \u2014 {trade.underlying_symbol} {strategy_name}"),
+            _status(status, "green" if trade.is_open else "gray"),
+            _kv([
+                _kv_item("Trade ID", trade.id[:12]),
+                _kv_item("Duration", f"{duration_days} days"),
+                _kv_item("Total P&L", f"${total_pnl:+,.0f}", pnl_color),
+            ]),
+        ]
+
+        # Entry vs Current
+        blocks.append(_section("Entry vs Current"))
+        blocks.append(_kv([
+            _kv_item("Entry Price", _safe(trade.entry_price, ".2f", "N/A")),
+            _kv_item("Current Price", _safe(trade.current_price, ".2f", "N/A")),
+            _kv_item("Underlying Entry", _safe(trade.entry_underlying_price, ".2f", "N/A")),
+            _kv_item("Underlying Now", _safe(trade.current_underlying_price, ".2f", "N/A")),
+        ]))
+
+        # P&L Attribution
+        delta_pnl = float(trade.delta_pnl or 0)
+        gamma_pnl = float(trade.gamma_pnl or 0)
+        theta_pnl = float(trade.theta_pnl or 0)
+        vega_pnl = float(trade.vega_pnl or 0)
+        unexplained = float(trade.unexplained_pnl or 0)
+
+        def _pct(part: float) -> str:
+            return f"{part / total_pnl * 100:.0f}%" if total_pnl else "\u2014"
+
+        blocks.append(_section("P&L Attribution"))
+        blocks.append(_table(
+            ["Component", "P&L", "% of Total"],
+            [
+                ["Delta", f"${delta_pnl:+,.0f}", _pct(delta_pnl)],
+                ["Gamma", f"${gamma_pnl:+,.0f}", _pct(gamma_pnl)],
+                ["Theta", f"${theta_pnl:+,.0f}", _pct(theta_pnl)],
+                ["Vega", f"${vega_pnl:+,.0f}", _pct(vega_pnl)],
+                ["Unexplained", f"${unexplained:+,.0f}", _pct(unexplained)],
+                ["TOTAL", f"${total_pnl:+,.0f}", "100%"],
+            ],
+        ))
+
+        # Per-leg breakdown
+        if trade.legs:
+            blocks.append(_section("Leg Breakdown"))
+            rows = []
+            for leg in trade.legs:
+                sym = leg.symbol
+                desc = sym.ticker if sym else "?"
+                if sym and sym.option_type:
+                    desc = f"{sym.option_type.upper()[0]} ${float(sym.strike or 0):.0f}"
+                    if sym.expiration:
+                        desc += f" {sym.expiration.strftime('%m/%d')}"
+
+                leg_pnl = 0.0
+                if leg.entry_price is not None and leg.current_price is not None:
+                    mult = sym.multiplier or 100 if sym else 100
+                    leg_pnl = (float(leg.current_price) - float(leg.entry_price)) * leg.quantity * mult
+
+                rows.append([
+                    f"{leg.side} {leg.quantity}x",
+                    desc,
+                    f"d={_safe(leg.entry_delta, '+.3f', '\u2014')} \u03b8={_safe(leg.entry_theta, '+.3f', '\u2014')}",
+                    f"d={_safe(leg.delta, '+.3f', '\u2014')} \u03b8={_safe(leg.theta, '+.3f', '\u2014')}",
+                    f"${leg_pnl:+,.0f}",
+                ])
+            blocks.append(_table(
+                ["Leg", "Description", "Entry Greeks", "Current Greeks", "P&L"],
+                rows,
+            ))
+
+        return blocks
+
+
+def _handle_t_status(args: list[str], engine: 'WorkflowEngine', ma: MarketAnalyzer) -> list[dict]:
+    """Broker connection, quote source, engine state."""
+    from trading_cotrader.core.database.session import session_scope
+    from trading_cotrader.core.database.schema import PortfolioORM, TradeORM
+
+    blocks: list[dict] = [_header("System Status")]
+
+    # Broker & Data
+    has_broker = ma.quotes.has_broker
+    quote_source = ma.quotes.source
+    blocks.append(_section("Broker & Data"))
+    blocks.append(_kv([
+        _kv_item("Broker Connected", "Yes" if has_broker else "No",
+                 "green" if has_broker else "red"),
+        _kv_item("Quote Source", quote_source),
+        _kv_item("Adjustment Source", ma.adjustment.quote_source),
+    ]))
+
+    # Workflow Engine
+    engine_state = str(engine.state) if hasattr(engine, 'state') else 'unknown'
+    cycle_count = engine.context.get('cycle_count', 0)
+
+    blocks.append(_section("Workflow Engine"))
+    blocks.append(_kv([
+        _kv_item("State", engine_state.upper()),
+        _kv_item("Cycle Count", str(cycle_count)),
+        _kv_item("Trading Day", "Yes" if engine.context.get('is_trading_day') else "No",
+                 "green" if engine.context.get('is_trading_day') else "red"),
+        _kv_item("Engine Started", str(engine.context.get('engine_start_time', 'N/A'))),
+    ]))
+
+    # Portfolio & position counts
+    with session_scope() as session:
+        portfolio_count = session.query(PortfolioORM).filter(
+            PortfolioORM.portfolio_type != 'deprecated'
+        ).count()
+        open_trade_count = session.query(TradeORM).filter(
+            TradeORM.is_open == True,  # noqa: E712
+        ).count()
+
+    blocks.append(_section("Portfolio"))
+    blocks.append(_kv([
+        _kv_item("Portfolios", str(portfolio_count)),
+        _kv_item("Open Trades", str(open_trade_count)),
+    ]))
+
+    return blocks
+
+
+# ---------------------------------------------------------------------------
 # Router factory
 # ---------------------------------------------------------------------------
 
@@ -1566,6 +2070,13 @@ def create_terminal_router(engine: 'WorkflowEngine') -> APIRouter:
         "execute": lambda args, ma: _handle_t_execute(args, engine),
         "orders": lambda args, ma: _handle_t_orders(args, engine),
         "morning": lambda args, ma: _handle_t_morning(args, engine, ma),
+        # Trade Management commands
+        "adjust": lambda args, ma: _handle_t_adjust(args, engine, ma),
+        "close": lambda args, ma: _handle_t_close(args, engine),
+        "chain": _handle_t_chain,
+        "iv": _handle_t_iv,
+        "pnl": lambda args, ma: _handle_t_pnl(args, engine),
+        "status": lambda args, ma: _handle_t_status(args, engine, ma),
     }
 
     @router.post("/terminal/execute")
