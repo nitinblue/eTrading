@@ -1,5 +1,8 @@
 watchlist:
   - name: "S&P 500"
+    ticker: SPX
+    asset_class: equity_index
+  - name: "S&P 500"
     ticker: SPY
     asset_class: equity_index
   - name: "Nasdaq 100"

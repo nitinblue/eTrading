@@ -420,14 +420,14 @@ class TestPortfolioManagerMultiBroker:
 
         pm = PortfolioManager(session, config=risk_config.portfolios, broker_registry=registry)
         portfolios = pm.initialize_portfolios()
-        assert len(portfolios) == 15
+        assert len(portfolios) == 11
 
         # Verify real vs whatif vs research
         real_count = sum(1 for p in portfolios if p.portfolio_type.value == 'real')
         whatif_count = sum(1 for p in portfolios if p.portfolio_type.value == 'what_if')
         research_count = sum(1 for p in portfolios if p.portfolio_type.value == 'research')
         assert real_count == 5
-        assert whatif_count == 5
+        assert whatif_count == 1
         assert research_count == 5
 
     def test_portfolio_lookup_by_name(self, session):
@@ -459,7 +459,7 @@ class TestPortfolioManagerMultiBroker:
         pm = PortfolioManager(session, config=risk_config.portfolios, broker_registry=registry)
         first = pm.initialize_portfolios()
         second = pm.initialize_portfolios()
-        assert len(first) == len(second) == 15
+        assert len(first) == len(second) == 11
 
 
 class TestBrokerAdapterFactory:

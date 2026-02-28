@@ -64,8 +64,7 @@ def _load_portfolio_aliases() -> dict[str, str]:
     shortcuts = {
         'tt': 'tastytrade', 'fira': 'fidelity_ira', 'fp': 'fidelity_personal',
         'zr': 'zerodha', 'st': 'stallion',
-        'ttw': 'tastytrade_whatif', 'firaw': 'fidelity_ira_whatif',
-        'fpw': 'fidelity_personal_whatif', 'zrw': 'zerodha_whatif', 'stw': 'stallion_whatif',
+        'ttw': 'tastytrade_whatif',
     }
     _PORTFOLIO_ALIASES.update(shortcuts)
     return _PORTFOLIO_ALIASES
@@ -997,18 +996,20 @@ class InteractionManager:
                 symbol = "!!" if status else "  "
                 lines.append(f"    {symbol} {name:<25} {indicator}")
         else:
+            cb = self.engine.config.circuit_breakers
             daily_loss = ctx.get('daily_pnl_pct', 0)
             weekly_loss = ctx.get('weekly_pnl_pct', 0)
-            lines.append(f"    Daily loss:     {daily_loss:.1f}% (limit 3%)")
-            lines.append(f"    Weekly loss:    {weekly_loss:.1f}% (limit 5%)")
+            lines.append(f"    Daily loss:     {daily_loss:.1f}% (limit {cb.daily_loss_pct}%)")
+            lines.append(f"    Weekly loss:    {weekly_loss:.1f}% (limit {cb.weekly_loss_pct}%)")
             vix = ctx.get('vix', 0)
-            lines.append(f"    VIX level:      {vix} (halt >35)")
+            lines.append(f"    VIX level:      {vix} (halt >{cb.vix_halt_threshold:.0f})")
 
         # Trading constraints
+        tc = self.engine.config.constraints
         lines.append("\n  Trading Constraints")
         lines.append(f"  {'─' * 40}")
         trades_today = ctx.get('trades_today_count', 0)
-        lines.append(f"    Trades today:   {trades_today} / 3 max")
+        lines.append(f"    Trades today:   {trades_today} / {tc.max_trades_per_day} max")
         halted = ctx.get('halt_reason')
         if halted:
             lines.append(f"    STATUS:         HALTED — {halted}")

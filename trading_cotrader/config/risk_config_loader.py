@@ -146,9 +146,13 @@ class PortfolioRiskLimits:
     max_positions: int = 10
     max_single_position_pct: float = 10
     max_single_trade_risk_pct: float = 5
+    risk_per_trade_pct: float = 2          # Target sizing: % of capital risked per trade
     max_total_risk_pct: float = 25
     min_cash_reserve_pct: float = 10
     max_concentration_pct: float = 20
+    max_positions_per_underlying: int = 2
+    max_per_strategy_type: int = 5
+    allow_undefined_risk: bool = False
 
 
 @dataclass
@@ -558,15 +562,20 @@ class RiskConfigLoader:
                     currency=pdata.get('currency', 'USD'),
                 )
 
-            # WhatIf strategy inheritance: copy from real parent if not set
+            # WhatIf inheritance: copy strategies + risk_limits from real parent if not set
             for name, pc in portfolios_dict.items():
-                if pc.mirrors_real and not pc.allowed_strategies:
+                if pc.mirrors_real:
                     parent = portfolios_dict.get(pc.mirrors_real)
                     if parent:
-                        pc.allowed_strategies = list(parent.allowed_strategies)
-                        pc.active_strategies = list(parent.active_strategies)
+                        if not pc.allowed_strategies:
+                            pc.allowed_strategies = list(parent.allowed_strategies)
+                            pc.active_strategies = list(parent.active_strategies)
                         if not pc.preferred_underlyings:
                             pc.preferred_underlyings = list(parent.preferred_underlyings)
+                        # Inherit risk_limits if none explicitly set in YAML
+                        pdata = raw['portfolios'].get(name, {})
+                        if 'risk_limits' not in pdata:
+                            pc.risk_limits = parent.risk_limits
 
             config.portfolios = PortfoliosConfig(portfolios=portfolios_dict)
             real_count = len(config.portfolios.get_real_portfolios())

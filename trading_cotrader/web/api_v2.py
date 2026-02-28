@@ -494,7 +494,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             'circuit_breakers': guardian.get('circuit_breakers', {}),
             'trading_constraints': {
                 'trades_today': ctx.get('trades_today_count', 0),
-                'max_trades_per_day': 3,
+                'max_trades_per_day': engine.config.constraints.max_trades_per_day,
                 'halted': bool(ctx.get('halt_reason')),
                 'halt_reason': ctx.get('halt_reason'),
             },
@@ -1596,6 +1596,25 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         except Exception as e:
             logger.error(f"Ranking failed: {e}")
             raise HTTPException(500, f"Ranking failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Daily Trading Plan (via market_analyzer TradingPlanService)
+    # ------------------------------------------------------------------
+
+    class PlanRequest(BaseModel):
+        tickers: list[str] | None = None
+
+    @router.post("/plan")
+    async def get_plan(body: PlanRequest | None = None):
+        """Generate daily trading plan with verdict, risk budget, and trades by horizon."""
+        try:
+            ma = _get_market_analyzer()
+            tickers = body.tickers if body and body.tickers else None
+            result = await asyncio.to_thread(ma.plan.generate, tickers)
+            return result.model_dump(mode='json')
+        except Exception as e:
+            logger.error(f"Plan generation failed: {e}")
+            raise HTTPException(500, f"Plan generation failed: {e}")
 
     # ------------------------------------------------------------------
     # Black Swan / Tail-Risk Alert (via market_analyzer BlackSwanService)

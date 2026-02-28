@@ -128,6 +128,9 @@ export const endpoints = {
   // Ranking
   ranking: `${V2}/ranking`,
 
+  // Daily Trading Plan
+  plan: `${V2}/plan`,
+
   // Terminal
   terminalExecute: `${V2}/terminal/execute`,
 

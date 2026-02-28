@@ -58,9 +58,13 @@ portfolios:
       max_positions: 10
       max_single_position_pct: 25
       max_single_trade_risk_pct: 15
+      risk_per_trade_pct: 2
       max_total_risk_pct: 80
       min_cash_reserve_pct: 10
       max_concentration_pct: 30
+      max_positions_per_underlying: 2
+      max_per_strategy_type: 5
+      allow_undefined_risk: false
 
     preferred_underlyings:
       - SPY
@@ -100,6 +104,7 @@ portfolios:
       max_positions: 16
       max_single_position_pct: 10
       max_single_trade_risk_pct: 5
+      risk_per_trade_pct: 1
       max_total_risk_pct: 25
       min_cash_reserve_pct: 15
       max_concentration_pct: 10
@@ -151,6 +156,7 @@ portfolios:
       max_positions: 10
       max_single_position_pct: 15
       max_single_trade_risk_pct: 10
+      risk_per_trade_pct: 2
       max_total_risk_pct: 50
       min_cash_reserve_pct: 10
       max_concentration_pct: 20
@@ -183,6 +189,7 @@ portfolios:
       max_positions: 10
       max_single_position_pct: 20
       max_single_trade_risk_pct: 10
+      risk_per_trade_pct: 2
       max_total_risk_pct: 50
       min_cash_reserve_pct: 10
       max_concentration_pct: 25
@@ -212,6 +219,7 @@ portfolios:
       max_positions: 35
       max_single_position_pct: 15
       max_single_trade_risk_pct: 5
+      risk_per_trade_pct: 1
       max_total_risk_pct: 100
       min_cash_reserve_pct: 5
       max_concentration_pct: 15
@@ -233,100 +241,7 @@ portfolios:
     initial_capital: 31360
     exit_rule_profile: balanced
     tags: ["whatif", "paper"]
-    # strategies inherited from tastytrade (mirrors_real)
-
-    risk_limits:
-      max_portfolio_delta: 300
-      max_positions: 10
-      max_single_position_pct: 25
-      max_single_trade_risk_pct: 15
-      max_total_risk_pct: 80
-      min_cash_reserve_pct: 10
-      max_concentration_pct: 30
-
-  fidelity_ira_whatif:
-    display_name: "Fidelity IRA (WhatIf)"
-    description: "Paper mirror of Fidelity IRA."
-    broker_firm: fidelity
-    account_number: "259510977_whatif"
-    portfolio_type: what_if
-    mirrors_real: fidelity_ira
-    currency: USD
-    initial_capital: 181067
-    exit_rule_profile: conservative
-    tags: ["whatif", "paper"]
-
-    risk_limits:
-      max_portfolio_delta: 1000
-      max_positions: 16
-      max_single_position_pct: 10
-      max_single_trade_risk_pct: 5
-      max_total_risk_pct: 25
-      min_cash_reserve_pct: 15
-      max_concentration_pct: 10
-
-  fidelity_personal_whatif:
-    display_name: "Fidelity Personal (WhatIf)"
-    description: "Paper mirror of Fidelity Personal."
-    broker_firm: fidelity
-    account_number: "Z71212342_whatif"
-    portfolio_type: what_if
-    mirrors_real: fidelity_personal
-    currency: USD
-    initial_capital: 42241
-    exit_rule_profile: balanced
-    tags: ["whatif", "paper"]
-
-    risk_limits:
-      max_portfolio_delta: 500
-      max_positions: 10
-      max_single_position_pct: 15
-      max_single_trade_risk_pct: 10
-      max_total_risk_pct: 50
-      min_cash_reserve_pct: 10
-      max_concentration_pct: 20
-
-  zerodha_whatif:
-    display_name: "Zerodha (WhatIf)"
-    description: "Paper mirror of Zerodha account."
-    broker_firm: zerodha
-    account_number: "TBD_whatif"
-    portfolio_type: what_if
-    mirrors_real: zerodha
-    currency: INR
-    initial_capital: 0
-    exit_rule_profile: balanced
-    tags: ["whatif", "paper", "india"]
-
-    risk_limits:
-      max_portfolio_delta: 500
-      max_positions: 10
-      max_single_position_pct: 20
-      max_single_trade_risk_pct: 10
-      max_total_risk_pct: 50
-      min_cash_reserve_pct: 10
-      max_concentration_pct: 25
-
-  stallion_whatif:
-    display_name: "Stallion Asset (WhatIf)"
-    description: "Paper mirror of Stallion account."
-    broker_firm: stallion
-    account_number: "SACF5925_whatif"
-    portfolio_type: what_if
-    mirrors_real: stallion
-    currency: INR
-    initial_capital: 5000000
-    exit_rule_profile: balanced
-    tags: ["whatif", "paper", "india"]
-
-    risk_limits:
-      max_portfolio_delta: 1000
-      max_positions: 35
-      max_single_position_pct: 15
-      max_single_trade_risk_pct: 5
-      max_total_risk_pct: 100
-      min_cash_reserve_pct: 5
-      max_concentration_pct: 15
+    # strategies + risk_limits inherited from tastytrade (mirrors_real)
 
   # -------------------------------------------------------------------------
   # RESEARCH PORTFOLIOS — Virtual, no capital, auto-booked by QuantResearchAgent

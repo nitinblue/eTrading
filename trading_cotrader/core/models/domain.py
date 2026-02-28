@@ -144,6 +144,7 @@ class TradeSource(Enum):
     SCENARIO_EARNINGS = "scenario_earnings"
     SCENARIO_BLACK_SWAN = "scenario_black_swan"
     SCENARIO_ARBITRAGE = "scenario_arbitrage"
+    TRADER_SCRIPT = "trader_script"
 
 
 # ============================================================================

@@ -1581,6 +1581,64 @@ export interface ScreeningResult {
   summary: string
 }
 
+// ---------------------------------------------------------------------------
+// Daily Trading Plan (from market_analyzer TradingPlanService)
+// ---------------------------------------------------------------------------
+export interface RiskBudget {
+  max_new_positions: number
+  max_daily_risk_dollars: number
+  position_size_factor: number
+}
+
+export interface ExpiryEvent {
+  date: string
+  label: string
+  event_type: string
+  tickers: string[]
+}
+
+export interface TradeSpec {
+  structure_type: string | null
+  order_side: string | null
+  leg_codes: string[]
+  net_credit: number | null
+  net_debit: number | null
+  max_profit: number | null
+  max_loss: number | null
+  pop: number | null
+  dte: number | null
+  exit_summary: string | null
+}
+
+export interface PlanTrade {
+  rank: number
+  ticker: string
+  strategy_type: string
+  horizon: string  // 0dte, weekly, monthly, leap
+  verdict: string
+  composite_score: number
+  direction: string
+  trade_spec: TradeSpec | null
+  max_entry_price: number | null
+  rationale: string
+  risk_notes: string[]
+  expiry_note: string | null
+}
+
+export interface DailyTradingPlan {
+  as_of_date: string
+  plan_for_date: string
+  day_verdict: string  // trade, trade_light, avoid, no_trade
+  day_verdict_reasons: string[]
+  risk_budget: RiskBudget
+  expiry_events: ExpiryEvent[]
+  upcoming_expiries: ExpiryEvent[]
+  trades_by_horizon: Record<string, PlanTrade[]>
+  all_trades: PlanTrade[]
+  total_trades: number
+  summary: string
+}
+
 // WebSocket message types
 export type WSMessageType =
   | 'cell_update'

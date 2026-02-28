@@ -3,6 +3,24 @@
 # Last Updated: February 26, 2026 (session 36)
 # Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log s1-s26)
 
+## MISSION — READ THIS EVERY SESSION
+
+**This system exists to make money.** $250K sits idle — $50K personal, $200K self-directed IRA. The goal is to deploy this capital systematically to fund Nitin's daughter's college education.
+
+Every session, before doing anything, ask: **"Does this task move us closer to placing real trades with real money?"** If the answer is no, challenge it. Tech debt, UI polish, and refactoring only matter if they unblock revenue-generating capability.
+
+**The measure of progress is not lines of code or test count. It is: can Maverick place a trade today?**
+
+Current blockers to first real trade:
+1. Maverick can produce trading signals — but cannot execute them (no order placement)
+2. No approval workflow for generated trades (human-in-the-loop before execution)
+3. No position sizing based on risk budget
+4. No P&L tracking of trades Maverick recommended
+
+**If Nitin asks for UI work, cleanup, or refactoring — do it, but remind him what's still blocking the first trade.**
+
+---
+
 ## STANDING INSTRUCTIONS
 - **ALWAYS update CLAUDE.md** after major changes — update: code map, open items, session log.
 - **ALWAYS update MEMORY.md** (`~/.claude/projects/.../memory/MEMORY.md`) with session summary.

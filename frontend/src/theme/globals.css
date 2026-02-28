@@ -58,13 +58,13 @@
 
   /* Dense card style */
   .card {
-    @apply bg-bg-secondary border border-border-secondary rounded-lg;
+    @apply bg-bg-secondary border border-border-secondary rounded;
   }
   .card-header {
-    @apply px-3 py-2 border-b border-border-secondary;
+    @apply px-2 py-1 border-b border-border-secondary;
   }
   .card-body {
-    @apply px-3 py-2;
+    @apply px-2 py-1;
   }
 }
 

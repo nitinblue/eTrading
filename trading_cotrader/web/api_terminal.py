@@ -1,8 +1,9 @@
 """
-Market Analyzer Terminal API — interactive analysis terminal on the web.
+CoTrader Terminal API — unified interactive terminal on the web.
 
-Translates MarketAnalyzer CLI commands into structured block responses
-that the frontend renders as a Claude Code-style terminal.
+Two command sets in one terminal:
+  1. Market Analysis (19 commands) — powered by MarketAnalyzer
+  2. Trading (9 commands) — positions, portfolios, booking, execution
 
 Single endpoint: POST /terminal/execute  {"command": "analyze SPY"}
 """
@@ -10,7 +11,8 @@ Single endpoint: POST /terminal/execute  {"command": "analyze SPY"}
 from typing import TYPE_CHECKING
 import asyncio
 import logging
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -97,7 +99,7 @@ def _safe(val, fmt: str = ".2f", fallback: str = "N/A") -> str:
 
 
 # ---------------------------------------------------------------------------
-# Command handlers — each returns list[dict] blocks
+# Market Analysis command handlers — each returns list[dict] blocks
 # ---------------------------------------------------------------------------
 
 def _handle_context(args: list[str], ma: MarketAnalyzer) -> list[dict]:
@@ -367,8 +369,8 @@ def _handle_exit_plan(args: list[str], ma: MarketAnalyzer) -> list[dict]:
     return blocks
 
 
-def _handle_plan(args: list[str], ma: MarketAnalyzer) -> list[dict]:
-    """Generate daily trading plan."""
+def _handle_plan(args: list[str], ma: MarketAnalyzer, *, plan_store: dict | None = None) -> list[dict]:
+    """Generate daily trading plan. Optionally stores the plan object in plan_store."""
     from market_analyzer.models.trading_plan import PlanHorizon
 
     tickers: list[str] = []
@@ -386,6 +388,11 @@ def _handle_plan(args: list[str], ma: MarketAnalyzer) -> list[dict]:
             i += 1
 
     plan = ma.plan.generate(tickers=tickers or None, plan_date=plan_date)
+
+    # Store plan for book command
+    if plan_store is not None:
+        plan_store['plan'] = plan
+
     blocks: list[dict] = []
 
     day_str = plan.plan_for_date.strftime("%a %b %d, %Y")
@@ -480,6 +487,7 @@ def _handle_plan(args: list[str], ma: MarketAnalyzer) -> list[dict]:
                     blocks.append(_text(f"  {' | '.join(detail_items)}", "dim"))
 
     blocks.append(_text(plan.summary, "dim"))
+    blocks.append(_text("Use 'book <#>' to book a trade by rank number.", "dim"))
     return blocks
 
 
@@ -884,7 +892,8 @@ def _handle_stress(args: list[str], ma: MarketAnalyzer) -> list[dict]:
 
 def _handle_help(args: list[str], ma: MarketAnalyzer) -> list[dict]:
     return [
-        _header("Market Analyzer \u2014 Available Commands"),
+        _header("CoTrader Terminal \u2014 Available Commands"),
+        _section("Market Analysis"),
         _table(
             ["Command", "Usage", "Description"],
             [
@@ -894,21 +903,35 @@ def _handle_help(args: list[str], ma: MarketAnalyzer) -> list[dict]:
                 ["entry", "entry SPY breakout", "Confirm entry signal"],
                 ["strategy", "strategy SPY", "Strategy recommendation + sizing"],
                 ["exit_plan", "exit_plan SPY 580", "Exit plan for a position"],
-                ["plan", "plan [SPY GLD ...] [--date YYYY-MM-DD]", "Daily trading plan"],
+                ["plan", "plan [SPY ...] [--date YYYY-MM-DD]", "Daily trading plan"],
                 ["rank", "rank [SPY GLD ...]", "Rank trades across tickers"],
                 ["regime", "regime [SPY GLD ...]", "Detect regime for tickers"],
                 ["technicals", "technicals SPY", "Technical snapshot"],
                 ["vol", "vol SPY", "Volatility surface & term structure"],
-                ["setup", "setup SPY [breakout|momentum|mr|orb|all]", "Price-based setup assessment"],
-                ["opportunity", "opportunity SPY [ic|ifly|calendar|diagonal|ratio|leap|all]", "Option play assessment"],
+                ["setup", "setup SPY [type]", "Price-based setup assessment"],
+                ["opportunity", "opportunity SPY [play]", "Option play assessment"],
                 ["levels", "levels SPY", "Support/resistance levels"],
                 ["macro", "macro", "Macro economic calendar"],
                 ["stress", "stress", "Black swan / tail-risk alert"],
-                ["help", "help", "Show this help"],
-                ["clear", "clear", "Clear terminal history"],
             ],
         ),
-        _text("Arguments in [brackets] are optional. Without tickers, commands use defaults.", "dim"),
+        _section("Trading"),
+        _table(
+            ["Command", "Usage", "Description"],
+            [
+                ["positions", "positions [portfolio]", "Open trades with Greeks"],
+                ["portfolios", "portfolios", "All portfolios: capital + Greeks"],
+                ["greeks", "greeks", "Portfolio Greeks vs limits"],
+                ["capital", "capital", "Capital utilization"],
+                ["trades", "trades", "Today's executed trades"],
+                ["book", "book <#> [--portfolio ttw]", "Book WhatIf from plan/template"],
+                ["execute", "execute <id> [--confirm]", "Execute WhatIf trade"],
+                ["orders", "orders", "Pending broker orders"],
+                ["morning", "morning", "Run morning trading workflow"],
+            ],
+        ),
+        _text("Workflow: plan SPY \u2192 book 1 \u2192 execute <id> --confirm", "dim"),
+        _text("help, clear", "dim"),
     ]
 
 
@@ -917,11 +940,586 @@ def _handle_clear(args: list[str], ma: MarketAnalyzer) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Trading command handlers — each returns list[dict] blocks
+# ---------------------------------------------------------------------------
+
+def _handle_t_positions(args: list[str], engine: 'WorkflowEngine') -> list[dict]:
+    """Open trades grouped by portfolio."""
+    from trading_cotrader.core.database.session import session_scope
+    from trading_cotrader.core.database.schema import TradeORM
+
+    portfolio_filter = args[0].lower() if args else None
+
+    with session_scope() as session:
+        trades = (
+            session.query(TradeORM)
+            .filter(TradeORM.trade_status.in_([
+                'executed', 'partial', 'intent', 'pending',
+            ]))
+            .order_by(TradeORM.underlying_symbol)
+            .all()
+        )
+        if not trades:
+            return [_text("No positions. Book one with: plan SPY \u2192 book <#>")]
+
+        # Group by portfolio
+        by_portfolio: dict[str, list] = {}
+        for t in trades:
+            pname = t.portfolio.name if t.portfolio else '\u2014'
+            if portfolio_filter and portfolio_filter not in pname.lower():
+                continue
+            by_portfolio.setdefault(pname, []).append(t)
+
+        if not by_portfolio:
+            return [_text(f"No positions matching '{portfolio_filter}'.")]
+
+        blocks: list[dict] = [_header("Positions by Portfolio")]
+
+        total_count = 0
+        whatif_count = 0
+
+        for pname in sorted(by_portfolio.keys()):
+            ptrades = by_portfolio[pname]
+            blocks.append(_section(f"{pname} ({len(ptrades)} trades)"))
+
+            rows = []
+            for t in ptrades:
+                strategy_name = '\u2014'
+                if t.strategy_id and t.strategy:
+                    strategy_name = t.strategy.strategy_type or '\u2014'
+
+                status = t.trade_status or '\u2014'
+                if status == 'intent' and t.trade_type == 'what_if':
+                    status = 'WHATIF'
+                    whatif_count += 1
+                elif status == 'executed':
+                    status = 'OPEN'
+                elif status == 'pending':
+                    status = 'PENDING'
+
+                rows.append([
+                    t.id[:8],
+                    t.underlying_symbol,
+                    strategy_name[:18],
+                    status,
+                    _safe(t.entry_price, ".2f", "\u2014"),
+                    _safe(t.total_pnl, ".0f", "\u2014"),
+                    _safe(t.current_delta, "+.1f", "0"),
+                    _safe(t.current_theta, "+.1f", "0"),
+                ])
+                total_count += 1
+
+            blocks.append(_table(
+                ["ID", "Underlying", "Strategy", "Status", "Entry", "P&L", "Delta", "Theta"],
+                rows,
+            ))
+
+        blocks.append(_text(f"Total: {total_count}  (WhatIf: {whatif_count})", "dim"))
+        if whatif_count:
+            blocks.append(_text("Execute WhatIf: execute <id> [--confirm]", "dim"))
+
+        return blocks
+
+
+def _handle_t_portfolios(args: list[str], engine: 'WorkflowEngine') -> list[dict]:
+    """All portfolios: capital, Greeks, P&L."""
+    from trading_cotrader.core.database.session import session_scope
+    from trading_cotrader.core.database.schema import PortfolioORM
+
+    with session_scope() as session:
+        portfolios = (
+            session.query(PortfolioORM)
+            .filter(PortfolioORM.portfolio_type != 'deprecated')
+            .order_by(PortfolioORM.name)
+            .all()
+        )
+        if not portfolios:
+            return [_text("No portfolios found.")]
+
+        rows = []
+        for p in portfolios:
+            equity = float(p.total_equity or 0)
+            cash = float(p.cash_balance or 0)
+            deployed_pct = ((equity - cash) / equity * 100) if equity else 0
+
+            rows.append([
+                p.name[:22],
+                (p.broker or '\u2014')[:12],
+                (p.portfolio_type or '\u2014')[:8],
+                f"${equity:,.0f}",
+                f"${cash:,.0f}",
+                f"{deployed_pct:.0f}%",
+                _safe(p.portfolio_delta, "+.1f", "0"),
+                _safe(p.portfolio_theta, "+.1f", "0"),
+                _safe(p.total_pnl, "+.0f", "0"),
+            ])
+
+        return [
+            _header("Portfolios"),
+            _table(
+                ["Name", "Broker", "Type", "Equity", "Cash", "Deployed", "Delta", "Theta", "P&L"],
+                rows,
+            ),
+        ]
+
+
+def _handle_t_greeks(args: list[str], engine: 'WorkflowEngine') -> list[dict]:
+    """Portfolio Greeks vs limits with visual utilization."""
+    from trading_cotrader.core.database.session import session_scope
+    from trading_cotrader.core.database.schema import PortfolioORM
+
+    with session_scope() as session:
+        portfolios = (
+            session.query(PortfolioORM)
+            .filter(PortfolioORM.portfolio_type != 'deprecated')
+            .order_by(PortfolioORM.name)
+            .all()
+        )
+        if not portfolios:
+            return [_text("No portfolios found.")]
+
+        blocks: list[dict] = [_header("Portfolio Greeks vs Limits")]
+
+        for p in portfolios:
+            delta = float(p.portfolio_delta or 0)
+            gamma = float(p.portfolio_gamma or 0)
+            theta = float(p.portfolio_theta or 0)
+            vega = float(p.portfolio_vega or 0)
+
+            max_d = float(p.max_portfolio_delta or 500)
+            max_g = float(p.max_portfolio_gamma or 50)
+            min_t = float(p.min_portfolio_theta or -500)
+            max_v = float(p.max_portfolio_vega or 1000)
+
+            d_pct = abs(delta) / max_d * 100 if max_d else 0
+            g_pct = abs(gamma) / max_g * 100 if max_g else 0
+            t_pct = abs(theta) / abs(min_t) * 100 if min_t else 0
+            v_pct = abs(vega) / max_v * 100 if max_v else 0
+
+            def _greek_color(pct: float) -> str:
+                if pct > 80:
+                    return "red"
+                if pct > 50:
+                    return "yellow"
+                return "green"
+
+            blocks.append(_section(p.name))
+            blocks.append(_kv([
+                _kv_item("Delta", f"{delta:+.1f} / {max_d:.0f} ({d_pct:.0f}%)", _greek_color(d_pct)),
+                _kv_item("Gamma", f"{gamma:+.3f} / {max_g:.1f} ({g_pct:.0f}%)", _greek_color(g_pct)),
+                _kv_item("Theta", f"{theta:+.1f} / {min_t:.0f} ({t_pct:.0f}%)", _greek_color(t_pct)),
+                _kv_item("Vega", f"{vega:+.1f} / {max_v:.0f} ({v_pct:.0f}%)", _greek_color(v_pct)),
+            ]))
+
+        return blocks
+
+
+def _handle_t_capital(args: list[str], engine: 'WorkflowEngine') -> list[dict]:
+    """Capital utilization per portfolio."""
+    from trading_cotrader.core.database.session import session_scope
+    from trading_cotrader.core.database.schema import PortfolioORM
+
+    with session_scope() as session:
+        portfolios = (
+            session.query(PortfolioORM)
+            .filter(PortfolioORM.portfolio_type.in_(['real', 'paper']))
+            .order_by(PortfolioORM.name)
+            .all()
+        )
+        if not portfolios:
+            return [_text("No portfolios found.")]
+
+        rows = []
+        for p in portfolios:
+            initial = float(p.initial_capital or 0)
+            equity = float(p.total_equity or 0)
+            cash = float(p.cash_balance or 0)
+            deployed_pct = ((equity - cash) / equity * 100) if equity else 0
+            idle = cash
+
+            rows.append([
+                p.name[:22],
+                f"${initial:,.0f}",
+                f"${equity:,.0f}",
+                f"${cash:,.0f}",
+                f"{deployed_pct:.0f}%",
+                f"${idle:,.0f}",
+            ])
+
+        return [
+            _header("Capital Utilization"),
+            _table(
+                ["Portfolio", "Initial", "Equity", "Cash", "Deployed", "Idle"],
+                rows,
+            ),
+        ]
+
+
+def _handle_t_trades(args: list[str], engine: 'WorkflowEngine') -> list[dict]:
+    """Today's executed trades."""
+    from trading_cotrader.core.database.session import session_scope
+    from trading_cotrader.core.database.schema import TradeORM
+
+    today_start = datetime.combine(date.today(), datetime.min.time())
+
+    with session_scope() as session:
+        trades = (
+            session.query(TradeORM)
+            .filter(TradeORM.created_at >= today_start)
+            .order_by(TradeORM.created_at.desc())
+            .all()
+        )
+        if not trades:
+            return [_text("No trades today.")]
+
+        rows = []
+        for t in trades:
+            strategy_name = '\u2014'
+            if t.strategy:
+                strategy_name = t.strategy.strategy_type or '\u2014'
+
+            time_str = t.created_at.strftime('%H:%M') if t.created_at else '\u2014'
+
+            rows.append([
+                t.id[:8],
+                t.underlying_symbol,
+                strategy_name[:18],
+                t.trade_status or '\u2014',
+                t.trade_source or 'manual',
+                _safe(t.entry_price, ".2f", "\u2014"),
+                _safe(t.total_pnl, ".0f", "\u2014"),
+                time_str,
+            ])
+
+        return [
+            _header(f"Today's Trades ({len(trades)})"),
+            _table(
+                ["ID", "Underlying", "Strategy", "Status", "Source", "Entry", "P&L", "Time"],
+                rows,
+            ),
+        ]
+
+
+def _handle_t_book(args: list[str], engine: 'WorkflowEngine', ma: MarketAnalyzer) -> list[dict]:
+    """Book a WhatIf trade from plan output or template."""
+    if not args:
+        return [_error("Usage: book <#> [--portfolio <alias>]\n  # = trade rank from 'plan', or template index from 'templates'")]
+
+    target = args[0]
+
+    # Parse --portfolio flag
+    portfolio_name = None
+    for i, a in enumerate(args[1:], 1):
+        if a == '--portfolio' and i + 1 < len(args):
+            portfolio_name = args[i + 1]
+            break
+
+    # Try to interpret as plan trade index
+    try:
+        trade_idx = int(target)
+    except ValueError:
+        trade_idx = None
+
+    last_plan = engine.context.get('last_plan')
+
+    # If integer and we have a stored plan, try plan-based booking
+    if trade_idx is not None and last_plan is not None:
+        all_trades = last_plan.all_trades
+        # Match by rank number
+        trade = None
+        for t in all_trades:
+            if t.rank == trade_idx:
+                trade = t
+                break
+
+        if trade is not None:
+            return _book_from_plan(trade, engine, portfolio_name)
+
+    # Fall back to template-based booking via InteractionManager
+    from trading_cotrader.agents.messages import UserIntent
+
+    params: dict = {}
+    if portfolio_name:
+        params['portfolio'] = portfolio_name
+
+    intent = UserIntent(action='book', target=target, parameters=params)
+    response = engine.interaction._book(intent)
+    return [_text(response.message)]
+
+
+def _book_from_plan(trade, engine: 'WorkflowEngine', portfolio_name: str | None) -> list[dict]:
+    """Book a specific trade from the daily plan through the risk gate."""
+    from trading_cotrader.agents.workflow.the_trader import (
+        check_structure, check_defined_risk, check_position_risk,
+        check_portfolio_risk, size_position, tradespec_to_legs,
+        _get_current_positions, PORTFOLIO_NAME,
+    )
+    from trading_cotrader.config.risk_config_loader import RiskConfigLoader
+    from trading_cotrader.services.trade_booking_service import TradeBookingService
+    from trading_cotrader.agents.workflow.interaction import resolve_portfolio_name
+    import trading_cotrader.core.models.domain as dm
+
+    target_portfolio = resolve_portfolio_name(portfolio_name) if portfolio_name else PORTFOLIO_NAME
+
+    # Load risk config
+    loader = RiskConfigLoader()
+    config = loader.load()
+    portfolio_cfg = config.portfolios.get_by_name(target_portfolio)
+    if not portfolio_cfg:
+        return [_error(f"Portfolio '{target_portfolio}' not found in risk_config.yaml")]
+
+    risk_limits = portfolio_cfg.risk_limits
+    capital = portfolio_cfg.initial_capital
+
+    spec = trade.trade_spec
+    ticker = trade.ticker
+    strategy = trade.strategy_type
+
+    blocks: list[dict] = [_header(f"Booking: #{trade.rank} {ticker} {strategy}")]
+    blocks.append(_kv([
+        _kv_item("Score", f"{trade.composite_score:.2f}"),
+        _kv_item("Verdict", str(trade.verdict).upper()),
+        _kv_item("Portfolio", target_portfolio),
+    ]))
+
+    # Risk gate checks
+    checks = [
+        ("Structure", check_structure(spec, strategy)),
+        ("Defined Risk", check_defined_risk(strategy, spec.legs if spec else [], risk_limits)),
+        ("Position Risk", check_position_risk(spec, capital, risk_limits)),
+    ]
+
+    current_positions = _get_current_positions(target_portfolio)
+    checks.append(("Portfolio Risk", check_portfolio_risk(
+        ticker, strategy, risk_limits, current_positions,
+    )))
+
+    # Show risk gate results
+    blocks.append(_section("Risk Gate"))
+    gate_items = []
+    all_pass = True
+    for name, (ok, msg) in checks:
+        color = "green" if ok else "red"
+        gate_items.append(_kv_item(name, f"{'PASS' if ok else 'REJECT'}: {msg}", color))
+        if not ok:
+            all_pass = False
+    blocks.append(_kv(gate_items))
+
+    if not all_pass:
+        blocks.append(_status("REJECTED \u2014 trade did not pass risk gate", "red"))
+        return blocks
+
+    # Position sizing
+    contracts, size_msg = size_position(spec, capital, 1.0, risk_limits)
+    blocks.append(_kv([_kv_item("Sizing", size_msg, "green" if contracts > 0 else "red")]))
+
+    if contracts <= 0:
+        blocks.append(_status("REJECTED \u2014 position too expensive", "red"))
+        return blocks
+
+    # Convert legs and book
+    leg_inputs = tradespec_to_legs(ticker, spec, contracts)
+
+    svc = TradeBookingService()
+    result = svc.book_whatif_trade(
+        underlying=ticker,
+        strategy_type=strategy,
+        legs=leg_inputs,
+        portfolio_name=target_portfolio,
+        trade_source=dm.TradeSource.TRADER_SCRIPT,
+        rationale=trade.rationale,
+        notes=f"Score: {trade.composite_score:.2f}, Verdict: {trade.verdict}",
+    )
+
+    if not result.success:
+        blocks.append(_status(f"BOOKING FAILED: {result.error}", "red"))
+        return blocks
+
+    blocks.append(_status("BOOKED", "green"))
+    kv_items = [
+        _kv_item("Trade ID", result.trade_id[:12]),
+        _kv_item("Entry", f"${float(result.entry_price):.2f}"),
+    ]
+    if result.total_greeks:
+        g = result.total_greeks
+        kv_items.append(_kv_item("Greeks",
+            f"delta={g.get('delta', 0):+.2f} theta={g.get('theta', 0):+.2f} "
+            f"vega={g.get('vega', 0):+.2f}"))
+    blocks.append(_kv(kv_items))
+    blocks.append(_text("View with: positions | Execute with: execute <id>", "dim"))
+
+    return blocks
+
+
+def _handle_t_execute(args: list[str], engine: 'WorkflowEngine') -> list[dict]:
+    """Preview or place a WhatIf trade as a live order."""
+    if not args:
+        return [_error("Usage: execute <trade_id> [--confirm]")]
+
+    from trading_cotrader.agents.messages import UserIntent
+
+    trade_id = args[0]
+    params: dict = {}
+    if '--confirm' in args:
+        params['confirm'] = True
+
+    intent = UserIntent(action='execute', target=trade_id, parameters=params)
+    response = engine.interaction._execute(intent)
+    return [_text(response.message)]
+
+
+def _handle_t_orders(args: list[str], engine: 'WorkflowEngine') -> list[dict]:
+    """Pending/recent broker orders."""
+    from trading_cotrader.agents.messages import UserIntent
+
+    intent = UserIntent(action='orders')
+    response = engine.interaction._orders(intent)
+    return [_text(response.message)]
+
+
+def _handle_t_morning(args: list[str], engine: 'WorkflowEngine', ma: MarketAnalyzer) -> list[dict]:
+    """Run the morning trading workflow: plan -> risk gate -> book."""
+    from trading_cotrader.agents.workflow.the_trader import (
+        check_structure, check_defined_risk, check_position_risk,
+        check_portfolio_risk, size_position, tradespec_to_legs,
+        _get_current_positions, PORTFOLIO_NAME,
+    )
+    from trading_cotrader.config.risk_config_loader import RiskConfigLoader
+    from trading_cotrader.services.trade_booking_service import TradeBookingService
+    import trading_cotrader.core.models.domain as dm
+
+    blocks: list[dict] = [_header("Morning Trading Workflow")]
+
+    # Load risk config
+    loader = RiskConfigLoader()
+    config = loader.load()
+    portfolio_cfg = config.portfolios.get_by_name(PORTFOLIO_NAME)
+    if not portfolio_cfg:
+        return [_error(f"Portfolio '{PORTFOLIO_NAME}' not found")]
+
+    risk_limits = portfolio_cfg.risk_limits
+    capital = portfolio_cfg.initial_capital
+
+    # Step 1: Generate plan
+    blocks.append(_section("Step 1: Daily Plan"))
+    plan = ma.plan.generate()
+    engine.context['last_plan'] = plan
+
+    verdict_str = plan.day_verdict.value.upper().replace("_", " ")
+    blocks.append(_kv([
+        _kv_item("Date", str(plan.plan_for_date)),
+        _kv_item("Verdict", verdict_str,
+                 "green" if "TRADE" in verdict_str else "red"),
+        _kv_item("Trades Found", str(plan.total_trades)),
+        _kv_item("Risk Budget", f"{plan.risk_budget.position_size_factor:.0%} sizing"),
+    ]))
+
+    if plan.day_verdict.value in ("no_trade", "avoid"):
+        blocks.append(_status("NO TRADING TODAY", "red"))
+        blocks.append(_text(plan.summary, "dim"))
+        return blocks
+
+    # Step 2: Filter GO/CAUTION candidates
+    candidates = [t for t in plan.all_trades
+                  if str(t.verdict).lower() in ("go", "caution")]
+    blocks.append(_section(f"Step 2: Candidates ({len(candidates)} GO/CAUTION)"))
+
+    if not candidates:
+        blocks.append(_text("No GO/CAUTION trades. Sit on hands today.", "dim"))
+        return blocks
+
+    for t in candidates:
+        v = str(t.verdict).upper()
+        blocks.append(_text(
+            f"  #{t.rank} {t.ticker} {t.strategy_type} {v} score={t.composite_score:.2f}"
+        ))
+
+    # Step 3: Risk gate
+    blocks.append(_section("Step 3: Risk Gate"))
+    current_positions = _get_current_positions(PORTFOLIO_NAME)
+    blocks.append(_text(f"Current positions: {len(current_positions)}", "dim"))
+
+    passing_trades = []
+    for t in candidates:
+        spec = t.trade_spec
+        ticker = t.ticker
+        strategy = t.strategy_type
+
+        checks = [
+            check_structure(spec, strategy),
+            check_defined_risk(strategy, spec.legs if spec else [], risk_limits),
+            check_position_risk(spec, capital, risk_limits),
+            check_portfolio_risk(ticker, strategy, risk_limits, current_positions),
+        ]
+
+        all_pass = all(ok for ok, _ in checks)
+        if not all_pass:
+            failed = [msg for ok, msg in checks if not ok]
+            blocks.append(_kv([_kv_item(f"{ticker} {strategy}", f"REJECT: {failed[0]}", "red")]))
+            continue
+
+        contracts, size_msg = size_position(
+            spec, capital, plan.risk_budget.position_size_factor, risk_limits,
+        )
+        if contracts <= 0:
+            blocks.append(_kv([_kv_item(f"{ticker} {strategy}", f"REJECT: {size_msg}", "red")]))
+            continue
+
+        blocks.append(_kv([_kv_item(f"{ticker} {strategy}", f"PASS \u2014 {contracts} contracts", "green")]))
+        passing_trades.append((t, contracts))
+
+    if not passing_trades:
+        blocks.append(_status("All trades rejected by risk gate", "red"))
+        return blocks
+
+    # Step 4-5: Book
+    blocks.append(_section(f"Step 4-5: Booking ({len(passing_trades)} trades)"))
+    svc = TradeBookingService()
+    booked = 0
+
+    for t, contracts in passing_trades:
+        spec = t.trade_spec
+        ticker = t.ticker
+        strategy = t.strategy_type
+
+        leg_inputs = tradespec_to_legs(ticker, spec, contracts)
+        result = svc.book_whatif_trade(
+            underlying=ticker,
+            strategy_type=strategy,
+            legs=leg_inputs,
+            portfolio_name=PORTFOLIO_NAME,
+            trade_source=dm.TradeSource.TRADER_SCRIPT,
+            rationale=t.rationale,
+            notes=f"Score: {t.composite_score:.2f}, Verdict: {t.verdict}",
+        )
+
+        if result.success:
+            booked += 1
+            blocks.append(_kv([_kv_item(f"{ticker} {strategy}",
+                f"BOOKED \u2014 {result.trade_id[:8]} @ ${float(result.entry_price):.2f}", "green")]))
+        else:
+            blocks.append(_kv([_kv_item(f"{ticker} {strategy}", f"FAILED: {result.error}", "red")]))
+
+    # Summary
+    blocks.append(_section("Summary"))
+    blocks.append(_kv([
+        _kv_item("Candidates", str(len(candidates))),
+        _kv_item("Passed Gate", str(len(passing_trades))),
+        _kv_item("Booked", str(booked), "green" if booked > 0 else "red"),
+        _kv_item("Rejected", str(len(candidates) - len(passing_trades))),
+    ]))
+    blocks.append(_text(plan.summary, "dim"))
+    blocks.append(_text("View with: positions | Execute with: execute <id>", "dim"))
+
+    return blocks
+
+
+# ---------------------------------------------------------------------------
 # Router factory
 # ---------------------------------------------------------------------------
 
 def create_terminal_router(engine: 'WorkflowEngine') -> APIRouter:
-    """Create the terminal API router."""
+    """Create the terminal API router with MA + trading commands."""
     router = APIRouter()
     _ma_instance: list[MarketAnalyzer | None] = [None]  # mutable container for nonlocal
 
@@ -930,14 +1528,23 @@ def create_terminal_router(engine: 'WorkflowEngine') -> APIRouter:
             _ma_instance[0] = MarketAnalyzer(data_service=DataService())
         return _ma_instance[0]
 
-    handlers = {
+    # Plan handler with context storage
+    def _plan_with_store(args: list[str], ma: MarketAnalyzer) -> list[dict]:
+        plan_store: dict = {}
+        blocks = _handle_plan(args, ma, plan_store=plan_store)
+        if 'plan' in plan_store:
+            engine.context['last_plan'] = plan_store['plan']
+        return blocks
+
+    handlers: dict = {
+        # Market Analysis commands
         "context": _handle_context,
         "analyze": _handle_analyze,
         "screen": _handle_screen,
         "entry": _handle_entry,
         "strategy": _handle_strategy,
         "exit_plan": _handle_exit_plan,
-        "plan": _handle_plan,
+        "plan": _plan_with_store,
         "rank": _handle_rank,
         "vol": _handle_vol,
         "setup": _handle_setup,
@@ -949,6 +1556,16 @@ def create_terminal_router(engine: 'WorkflowEngine') -> APIRouter:
         "stress": _handle_stress,
         "help": _handle_help,
         "clear": _handle_clear,
+        # Trading commands (closures capturing engine)
+        "positions": lambda args, ma: _handle_t_positions(args, engine),
+        "portfolios": lambda args, ma: _handle_t_portfolios(args, engine),
+        "greeks": lambda args, ma: _handle_t_greeks(args, engine),
+        "capital": lambda args, ma: _handle_t_capital(args, engine),
+        "trades": lambda args, ma: _handle_t_trades(args, engine),
+        "book": lambda args, ma: _handle_t_book(args, engine, ma),
+        "execute": lambda args, ma: _handle_t_execute(args, engine),
+        "orders": lambda args, ma: _handle_t_orders(args, engine),
+        "morning": lambda args, ma: _handle_t_morning(args, engine, ma),
     }
 
     @router.post("/terminal/execute")

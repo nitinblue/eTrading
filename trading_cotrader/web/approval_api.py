@@ -379,7 +379,7 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
             "circuit_breakers": guardian.get('circuit_breakers', {}),
             "trading_constraints": {
                 "trades_today": ctx.get('trades_today_count', 0),
-                "max_trades_per_day": 3,
+                "max_trades_per_day": engine.config.constraints.max_trades_per_day,
                 "halted": bool(ctx.get('halt_reason')),
                 "halt_reason": ctx.get('halt_reason'),
             },

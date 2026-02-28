@@ -6,6 +6,7 @@ import { Spinner } from '../components/common/Spinner'
 import { AgentBadge } from '../components/common/AgentBadge'
 import { TickerDetailPanel } from '../components/research/TickerDetailPanel'
 import { RankingPanel } from '../components/research/RankingPanel'
+import { PlanPanel } from '../components/research/PlanPanel'
 import { BlackSwanBar } from '../components/research/BlackSwanBar'
 import { MarketContextStrip } from '../components/research/MarketContextStrip'
 import type { ResearchEntry, ResearchMacroContext, MacroEvent } from '../api/types'
@@ -217,8 +218,8 @@ export function ResearchDashboardPage() {
       )}
 
       {/* Main content (right) */}
-      <div className="flex-1 overflow-auto p-1.5">
-        <div className="space-y-1">
+      <div className="flex-1 overflow-auto p-1">
+        <div className="space-y-0.5">
           {/* Row 1: Header + controls (ultra-compact) */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -276,7 +277,8 @@ export function ResearchDashboardPage() {
           {/* Watchlist manager (expandable) */}
           {showWatchlistManager && <WatchlistManager onClose={() => setShowWatchlistManager(false)} />}
 
-          {/* Row 5: Ranking report — all watchlist tickers */}
+          {/* Row 5: Daily Plan + Ranking */}
+          {data.length > 0 && <PlanPanel tickers={data.map(d => d.symbol)} />}
           {data.length > 0 && <RankingPanel tickers={data.map(d => d.symbol)} />}
 
           {/* Main table */}

@@ -151,7 +151,7 @@ function EntryView({ entry }: { entry: TerminalEntry }) {
   return (
     <div className="mb-2">
       <div className="flex items-center gap-1">
-        <span className="text-accent-cyan text-[11px] font-mono font-semibold">market_analyzer&gt;</span>
+        <span className="text-accent-cyan text-[11px] font-mono font-semibold">cotrader&gt;</span>
         <span className="text-text-primary text-[11px] font-mono">{entry.command}</span>
       </div>
       <div className="mt-0.5">
@@ -202,7 +202,7 @@ export function TerminalPanel() {
         {/* Welcome message */}
         {history.length === 0 && !loading && (
           <div className="text-text-muted text-[11px] font-mono">
-            <span className="text-text-secondary font-semibold">market_analyzer</span> — interactive analysis terminal. Type <span className="text-accent-cyan">'help'</span> for commands.
+            <span className="text-text-secondary font-semibold">cotrader</span> — unified trading terminal. Type <span className="text-accent-cyan">'help'</span> for commands.
           </div>
         )}
 
@@ -214,7 +214,7 @@ export function TerminalPanel() {
         {/* Loading indicator */}
         {loading && (
           <div className="flex items-center gap-1 mb-2">
-            <span className="text-accent-cyan text-[11px] font-mono font-semibold">market_analyzer&gt;</span>
+            <span className="text-accent-cyan text-[11px] font-mono font-semibold">cotrader&gt;</span>
             <span className="text-text-muted text-[11px] font-mono animate-pulse">Running...</span>
           </div>
         )}
@@ -225,7 +225,7 @@ export function TerminalPanel() {
         className="flex items-center gap-1 px-3 py-1.5 border-t border-border-secondary bg-bg-secondary/50 flex-shrink-0 cursor-text"
         onClick={() => inputRef.current?.focus()}
       >
-        <span className="text-accent-cyan text-[11px] font-mono font-semibold whitespace-nowrap">market_analyzer&gt;</span>
+        <span className="text-accent-cyan text-[11px] font-mono font-semibold whitespace-nowrap">cotrader&gt;</span>
         <input
           ref={inputRef}
           type="text"
