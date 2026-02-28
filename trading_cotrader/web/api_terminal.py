@@ -2025,11 +2025,47 @@ def _handle_t_status(args: list[str], engine: 'WorkflowEngine', ma: MarketAnalyz
 def create_terminal_router(engine: 'WorkflowEngine') -> APIRouter:
     """Create the terminal API router with MA + trading commands."""
     router = APIRouter()
+
+    # Reuse the engine's existing broker session for MA live quotes.
+    # Creating a separate connect_tastytrade() session fails because
+    # Account.get() + asyncio.new_event_loop() conflicts with uvicorn's loop.
+    # Instead, wrap the adapter's raw tastytrade Session objects in MA providers.
+    _broker_market_data = None
+    _broker_metrics = None
+    if engine.broker is not None and getattr(engine.broker, 'session', None) is not None:
+        try:
+            from market_analyzer.broker.tastytrade.market_data import TastyTradeMarketData
+            from market_analyzer.broker.tastytrade.metrics import TastyTradeMetrics
+
+            class _AdapterSessionShim:
+                """Minimal shim so MA providers can use the engine adapter's sessions."""
+                def __init__(self, adapter):
+                    self._adapter = adapter
+
+                @property
+                def sdk_session(self):
+                    return self._adapter.session
+
+                @property
+                def data_session(self):
+                    return self._adapter.data_session
+
+            shim = _AdapterSessionShim(engine.broker)
+            _broker_market_data = TastyTradeMarketData(shim)
+            _broker_metrics = TastyTradeMetrics(shim)
+            logger.info("Terminal MA: reusing engine broker session for live quotes")
+        except Exception as e:
+            logger.warning(f"Terminal MA: broker session shim failed: {e}")
+
     _ma_instance: list[MarketAnalyzer | None] = [None]  # mutable container for nonlocal
 
     def _get_ma() -> MarketAnalyzer:
         if _ma_instance[0] is None:
-            _ma_instance[0] = MarketAnalyzer(data_service=DataService())
+            _ma_instance[0] = MarketAnalyzer(
+                data_service=DataService(),
+                market_data=_broker_market_data,
+                market_metrics=_broker_metrics,
+            )
         return _ma_instance[0]
 
     # Plan handler with context storage
