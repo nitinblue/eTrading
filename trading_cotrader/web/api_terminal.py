@@ -2124,7 +2124,7 @@ def create_terminal_router(engine: 'WorkflowEngine') -> APIRouter:
                 continue
             if 'days' not in params and a.isdigit():
                 params['days'] = a
-        intent = UserIntent(action=action, target=target, parameters=params if params else None)
+        intent = UserIntent(action=action, target=target, parameters=params)
         response = engine.interaction.handle(intent)
         return [_text(response.message)]
 
