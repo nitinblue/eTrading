@@ -326,27 +326,128 @@ function useSplitPane(defaultTopPct = 50) {
 }
 
 // ---------------------------------------------------------------------------
-// Main Page — split layout: trades (top) + terminal (bottom)
+// Command Reference (right panel)
+// ---------------------------------------------------------------------------
+const CMD_SECTIONS = [
+  {
+    title: 'Trading Workflow',
+    cmds: [
+      ['scan', 'Scan watchlist: screen + rank'],
+      ['propose', "Show Maverick's trade proposals"],
+      ['deploy', 'Book proposed trades to desk'],
+      ['mark', 'Mark-to-market all open trades'],
+      ['exits', 'Check profit/stop/DTE exit rules'],
+      ['close <id>', 'Close a specific trade'],
+      ['close auto', 'Auto-close all triggered exits'],
+    ],
+  },
+  {
+    title: 'Execution (Go Live)',
+    cmds: [
+      ['golive <id>', 'Preview as live order (dry-run)'],
+      ['golive <id> --confirm', 'Place live order on broker'],
+      ['orders', 'Check live order status'],
+    ],
+  },
+  {
+    title: 'Analytics',
+    cmds: [
+      ['perf [desk]', 'Performance dashboard'],
+      ['learn [days]', 'ML/RL learning analysis'],
+      ['setup-desks', 'Create 3 trading desks'],
+    ],
+  },
+  {
+    title: 'Reports',
+    cmds: [
+      ['status', 'Workflow state summary'],
+      ['positions', 'Open trades with Greeks/P&L'],
+      ['portfolios', 'All portfolios overview'],
+      ['greeks', 'Portfolio Greeks vs limits'],
+      ['capital', 'Capital utilization'],
+      ['trades', "Today's executed trades"],
+      ['risk', 'VaR, macro, circuit breakers'],
+    ],
+  },
+  {
+    title: 'Actions',
+    cmds: [
+      ['approve <id>', 'Approve recommendation'],
+      ['reject <id>', 'Reject recommendation'],
+      ['halt', 'Halt all trading'],
+      ['resume', 'Resume trading'],
+    ],
+  },
+  {
+    title: 'Trade Booking',
+    cmds: [
+      ['templates', 'List trade templates'],
+      ['book <#>', 'Book template by index'],
+    ],
+  },
+]
+
+function CommandReference() {
+  return (
+    <div className="h-full overflow-y-auto bg-bg-primary border-l border-border-secondary">
+      <div className="px-2 py-1.5 bg-bg-secondary border-b border-border-secondary">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Command Reference</span>
+      </div>
+      <div className="px-2 py-1 space-y-2">
+        {CMD_SECTIONS.map((section) => (
+          <div key={section.title}>
+            <div className="text-[9px] font-bold uppercase tracking-wider text-accent-blue mt-1 mb-0.5">{section.title}</div>
+            {section.cmds.map(([cmd, desc]) => (
+              <div key={cmd} className="flex gap-1.5 py-[1px]">
+                <code className="text-[10px] font-mono text-accent-green whitespace-nowrap min-w-[140px]">{cmd}</code>
+                <span className="text-[10px] text-text-muted">{desc}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+        <div className="border-t border-border-secondary/40 pt-1 mt-1">
+          <div className="text-[9px] text-text-muted">
+            <span className="font-semibold">Desks:</span> 0dte ($10K) &middot; medium ($10K) &middot; leaps ($20K)
+          </div>
+          <div className="text-[9px] text-text-muted mt-0.5">
+            Type <code className="text-accent-green">help</code> in terminal for full details
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main Page — split layout: trades+terminal (left) + command ref (right)
 // ---------------------------------------------------------------------------
 export function TradingDashboardPage() {
   const { topPct, onMouseDown, containerRef } = useSplitPane(50)
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full overflow-hidden -m-3">
-      {/* Top: Trades */}
-      <div className="overflow-hidden" style={{ height: `${topPct}%` }}>
-        <TradesFrame />
+    <div className="flex h-full overflow-hidden -m-3">
+      {/* Left: Trades + Terminal */}
+      <div ref={containerRef} className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        {/* Top: Trades */}
+        <div className="overflow-hidden" style={{ height: `${topPct}%` }}>
+          <TradesFrame />
+        </div>
+
+        {/* Draggable divider */}
+        <div
+          className="h-1 bg-border-primary hover:bg-accent-blue cursor-row-resize flex-shrink-0"
+          onMouseDown={onMouseDown}
+        />
+
+        {/* Bottom: Terminal */}
+        <div className="overflow-hidden flex-1" style={{ height: `${100 - topPct}%` }}>
+          <TerminalPanel />
+        </div>
       </div>
 
-      {/* Draggable divider */}
-      <div
-        className="h-1 bg-border-primary hover:bg-accent-blue cursor-row-resize flex-shrink-0"
-        onMouseDown={onMouseDown}
-      />
-
-      {/* Bottom: Terminal */}
-      <div className="overflow-hidden flex-1" style={{ height: `${100 - topPct}%` }}>
-        <TerminalPanel />
+      {/* Right: Command Reference */}
+      <div className="w-[280px] flex-shrink-0 overflow-hidden">
+        <CommandReference />
       </div>
     </div>
   )
