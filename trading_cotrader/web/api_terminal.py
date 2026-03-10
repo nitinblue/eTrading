@@ -1009,14 +1009,42 @@ def _handle_help(args: list[str], ma: MarketAnalyzer) -> list[dict]:
             [
                 ["adjust", "adjust <id>", "Adjustment recommendations for open trade"],
                 ["close", "close <id> [--confirm]", "Close a position"],
+                ["close", "close auto", "Auto-close all triggered exits"],
                 ["chain", "chain <ticker> [exp]", "Option chain with broker Greeks"],
                 ["iv", "iv <ticker>", "IV rank, percentile, HV, beta"],
                 ["pnl", "pnl <id>", "Detailed P&L with Greek attribution"],
                 ["status", "status", "Broker connection & system state"],
             ],
         ),
-        _text("Workflow: plan SPY \u2192 book 1 \u2192 execute <id> --confirm", "dim"),
-        _text("Monitor: positions \u2192 pnl <id> \u2192 adjust <id> \u2192 close <id>", "dim"),
+        _section("Workflow & Lifecycle"),
+        _table(
+            ["Command", "Usage", "Description"],
+            [
+                ["scan", "scan", "Scan watchlist: screen + rank"],
+                ["propose", "propose", "Show Maverick's trade proposals"],
+                ["deploy", "deploy [--portfolio <alias>]", "Book proposals to desk"],
+                ["mark", "mark", "Mark-to-market all open trades"],
+                ["exits", "exits", "Check profit/stop/DTE exit rules"],
+                ["perf", "perf [desk]", "Performance dashboard (all or one desk)"],
+                ["learn", "learn [days]", "ML/RL learning analysis"],
+                ["risk", "risk", "VaR, macro, circuit breakers"],
+                ["pending", "pending", "Pending recs + exit signals"],
+            ],
+        ),
+        _section("Execution (Go Live)"),
+        _table(
+            ["Command", "Usage", "Description"],
+            [
+                ["golive", "golive <id>", "Preview WhatIf trade as live order"],
+                ["golive", "golive <id> --confirm", "Place live order on broker"],
+                ["templates", "templates", "List trade templates"],
+                ["halt", "halt", "Halt all trading"],
+                ["resume", "resume", "Resume trading"],
+                ["setup-desks", "setup-desks", "Create 3 funded trading desks"],
+            ],
+        ),
+        _text("Lifecycle: scan \u2192 propose \u2192 deploy \u2192 mark \u2192 exits \u2192 close auto", "dim"),
+        _text("Go Live: perf \u2192 golive <id> \u2192 golive <id> --confirm \u2192 orders", "dim"),
         _text("help, clear", "dim"),
     ]
 
@@ -2076,6 +2104,30 @@ def create_terminal_router(engine: 'WorkflowEngine') -> APIRouter:
             engine.context['last_plan'] = plan_store['plan']
         return blocks
 
+    # ------------------------------------------------------------------
+    # Delegate to CLI interaction manager for commands already wired there
+    # ------------------------------------------------------------------
+    def _delegate_to_interaction(action: str, args: list[str], engine: 'WorkflowEngine') -> list[dict]:
+        """Route command to InteractionManager and format the response."""
+        from trading_cotrader.agents.messages import UserIntent
+        target = args[0] if args else None
+        params: dict = {}
+        if '--confirm' in args:
+            params['confirm'] = True
+        if '--portfolio' in args:
+            idx = args.index('--portfolio')
+            if idx + 1 < len(args):
+                params['portfolio'] = args[idx + 1]
+        # Pass remaining positional args as parameters
+        for a in args:
+            if a.startswith('--') or a == target:
+                continue
+            if 'days' not in params and a.isdigit():
+                params['days'] = a
+        intent = UserIntent(action=action, target=target, parameters=params if params else None)
+        response = engine.interaction.handle(intent)
+        return [_text(response.message)]
+
     handlers: dict = {
         # Market Analysis commands
         "context": _handle_context,
@@ -2113,6 +2165,22 @@ def create_terminal_router(engine: 'WorkflowEngine') -> APIRouter:
         "iv": _handle_t_iv,
         "pnl": lambda args, ma: _handle_t_pnl(args, engine),
         "status": lambda args, ma: _handle_t_status(args, engine, ma),
+        # Delegated to CLI interaction manager
+        "perf": lambda args, ma: _delegate_to_interaction('perf', args, engine),
+        "performance": lambda args, ma: _delegate_to_interaction('performance', args, engine),
+        "learn": lambda args, ma: _delegate_to_interaction('learn', args, engine),
+        "scan": lambda args, ma: _delegate_to_interaction('scan', args, engine),
+        "propose": lambda args, ma: _delegate_to_interaction('propose', args, engine),
+        "deploy": lambda args, ma: _delegate_to_interaction('deploy', args, engine),
+        "mark": lambda args, ma: _delegate_to_interaction('mark', args, engine),
+        "exits": lambda args, ma: _delegate_to_interaction('exits', args, engine),
+        "risk": lambda args, ma: _delegate_to_interaction('risk', args, engine),
+        "pending": lambda args, ma: _delegate_to_interaction('pending', args, engine),
+        "golive": lambda args, ma: _delegate_to_interaction('golive', args, engine),
+        "setup-desks": lambda args, ma: _delegate_to_interaction('setup-desks', args, engine),
+        "halt": lambda args, ma: _delegate_to_interaction('halt', args, engine),
+        "resume": lambda args, ma: _delegate_to_interaction('resume', args, engine),
+        "templates": lambda args, ma: _delegate_to_interaction('templates', args, engine),
     }
 
     @router.post("/terminal/execute")
