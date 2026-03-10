@@ -227,21 +227,144 @@ portfolios:
     preferred_underlyings: []
 
   # -------------------------------------------------------------------------
-  # WHATIF MIRRORS — Inherit strategies from real parent
+  # TRADING DESKS — Funded WhatIf portfolios, full lifecycle
   # -------------------------------------------------------------------------
 
-  tastytrade_whatif:
-    display_name: "Tastytrade (WhatIf)"
-    description: "Paper mirror of Tastytrade account."
+  desk_0dte:
+    display_name: "0DTE Trading Desk"
+    description: "Same-day expiration trades. Defined-risk only. No stop loss — wings cap risk. 90% profit target."
     broker_firm: tastytrade
-    account_number: "5WZ78765_whatif"
+    account_number: "desk_0dte_001"
     portfolio_type: what_if
-    mirrors_real: tastytrade
     currency: USD
-    initial_capital: 31360
+    initial_capital: 10000
+    target_annual_return_pct: 50
+    exit_rule_profile: aggressive
+    tags: ["desk", "0dte", "income"]
+
+    allowed_strategies:
+      - iron_condor
+      - iron_butterfly
+      - credit_spread
+      - vertical_spread
+      - straddle
+      - strangle
+
+    active_strategies:
+      - iron_condor
+      - credit_spread
+      - vertical_spread
+
+    risk_limits:
+      max_portfolio_delta: 50
+      max_positions: 5
+      max_single_position_pct: 30
+      max_single_trade_risk_pct: 5
+      risk_per_trade_pct: 3
+      max_total_risk_pct: 50
+      min_cash_reserve_pct: 20
+      max_concentration_pct: 40
+
+    preferred_underlyings:
+      - SPY
+      - QQQ
+      - IWM
+
+  desk_medium:
+    display_name: "Medium-Term Desk (~45 DTE)"
+    description: "30-60 DTE income trades. Theta decay focus. Profit target 50%, stop loss 2x credit."
+    broker_firm: tastytrade
+    account_number: "desk_medium_001"
+    portfolio_type: what_if
+    currency: USD
+    initial_capital: 10000
+    target_annual_return_pct: 30
     exit_rule_profile: balanced
-    tags: ["whatif", "paper"]
-    # strategies + risk_limits inherited from tastytrade (mirrors_real)
+    tags: ["desk", "medium_term", "income"]
+
+    allowed_strategies:
+      - iron_condor
+      - iron_butterfly
+      - vertical_spread
+      - credit_spread
+      - calendar_spread
+      - diagonal
+      - strangle
+
+    active_strategies:
+      - iron_condor
+      - vertical_spread
+      - credit_spread
+      - calendar_spread
+
+    risk_limits:
+      max_portfolio_delta: 80
+      max_positions: 8
+      max_single_position_pct: 20
+      max_single_trade_risk_pct: 5
+      risk_per_trade_pct: 2
+      max_total_risk_pct: 60
+      min_cash_reserve_pct: 15
+      max_concentration_pct: 30
+
+    preferred_underlyings:
+      - SPY
+      - QQQ
+      - AAPL
+      - MSFT
+      - NVDA
+      - AMD
+      - AMZN
+      - GOOGL
+      - META
+      - TSLA
+
+  desk_leaps:
+    display_name: "LEAPs Desk (1-2 Year)"
+    description: "Long-dated options for capital appreciation. Bull calls, PMCC, protective puts. Profit target 100%, stop loss 50%."
+    broker_firm: tastytrade
+    account_number: "desk_leaps_001"
+    portfolio_type: what_if
+    currency: USD
+    initial_capital: 20000
+    target_annual_return_pct: 25
+    exit_rule_profile: conservative
+    tags: ["desk", "leaps", "growth"]
+
+    allowed_strategies:
+      - single
+      - vertical_spread
+      - covered_call
+      - protective_put
+      - diagonal
+      - calendar_spread
+
+    active_strategies:
+      - single
+      - vertical_spread
+      - diagonal
+
+    risk_limits:
+      max_portfolio_delta: 200
+      max_positions: 10
+      max_single_position_pct: 25
+      max_single_trade_risk_pct: 10
+      risk_per_trade_pct: 5
+      max_total_risk_pct: 80
+      min_cash_reserve_pct: 10
+      max_concentration_pct: 25
+
+    preferred_underlyings:
+      - AAPL
+      - MSFT
+      - NVDA
+      - GOOGL
+      - AMZN
+      - META
+      - AMD
+      - TSLA
+      - SPY
+      - QQQ
 
   # -------------------------------------------------------------------------
   # RESEARCH PORTFOLIOS — Virtual, no capital, auto-booked by QuantResearchAgent
@@ -762,3 +885,23 @@ performance:
     - risk_category
     - week
     - month
+
+# =============================================================================
+# DEFAULTS — Configurable parameters (no hardcoding in code)
+# =============================================================================
+# These replace hardcoded values throughout the codebase.
+# Zero-local-math policy: all financial assumptions must be here, not in code.
+
+defaults:
+  # Risk-free rate for Sharpe ratio calculation (annualized)
+  # Update periodically to reflect current treasury rates
+  risk_free_rate: 0.043  # ~4.3% (US 10Y treasury as of Mar 2026)
+
+  # Default risk limits (used when portfolio-specific limits not set)
+  risk_limits:
+    var_pct: 0.03          # Daily VaR as % of portfolio (3%)
+    max_delta: 100         # Maximum net delta exposure
+    theta_pct: 0.001       # Daily theta as % of portfolio (0.1%)
+    vega_pct: 0.01         # Vega exposure as % of portfolio (1%)
+    max_loss_pct: 0.20     # Maximum theoretical loss as % of portfolio (20%)
+    max_drawdown_pct: 15   # Maximum drawdown from peak (%)

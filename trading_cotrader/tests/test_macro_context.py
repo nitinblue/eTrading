@@ -2,12 +2,13 @@
 Tests for macro context short-circuit logic.
 
 Validates that MacroContextService correctly gates screener execution
-based on VIX levels and user overrides.
+based on MarketAnalyzer context and user overrides.
 """
 
 import pytest
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+import sys
 
 from trading_cotrader.services.macro_context_service import (
     MacroContextService, MacroOverride, MacroAssessment,
@@ -70,48 +71,79 @@ class TestMacroOverrides:
         assert assessment.confidence_modifier == 1.0
 
 
-class TestAutoAssessment:
-    """Tests for VIX-based auto-assessment."""
+class TestMarketAnalyzerAssessment:
+    """Tests for MarketAnalyzer-based auto-assessment."""
 
-    def test_no_override_auto_assesses(self):
-        """No override, no broker → uses default VIX=18 → neutral."""
-        macro = MacroContextService(broker=None)
-        # Pass empty override to skip file loading
-        assessment = macro.evaluate(override=MacroOverride())
+    def _mock_context(self, env_label, trading_allowed, size_factor, summary="test"):
+        """Build a mock MarketContext."""
+        ctx = MagicMock()
+        ctx.environment_label = env_label
+        ctx.trading_allowed = trading_allowed
+        ctx.position_size_factor = size_factor
+        ctx.summary = summary
+        ctx.black_swan = MagicMock()
+        ctx.black_swan.indicators = []
+        return ctx
 
-        # Empty override has no market_probability/expected_volatility → falls through to auto
+    def _run_with_mock_ma(self, ctx):
+        """Run evaluate with a mocked MarketAnalyzer context."""
+        mock_ma = MagicMock()
+        mock_ma_cls = MagicMock(return_value=mock_ma)
+        mock_ma.context.assess.return_value = ctx
+
+        mock_module = MagicMock()
+        mock_module.MarketAnalyzer = mock_ma_cls
+
+        with patch.dict(sys.modules, {'market_analyzer': mock_module}):
+            macro = MacroContextService()
+            return macro.evaluate(override=MacroOverride())
+
+    def test_risk_on_from_ma(self):
+        """risk-on environment → risk_on regime."""
+        ctx = self._mock_context('risk-on', True, 1.0, 'Low vol')
+        assessment = self._run_with_mock_ma(ctx)
+
+        assert assessment.regime == 'risk_on'
         assert assessment.should_screen is True
-        # Default VIX is 18 → neutral
-        assert assessment.regime == 'neutral'
+        assert assessment.confidence_modifier == 1.0
 
-    def test_high_vix_cautious(self):
-        """VIX=30 → cautious, modifier=0.6."""
-        macro = MacroContextService(broker=None)
-
-        with patch.object(macro, '_get_vix', return_value=Decimal('30')):
-            assessment = macro._auto_assess()
-
-        assert assessment.regime == 'cautious'
-        assert assessment.confidence_modifier == 0.6
-        assert assessment.should_screen is True
-
-    def test_extreme_vix_risk_off(self):
-        """VIX=40 → risk_off, should_screen=False."""
-        macro = MacroContextService(broker=None)
-
-        with patch.object(macro, '_get_vix', return_value=Decimal('40')):
-            assessment = macro._auto_assess()
+    def test_crisis_blocks_screening(self):
+        """crisis environment → risk_off, should_screen=False."""
+        ctx = self._mock_context('crisis', False, 0.0, 'Black swan CRITICAL')
+        assessment = self._run_with_mock_ma(ctx)
 
         assert assessment.regime == 'risk_off'
         assert assessment.should_screen is False
+        assert assessment.confidence_modifier == 0.0
 
-    def test_low_vix_risk_on(self):
-        """VIX=12 → risk_on, modifier=1.0."""
-        macro = MacroContextService(broker=None)
+    def test_cautious_reduces_confidence(self):
+        """cautious environment → cautious regime, reduced modifier."""
+        ctx = self._mock_context('cautious', True, 0.7, 'Elevated vol')
+        assessment = self._run_with_mock_ma(ctx)
 
-        with patch.object(macro, '_get_vix', return_value=Decimal('12')):
-            assessment = macro._auto_assess()
-
-        assert assessment.regime == 'risk_on'
-        assert assessment.confidence_modifier == 1.0
+        assert assessment.regime == 'cautious'
         assert assessment.should_screen is True
+        assert assessment.confidence_modifier == 0.7
+
+    def test_defensive_maps_to_cautious(self):
+        """defensive environment → cautious regime."""
+        ctx = self._mock_context('defensive', True, 0.5, 'Rising rates')
+        assessment = self._run_with_mock_ma(ctx)
+
+        assert assessment.regime == 'cautious'
+        assert assessment.should_screen is True
+        assert assessment.confidence_modifier == 0.5
+
+    def test_ma_failure_falls_back_neutral(self):
+        """MarketAnalyzer unavailable → neutral fallback."""
+        mock_module = MagicMock()
+        mock_module.MarketAnalyzer.side_effect = Exception("MA not installed")
+
+        with patch.dict(sys.modules, {'market_analyzer': mock_module}):
+            macro = MacroContextService()
+            assessment = macro.evaluate(override=MacroOverride())
+
+        assert assessment.regime == 'neutral'
+        assert assessment.should_screen is True
+        assert assessment.confidence_modifier == 1.0
+        assert 'unavailable' in assessment.rationale.lower()

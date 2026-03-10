@@ -470,14 +470,15 @@ class PerformanceMetricsService:
         self,
         pnl_values: List[Decimal],
         initial_capital: Decimal,
-        risk_free_rate: float = 0.05,
     ) -> float:
         """
         Simplified Sharpe ratio from trade returns.
 
         Uses per-trade returns as proxy for periodic returns.
         Annualizes assuming ~252 trading days and ~20 trades/month.
+        Risk-free rate loaded from risk_config.yaml (defaults section).
         """
+        risk_free_rate = self._get_risk_free_rate()
         if len(pnl_values) < 2 or initial_capital <= 0:
             return 0.0
 
@@ -498,6 +499,22 @@ class PerformanceMetricsService:
 
         sharpe = (annualized_return - risk_free_rate) / annualized_std
         return sharpe
+
+    @staticmethod
+    def _get_risk_free_rate() -> float:
+        """Load risk-free rate from risk_config.yaml defaults section.
+
+        Falls back to 0.0 (no assumption) if not configured.
+        Zero-local-math policy: never hardcode financial assumptions.
+        """
+        try:
+            from trading_cotrader.config.risk_config_loader import get_risk_config
+            rc = get_risk_config()
+            if rc.defaults:
+                return float(rc.defaults.get('risk_free_rate', 0.0))
+        except Exception:
+            pass
+        return 0.0
 
     def _get_strategy_type(self, trade: TradeORM) -> str:
         """Get strategy type string from a trade ORM."""

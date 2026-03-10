@@ -1,12 +1,12 @@
 """
-Macro Context Service — Short-circuit screeners when macro conditions are dangerous.
+Macro Context Service — Gate screener execution based on macro conditions.
 
-Before any screener runs, evaluate macro conditions:
-    1. Auto-assessment from VIX level/trend
-    2. Optional user override from daily_macro.yaml or CLI args
+Delegates market assessment to MarketAnalyzer (ma.context.assess()):
+    - environment_label: risk-on / cautious / defensive / crisis
+    - trading_allowed: bool (False when black swan CRITICAL)
+    - position_size_factor: 0.0-1.0
 
-If macro says "risk_off" → no screeners run, no recommendations generated.
-If macro says "cautious" → run screeners but reduce confidence on all recs.
+Keeps user override logic locally (daily_macro.yaml or CLI).
 
 Usage:
     from trading_cotrader.services.macro_context_service import MacroContextService
@@ -17,13 +17,25 @@ Usage:
         print(f"Skipping all screeners: {assessment.rationale}")
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 import logging
 
+# MarketAnalyzer imported lazily in _assess_from_market_analyzer() to avoid
+# hmmlearn dependency at test collection time.
+
 logger = logging.getLogger(__name__)
+
+
+# Map MarketAnalyzer environment_label → our regime/modifier
+_ENVIRONMENT_MAP = {
+    'risk-on':   {'regime': 'risk_on',  'modifier': 1.0, 'should_screen': True},
+    'cautious':  {'regime': 'cautious', 'modifier': 0.7, 'should_screen': True},
+    'defensive': {'regime': 'cautious', 'modifier': 0.5, 'should_screen': True},
+    'crisis':    {'regime': 'risk_off', 'modifier': 0.0, 'should_screen': False},
+}
 
 
 @dataclass
@@ -49,23 +61,14 @@ class MacroContextService:
     """
     Evaluates macro conditions to gate screener execution.
 
-    Auto-assessment from VIX:
-        VIX < 15         → risk_on   (modifier 1.0)
-        VIX 15-25        → neutral   (modifier 1.0)
-        VIX 25-35        → cautious  (modifier 0.6)
-        VIX > 35         → risk_off  (should_screen=False)
-
-    User override trumps auto-assessment.
+    Delegates to MarketAnalyzer's context.assess() for market data.
+    User override (daily_macro.yaml or CLI) trumps auto-assessment.
     """
 
-    # Default path for daily macro file
     MACRO_FILE_PATHS = [
         Path('config/daily_macro.yaml'),
         Path('trading_cotrader/config/daily_macro.yaml'),
     ]
-
-    def __init__(self, broker=None):
-        self.broker = broker
 
     def evaluate(
         self, override: Optional[MacroOverride] = None
@@ -79,64 +82,54 @@ class MacroContextService:
         Returns:
             MacroAssessment with regime, confidence modifier, and should_screen.
         """
-        # Try loading override from file if not provided
+        # User override trumps everything
         if override is None:
             override = self._load_override_from_file()
 
-        # If user override provided, use it
         if override and (override.market_probability or override.expected_volatility):
             return self._evaluate_from_override(override)
 
-        # Otherwise auto-assess from VIX
-        return self._auto_assess()
+        # Delegate to MarketAnalyzer
+        return self._assess_from_market_analyzer()
 
-    def _auto_assess(self) -> MacroAssessment:
-        """Auto-assess macro from VIX level."""
-        vix = self._get_vix()
-        if vix is None:
+    def _assess_from_market_analyzer(self) -> MacroAssessment:
+        """Auto-assess macro via MarketAnalyzer context service."""
+        try:
+            from market_analyzer import MarketAnalyzer
+            ma = MarketAnalyzer()
+            ctx = ma.context.assess()
+
+            env = ctx.environment_label or 'cautious'
+            mapping = _ENVIRONMENT_MAP.get(env, _ENVIRONMENT_MAP['cautious'])
+
+            # Extract VIX from black swan indicators if available
+            vix_level = None
+            if ctx.black_swan and ctx.black_swan.indicators:
+                for ind in ctx.black_swan.indicators:
+                    if 'vix' in ind.name.lower() and 'level' in ind.name.lower():
+                        if ind.value is not None:
+                            vix_level = Decimal(str(round(ind.value, 1)))
+                        break
+
+            return MacroAssessment(
+                regime=mapping['regime'],
+                confidence_modifier=ctx.position_size_factor if ctx.position_size_factor is not None else mapping['modifier'],
+                should_screen=ctx.trading_allowed if ctx.trading_allowed is not None else mapping['should_screen'],
+                rationale=ctx.summary or f"MarketAnalyzer: {env}",
+                vix_level=vix_level,
+            )
+
+        except Exception as e:
+            logger.warning(f"MarketAnalyzer context assessment failed: {e}")
             return MacroAssessment(
                 regime="neutral",
                 confidence_modifier=1.0,
                 should_screen=True,
-                rationale="Could not determine VIX — proceeding with neutral assessment",
-            )
-
-        if vix < 15:
-            return MacroAssessment(
-                regime="risk_on",
-                confidence_modifier=1.0,
-                should_screen=True,
-                rationale=f"VIX={vix:.1f} — low volatility, risk-on environment",
-                vix_level=vix,
-            )
-        elif vix <= 25:
-            return MacroAssessment(
-                regime="neutral",
-                confidence_modifier=1.0,
-                should_screen=True,
-                rationale=f"VIX={vix:.1f} — normal range, proceed as usual",
-                vix_level=vix,
-            )
-        elif vix <= 35:
-            return MacroAssessment(
-                regime="cautious",
-                confidence_modifier=0.6,
-                should_screen=True,
-                rationale=f"VIX={vix:.1f} — elevated volatility, reduced confidence",
-                vix_level=vix,
-            )
-        else:
-            return MacroAssessment(
-                regime="risk_off",
-                confidence_modifier=0.0,
-                should_screen=False,
-                rationale=f"VIX={vix:.1f} — extreme volatility, skip all screening",
-                vix_level=vix,
+                rationale=f"MarketAnalyzer unavailable ({e}) — proceeding neutral",
             )
 
     def _evaluate_from_override(self, override: MacroOverride) -> MacroAssessment:
         """Evaluate based on user override."""
-        # Determine regime from user inputs
         prob = (override.market_probability or "").lower()
         vol = (override.expected_volatility or "").lower()
 
@@ -176,7 +169,6 @@ class MacroContextService:
                 override_applied=True,
             )
 
-        # Default: neutral
         return MacroAssessment(
             regime="neutral",
             confidence_modifier=1.0,
@@ -204,34 +196,4 @@ class MacroContextService:
                         )
                 except Exception as e:
                     logger.warning(f"Failed to load macro override from {path}: {e}")
-        return None
-
-    def _get_vix(self) -> Optional[Decimal]:
-        """Get current VIX level."""
-        if not self.broker:
-            # Default mock for no-broker mode
-            return Decimal('18')
-
-        try:
-            quote = self.broker.get_quote('VIX')
-            if quote:
-                bid = quote.get('bid', 0) or 0
-                ask = quote.get('ask', 0) or 0
-                mid = (bid + ask) / 2
-                if mid > 0:
-                    return Decimal(str(mid))
-        except NotImplementedError:
-            pass
-        except Exception as e:
-            logger.error(f"Failed to fetch VIX via broker: {e}")
-
-        # Fallback: try yfinance
-        try:
-            import yfinance as yf
-            vix_data = yf.Ticker('^VIX').history(period='1d')
-            if not vix_data.empty:
-                return Decimal(str(vix_data['Close'].iloc[-1]))
-        except Exception as e:
-            logger.warning(f"yfinance VIX fallback failed: {e}")
-
         return None

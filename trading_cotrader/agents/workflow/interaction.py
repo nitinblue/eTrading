@@ -64,7 +64,10 @@ def _load_portfolio_aliases() -> dict[str, str]:
     shortcuts = {
         'tt': 'tastytrade', 'fira': 'fidelity_ira', 'fp': 'fidelity_personal',
         'zr': 'zerodha', 'st': 'stallion',
-        'ttw': 'tastytrade_whatif',
+        # Trading desks
+        '0dte': 'desk_0dte', 'zero': 'desk_0dte',
+        'med': 'desk_medium', 'medium': 'desk_medium', '45dte': 'desk_medium',
+        'leaps': 'desk_leaps', 'leap': 'desk_leaps',
     }
     _PORTFOLIO_ALIASES.update(shortcuts)
     return _PORTFOLIO_ALIASES
@@ -124,6 +127,19 @@ class InteractionManager:
             # Trade booking
             'book': self._book,
             'templates': self._templates,
+            # Trading workflow: scan → propose → deploy → mark → exits
+            'scan': self._scan,
+            'propose': self._propose,
+            'deploy': self._deploy,
+            'mark': self._mark,
+            'exits': self._exits,
+            'golive': self._execute,  # Alias: go live = execute on broker
+            # New: close, performance, learn, setup-desks
+            'close': self._close,
+            'perf': self._performance,
+            'performance': self._performance,
+            'learn': self._learn,
+            'setup-desks': self._setup_desks,
         }
 
         handler = handlers.get(intent.action)
@@ -301,6 +317,16 @@ class InteractionManager:
             message=(
                 "Available commands:\n"
                 "\n"
+                "  Trading Workflow:\n"
+                "    scan                          — Scan watchlist: screen + rank via MarketAnalyzer\n"
+                "    propose                       — Show Maverick's trade proposals (from last scan)\n"
+                "    deploy                        — Book all proposed trades to WhatIf portfolio\n"
+                "    deploy --portfolio <alias>    — Book to specific portfolio\n"
+                "    mark                          — Mark-to-market: update prices/Greeks on all open trades\n"
+                "    exits                         — Check exit rules: profit targets, stop losses, DTE\n"
+                "    close <id>                    — Close a specific trade\n"
+                "    close auto                    — Auto-close all URGENT + profit target exit signals\n"
+                "\n"
                 "  Actions:\n"
                 "    approve <id>       — Approve a recommendation\n"
                 "    reject <id>        — Reject a recommendation\n"
@@ -315,10 +341,16 @@ class InteractionManager:
                 "    book <#> --portfolio <alias>  — Book to portfolio (tt/fira/fp/zr/st + w for whatif)\n"
                 "    book <filename.json>          — Book by filename\n"
                 "\n"
-                "  Execution:\n"
-                "    execute <trade_id>           — Preview WhatIf trade as live order (dry-run)\n"
-                "    execute <trade_id> --confirm — Place the live order on broker\n"
+                "  Execution (Go Live):\n"
+                "    golive <trade_id>            — Preview WhatIf trade as live order (dry-run)\n"
+                "    golive <trade_id> --confirm  — Place the live order on broker\n"
+                "    execute <trade_id>           — Same as golive\n"
                 "    orders                       — Check live order status / fill updates\n"
+                "\n"
+                "  Analytics:\n"
+                "    perf [desk]                   — Performance dashboard (all desks or one)\n"
+                "    learn [days]                  — ML/RL learning analysis (default 90 days)\n"
+                "    setup-desks                   — Delete old WhatIf + create 3 trading desks\n"
                 "\n"
                 "  Reports:\n"
                 "    status             — Workflow state summary\n"
@@ -334,7 +366,9 @@ class InteractionManager:
                 "  help               — Show this help\n"
                 "  quit               — Stop the workflow engine"
             ),
-            available_actions=['approve', 'reject', 'defer', 'status', 'list',
+            available_actions=['scan', 'propose', 'deploy', 'mark', 'exits',
+                             'close', 'perf', 'performance', 'learn', 'setup-desks',
+                             'approve', 'reject', 'defer', 'status', 'list',
                              'halt', 'resume', 'override', 'help', 'quit',
                              'portfolios', 'positions', 'greeks', 'capital',
                              'pending', 'trades', 'risk', 'execute', 'orders',
@@ -1586,3 +1620,662 @@ class InteractionManager:
                 'updated_count': updated_count,
             },
         )
+
+    # ==================================================================
+    # Trading workflow: scan → propose → deploy
+    # ==================================================================
+
+    def _scan(self, intent: UserIntent = None) -> SystemResponse:
+        """Run Scout's screening + ranking pipeline on the watchlist."""
+        engine = self.engine
+
+        lines = ["MARKET SCAN", "\u2550" * 80]
+
+        # Run Scout.populate (fetch data) + Scout.run (screen + rank)
+        try:
+            lines.append("Running Scout.populate() — fetching market data...")
+            result = engine.scout.populate(engine.context)
+            lines.append(f"  {result.messages[0] if result.messages else result.status.value}")
+        except Exception as e:
+            lines.append(f"  Scout.populate failed: {e}")
+
+        try:
+            lines.append("Running Scout.run() — screening + ranking...")
+            result = engine.scout.run(engine.context)
+            for msg in result.messages:
+                lines.append(f"  {msg}")
+        except Exception as e:
+            lines.append(f"  Scout.run failed: {e}")
+
+        # Run Maverick to generate proposals from rankings
+        try:
+            lines.append("Running Maverick.run() — generating proposals...")
+            result = engine.maverick.run(engine.context)
+            for msg in result.messages:
+                lines.append(f"  {msg}")
+        except Exception as e:
+            lines.append(f"  Maverick.run failed: {e}")
+
+        # Show ranking summary
+        ranking = engine.context.get('ranking', [])
+        if ranking:
+            lines.extend(["", "TOP RANKED IDEAS", "\u2500" * 80])
+            lines.append(
+                f"  {'#':<3} {'Ticker':<8} {'Strategy':<20} {'Verdict':<9} "
+                f"{'Score':>6} {'Direction':<10}"
+            )
+            lines.append("  " + "\u2500" * 70)
+            for i, r in enumerate(ranking[:15]):
+                verdict = r.get('verdict', '?')
+                v_mark = '\u2713' if verdict == 'go' else ('~' if verdict == 'caution' else '\u2717')
+                lines.append(
+                    f"  {i:<3} {r.get('ticker', '?'):<8} "
+                    f"{r.get('strategy_name', '?'):<20} "
+                    f"{v_mark} {verdict:<7} "
+                    f"{r.get('composite_score', 0):>5.2f}  "
+                    f"{r.get('direction', '?'):<10}"
+                )
+
+        # Show proposals
+        proposals = engine.context.get('trade_proposals', [])
+        proposed = [p for p in proposals if p.get('status') == 'proposed']
+        rejected = [p for p in proposals if p.get('status') == 'rejected']
+
+        if proposed:
+            lines.extend(["", "TRADE PROPOSALS (ready to deploy)", "\u2500" * 80])
+            for i, p in enumerate(proposed):
+                spec = p.get('trade_spec', {})
+                legs = spec.get('legs', [])
+                lines.append(
+                    f"  [{i}] {p['ticker']} {p['strategy_name']} — "
+                    f"score={p['score']:.2f} {p['direction']}"
+                )
+                lines.append(f"      {p.get('rationale', '')[:80]}")
+                for leg in legs:
+                    action = leg.get('action', '?')
+                    qty = leg.get('quantity', 1)
+                    ot = 'C' if leg.get('option_type') == 'call' else 'P'
+                    strike = leg.get('strike', 0)
+                    exp = leg.get('expiration', '?')
+                    lines.append(f"        {action} {qty}x {p['ticker']} {ot}{strike:.0f} {exp}")
+                exit_rules = p.get('exit_rules', {})
+                if exit_rules.get('exit_summary'):
+                    lines.append(f"      Exit: {exit_rules['exit_summary']}")
+            lines.extend(["", "  → Type 'deploy' to book these to WhatIf portfolio"])
+        else:
+            lines.extend(["", f"  No actionable proposals ({len(rejected)} rejected by gates)"])
+
+        mkt_env = engine.context.get('market_environment', '?')
+        bs_level = engine.context.get('black_swan_level', '?')
+        lines.extend(["", f"  Environment: {mkt_env} | Black Swan: {bs_level}"])
+
+        return SystemResponse(
+            message="\n".join(lines),
+            data={
+                'ranking_count': len(ranking),
+                'proposed': len(proposed),
+                'rejected': len(rejected),
+            },
+        )
+
+    def _propose(self, intent: UserIntent = None) -> SystemResponse:
+        """Show current trade proposals (from last scan)."""
+        proposals = self.engine.context.get('trade_proposals', [])
+        if not proposals:
+            return SystemResponse(
+                message="No proposals. Run 'scan' first to generate trade proposals.",
+            )
+
+        lines = ["TRADE PROPOSALS", "\u2550" * 80]
+
+        proposed = [p for p in proposals if p.get('status') == 'proposed']
+        rejected = [p for p in proposals if p.get('status') == 'rejected']
+
+        if proposed:
+            lines.append("PROPOSED (will book on 'deploy'):")
+            lines.append(
+                f"  {'#':<3} {'Ticker':<8} {'Strategy':<18} "
+                f"{'Score':>6} {'Dir':<10} Rationale"
+            )
+            lines.append("  " + "\u2500" * 75)
+            for i, p in enumerate(proposed):
+                spec = p.get('trade_spec', {})
+                lines.append(
+                    f"  {i:<3} {p['ticker']:<8} {p['strategy_name']:<18} "
+                    f"{p['score']:>5.2f}  {p['direction']:<10} "
+                    f"{p.get('rationale', '')[:40]}"
+                )
+                # Show legs
+                for leg in spec.get('legs', []):
+                    action = leg.get('action', '?')
+                    ot = 'C' if leg.get('option_type') == 'call' else 'P'
+                    strike = leg.get('strike', 0)
+                    exp = leg.get('expiration', '?')
+                    label = leg.get('strike_label', '')
+                    lines.append(
+                        f"        {action} {leg.get('quantity', 1)}x "
+                        f"{p['ticker']} {ot}{strike:.0f} {exp}  ({label})"
+                    )
+                # Exit rules
+                exit_rules = p.get('exit_rules', {})
+                if exit_rules.get('exit_summary'):
+                    lines.append(f"      Exit: {exit_rules['exit_summary']}")
+                # Risk notes
+                for note in p.get('risk_notes', [])[:2]:
+                    lines.append(f"      \u26a0 {note}")
+                lines.append("")
+
+        if rejected:
+            lines.append(f"REJECTED ({len(rejected)}):")
+            for p in rejected[:5]:
+                lines.append(
+                    f"  \u2717 {p.get('ticker', '?')} {p.get('strategy_name', '?')} "
+                    f"— {p.get('gate_result', '?')}"
+                )
+            if len(rejected) > 5:
+                lines.append(f"  ... and {len(rejected) - 5} more")
+
+        if proposed:
+            lines.extend([
+                "",
+                f"  {len(proposed)} trade(s) ready. Type 'deploy' to book to WhatIf.",
+                "  Type 'deploy --portfolio tt' to book to a specific portfolio.",
+            ])
+
+        return SystemResponse(
+            message="\n".join(lines),
+            data={'proposed': len(proposed), 'rejected': len(rejected)},
+        )
+
+    def _deploy(self, intent: UserIntent) -> SystemResponse:
+        """Book all proposed trades to WhatIf portfolio."""
+        proposals = self.engine.context.get('trade_proposals', [])
+        proposed = [p for p in proposals if p.get('status') == 'proposed']
+
+        if not proposed:
+            return SystemResponse(
+                message="No proposals to deploy. Run 'scan' first.",
+            )
+
+        # Resolve portfolio
+        raw_portfolio = intent.parameters.get('portfolio') if intent else None
+        portfolio_name = resolve_portfolio_name(raw_portfolio) if raw_portfolio else None
+
+        lines = ["DEPLOYING TRADES", "\u2550" * 80]
+        target = portfolio_name or self.engine.maverick.DEFAULT_WHATIF_PORTFOLIO
+        lines.append(f"  Target portfolio: {target}")
+        lines.append(f"  Trades to book: {len(proposed)}")
+        lines.append("")
+
+        # Book via Maverick
+        results = self.engine.maverick.book_proposals(
+            self.engine.context,
+            portfolio_name=portfolio_name,
+        )
+
+        success_count = 0
+        fail_count = 0
+        for r in results:
+            if r.get('success'):
+                success_count += 1
+                greeks = r.get('greeks', {})
+                lines.append(
+                    f"  \u2713 {r['ticker']} {r['strategy']} — "
+                    f"entry=${r.get('entry_price', 0):.2f}  "
+                    f"\u0394={greeks.get('delta', 0):.2f}  "
+                    f"\u0398={greeks.get('theta', 0):.2f}  "
+                    f"score={r.get('score', 0):.2f}"
+                )
+                lines.append(f"    trade_id: {r.get('trade_id', '?')[:12]}...")
+            else:
+                fail_count += 1
+                lines.append(
+                    f"  \u2717 {r.get('ticker', '?')} {r.get('strategy', '?')} — "
+                    f"{r.get('error', 'unknown error')}"
+                )
+
+        lines.extend([
+            "",
+            f"  Done: {success_count} booked, {fail_count} failed",
+        ])
+
+        if success_count > 0:
+            lines.append("  Type 'trades' to see booked trades. Type 'positions' for portfolio.")
+
+        # Clear proposals after deployment
+        self.engine.context['trade_proposals'] = []
+
+        return SystemResponse(
+            message="\n".join(lines),
+            data={'booked': success_count, 'failed': fail_count},
+        )
+
+    def _mark(self, intent: UserIntent = None) -> SystemResponse:
+        """Run mark-to-market on all open trades."""
+        engine = self.engine
+        lines = ["MARK-TO-MARKET", "\u2550" * 80]
+
+        try:
+            result = engine.maverick.mark_to_market()
+
+            if not result.results:
+                lines.append("  No open trades to mark.")
+                if result.trades_skipped:
+                    lines.append(f"  ({result.trades_skipped} trades skipped — no valid symbols)")
+                return SystemResponse(message="\n".join(lines))
+
+            lines.append(
+                f"  {'Underlying':<10} {'Strategy':<18} {'Entry':>10} "
+                f"{'Current':>10} {'P&L':>10} {'P&L%':>7} {'Legs'}"
+            )
+            lines.append("  " + "\u2500" * 75)
+
+            for r in result.results:
+                pnl_sign = '+' if r.pnl >= 0 else ''
+                lines.append(
+                    f"  {r.underlying:<10} {r.strategy_type:<18} "
+                    f"${r.entry_price:>9.2f} ${r.current_price:>9.2f} "
+                    f"{pnl_sign}${r.pnl:>8.2f} {r.pnl_pct:>+6.1f}% "
+                    f"{r.legs_marked}/{r.legs_total}"
+                )
+
+            lines.extend([
+                "",
+                f"  Total P&L: ${result.total_pnl:+,.2f}",
+                f"  Trades marked: {result.trades_marked} | "
+                f"Failed: {result.trades_failed} | "
+                f"Skipped: {result.trades_skipped}",
+            ])
+
+            if result.errors:
+                lines.append("")
+                for err in result.errors[:3]:
+                    lines.append(f"  \u2717 {err}")
+
+        except Exception as e:
+            lines.append(f"  Error: {e}")
+
+        return SystemResponse(
+            message="\n".join(lines),
+            data={'trades_marked': result.trades_marked if 'result' in dir() else 0},
+        )
+
+    def _exits(self, intent: UserIntent = None) -> SystemResponse:
+        """Check exit conditions on all open trades."""
+        lines = ["EXIT MONITOR", "\u2550" * 80]
+
+        try:
+            from trading_cotrader.services.exit_monitor import ExitMonitorService
+            monitor = ExitMonitorService()
+            result = monitor.check_all_exits()
+
+            if not result.signals:
+                lines.append(f"  All {result.trades_checked} open trades within limits.")
+                lines.append(f"  ({result.trades_ok} trades OK)")
+                return SystemResponse(message="\n".join(lines))
+
+            # Group by severity
+            urgent = [s for s in result.signals if s.severity == 'URGENT']
+            warnings = [s for s in result.signals if s.severity == 'WARNING']
+            info = [s for s in result.signals if s.severity == 'INFO']
+
+            if urgent:
+                lines.extend(["", "  URGENT — Action Required:"])
+                lines.append("  " + "\u2500" * 70)
+                for s in urgent:
+                    dte_str = f" ({s.dte} DTE)" if s.dte is not None else ""
+                    lines.append(
+                        f"  \u26a0 {s.underlying:<8} {s.strategy_type:<16} "
+                        f"P&L ${s.current_pnl:+.2f} ({s.current_pnl_pct:+.0f}%){dte_str}"
+                    )
+                    lines.append(f"    {s.message}")
+                    lines.append(f"    Action: {s.action}")
+                    lines.append("")
+
+            if warnings:
+                lines.extend(["  WARNINGS:"])
+                for s in warnings:
+                    dte_str = f" ({s.dte} DTE)" if s.dte is not None else ""
+                    lines.append(
+                        f"  ~ {s.underlying:<8} {s.strategy_type:<16} "
+                        f"P&L ${s.current_pnl:+.2f}{dte_str} — {s.signal_type}"
+                    )
+
+            if info:
+                lines.extend(["", "  PROFIT TARGETS HIT:"])
+                for s in info:
+                    lines.append(
+                        f"  \u2713 {s.underlying:<8} {s.strategy_type:<16} "
+                        f"P&L ${s.current_pnl:+.2f} ({s.current_pnl_pct:+.0f}%) — TAKE PROFIT"
+                    )
+
+            lines.extend([
+                "",
+                f"  Summary: {result.trades_checked} checked, "
+                f"{result.urgent_count} urgent, {result.warning_count} warnings, "
+                f"{len(info)} profit targets hit",
+            ])
+
+            # Store in context for other commands
+            self.engine.context['exit_signals'] = result.signals
+
+        except Exception as e:
+            lines.append(f"  Error: {e}")
+
+        return SystemResponse(message="\n".join(lines))
+
+    # ==================================================================
+    # Close trade handler
+    # ==================================================================
+
+    def _close(self, intent: UserIntent) -> SystemResponse:
+        """Close a trade by ID, or auto-close all exit signals."""
+        from trading_cotrader.services.trade_lifecycle import TradeLifecycleService
+
+        lifecycle = TradeLifecycleService(
+            container_manager=self.engine.container_manager,
+        )
+
+        target = (intent.target or '').strip()
+
+        # 'close auto' — auto-close all URGENT + PROFIT_TARGET signals
+        if target == 'auto':
+            exit_signals = self.engine.context.get('exit_signals', [])
+            if not exit_signals:
+                return SystemResponse(message="No exit signals to auto-close. Run 'exits' first.")
+
+            results = lifecycle.auto_close_from_signals(exit_signals)
+            if not results:
+                return SystemResponse(message="No trades qualified for auto-close.")
+
+            lines = ["AUTO-CLOSE RESULTS", "═" * 60]
+            for r in results:
+                if r['success']:
+                    lines.append(
+                        f"  ✓ {r['underlying']:<8} {r['strategy_type']:<16} "
+                        f"P&L ${float(r['pnl']):+.2f}  reason={r['reason']}"
+                    )
+                else:
+                    lines.append(f"  ✗ {r.get('error', 'unknown error')}")
+
+            closed_count = sum(1 for r in results if r['success'])
+            lines.append(f"\n  {closed_count}/{len(results)} trades closed.")
+
+            # Clear exit signals after auto-close
+            self.engine.context['exit_signals'] = []
+            return SystemResponse(message="\n".join(lines))
+
+        # 'close <trade_id>' — close specific trade
+        if not target:
+            return SystemResponse(
+                message="Usage: close <trade_id>  or  close auto\n"
+                        "  close <trade_id> [--reason <reason>]  — Close specific trade\n"
+                        "  close auto                            — Auto-close all exit signals"
+            )
+
+        reason = 'manual'
+        params = intent.params or {}
+        if isinstance(params, dict) and 'reason' in params:
+            reason = params['reason']
+
+        result = lifecycle.close_trade(trade_id=target, reason=reason)
+
+        if result['success']:
+            return SystemResponse(
+                message=(
+                    f"Trade closed: {result['underlying']} {result['strategy_type']}\n"
+                    f"  Entry:  ${float(result['entry_price']):,.2f}\n"
+                    f"  Exit:   ${float(result['exit_price']):,.2f}\n"
+                    f"  P&L:    ${float(result['pnl']):+,.2f} ({result['pnl_pct']:+.1f}%)\n"
+                    f"  Reason: {result['reason']}"
+                )
+            )
+        else:
+            return SystemResponse(message=f"Close failed: {result.get('error', 'unknown')}")
+
+    # ==================================================================
+    # Performance dashboard handler
+    # ==================================================================
+
+    def _performance(self, intent: UserIntent = None) -> SystemResponse:
+        """Show per-desk performance dashboard."""
+        from trading_cotrader.core.database.session import session_scope
+        from trading_cotrader.core.database.schema import PortfolioORM, TradeORM
+        from trading_cotrader.services.performance_metrics_service import PerformanceMetricsService
+
+        lines = ["PERFORMANCE DASHBOARD", "═" * 80]
+
+        desk_names = ['desk_0dte', 'desk_medium', 'desk_leaps']
+        target = (intent.target or '').strip() if intent else ''
+        if target:
+            resolved = resolve_portfolio_name(target)
+            desk_names = [resolved]
+
+        with session_scope() as session:
+            svc = PerformanceMetricsService(session)
+
+            for desk_name in desk_names:
+                portfolio = session.query(PortfolioORM).filter_by(name=desk_name).first()
+                if not portfolio:
+                    lines.append(f"\n  {desk_name}: NOT FOUND — run 'setup-desks' to create")
+                    continue
+
+                metrics = svc.calculate_portfolio_metrics(
+                    portfolio_id=portfolio.id,
+                    label=desk_name,
+                    initial_capital=portfolio.initial_capital or Decimal('0'),
+                )
+                breakdown = svc.calculate_strategy_breakdown(
+                    portfolio_id=portfolio.id,
+                    label=desk_name,
+                )
+
+                # Header
+                cap = float(portfolio.initial_capital or 0)
+                equity = float(portfolio.total_equity or cap)
+                lines.extend([
+                    "",
+                    f"  ┌─ {desk_name.upper()} {'─' * (60 - len(desk_name))}",
+                    f"  │  Capital: ${cap:,.0f}  →  Equity: ${equity:,.0f}  "
+                    f"(Return: {metrics.return_pct:+.1f}%)",
+                ])
+
+                # Overall stats
+                if metrics.total_trades > 0:
+                    lines.extend([
+                        f"  │  Trades: {metrics.total_trades}  "
+                        f"(W:{metrics.winning_trades} L:{metrics.losing_trades} B:{metrics.breakeven_trades})",
+                        f"  │  Win Rate: {metrics.win_rate:.1f}%  "
+                        f"Profit Factor: {metrics.profit_factor:.2f}  "
+                        f"Expectancy: ${float(metrics.expectancy):+,.2f}",
+                        f"  │  Total P&L: ${float(metrics.total_pnl):+,.2f}  "
+                        f"Avg Win: ${float(metrics.avg_win):,.2f}  "
+                        f"Avg Loss: ${float(metrics.avg_loss):,.2f}",
+                        f"  │  Sharpe: {metrics.sharpe_ratio:.2f}  "
+                        f"Max Drawdown: {metrics.max_drawdown_pct:.1f}%",
+                    ])
+                else:
+                    lines.append(f"  │  No closed trades yet.")
+
+                # Strategy breakdown
+                if breakdown.strategies:
+                    lines.append(f"  │")
+                    lines.append(f"  │  By Strategy:")
+                    for strat, sm in breakdown.strategies.items():
+                        lines.append(
+                            f"  │    {strat:<20} "
+                            f"{sm.total_trades:>3} trades  "
+                            f"{sm.win_rate:5.1f}% WR  "
+                            f"${float(sm.total_pnl):>+9,.2f}  "
+                            f"PF={sm.profit_factor:.2f}"
+                        )
+
+                # Open trades count
+                open_count = (
+                    session.query(TradeORM)
+                    .filter_by(portfolio_id=portfolio.id, is_open=True)
+                    .count()
+                )
+                lines.append(f"  │  Open Positions: {open_count}")
+                lines.append(f"  └{'─' * 65}")
+
+        return SystemResponse(message="\n".join(lines))
+
+    # ==================================================================
+    # ML learning handler
+    # ==================================================================
+
+    def _learn(self, intent: UserIntent = None) -> SystemResponse:
+        """Run ML/RL learning analysis on closed trades."""
+        from trading_cotrader.services.trade_learner import TradeLearner
+
+        lines = ["ML/RL LEARNING ANALYSIS", "═" * 80]
+
+        days = 90
+        if intent and intent.target:
+            try:
+                days = int(intent.target)
+            except ValueError:
+                pass
+
+        learner = TradeLearner()
+        result = learner.learn_from_history(days=days)
+
+        lines.append(f"  Analyzed {result.trades_analyzed} closed trades (last {days} days)")
+        lines.append(f"  Patterns: {result.patterns_updated} updated, {result.patterns_discovered} new")
+
+        # Insights
+        if result.insights:
+            lines.extend(["", "  INSIGHTS:"])
+            for insight in result.insights:
+                lines.append(f"    • {insight}")
+
+        # Best patterns
+        if result.best_patterns:
+            lines.extend(["", "  TOP PATTERNS (by risk-adjusted return):"])
+            for p in result.best_patterns:
+                lines.append(
+                    f"    ↑ {p.pattern_key:<40} "
+                    f"{p.trades:>3} trades  "
+                    f"{p.win_rate:5.0%} WR  "
+                    f"${p.avg_pnl:>+8.2f} avg  "
+                    f"Sharpe={p.sharpe:.2f}"
+                )
+
+        # Worst patterns
+        if result.worst_patterns:
+            worst_negative = [p for p in result.worst_patterns if p.sharpe < 0]
+            if worst_negative:
+                lines.extend(["", "  AVOID PATTERNS (negative Sharpe):"])
+                for p in worst_negative:
+                    lines.append(
+                        f"    ↓ {p.pattern_key:<40} "
+                        f"{p.trades:>3} trades  "
+                        f"{p.win_rate:5.0%} WR  "
+                        f"${p.avg_pnl:>+8.2f} avg  "
+                        f"Sharpe={p.sharpe:.2f}"
+                    )
+
+        # All patterns summary
+        summary = learner.get_pattern_summary()
+        if summary:
+            lines.extend(["", f"  ALL PATTERNS ({len(summary)} with ≥2 trades):"])
+            for row in summary[:15]:
+                lines.append(
+                    f"    {row['pattern']:<40} "
+                    f"{row['trades']:>3} trades  "
+                    f"{row['win_rate']:>5}  "
+                    f"{row['avg_pnl']:>10}  "
+                    f"S={row['sharpe']}"
+                )
+
+        return SystemResponse(message="\n".join(lines))
+
+    # ==================================================================
+    # Setup desks handler
+    # ==================================================================
+
+    def _setup_desks(self, intent: UserIntent = None) -> SystemResponse:
+        """Delete old WhatIf portfolios and create 3 trading desks."""
+        from trading_cotrader.core.database.session import session_scope
+        from trading_cotrader.core.database.schema import PortfolioORM
+        from trading_cotrader.config.risk_config_loader import get_risk_config
+        import uuid
+
+        lines = ["SETUP TRADING DESKS", "═" * 60]
+
+        with session_scope() as session:
+            # 1. Delete existing WhatIf portfolios
+            old_whatif = session.query(PortfolioORM).filter(
+                PortfolioORM.portfolio_type == 'what_if'
+            ).all()
+
+            deleted = 0
+            for p in old_whatif:
+                lines.append(f"  Deleting: {p.name} (id={p.id[:8]}...)")
+                session.delete(p)
+                deleted += 1
+
+            if deleted:
+                session.flush()
+                lines.append(f"  Deleted {deleted} old WhatIf portfolio(s).")
+            else:
+                lines.append("  No existing WhatIf portfolios to delete.")
+
+            # 2. Create the 3 trading desks from risk_config
+            rc = get_risk_config()
+            desk_configs = {
+                'desk_0dte': {'capital': Decimal('10000'), 'desc': '0DTE Day Trading Desk'},
+                'desk_medium': {'capital': Decimal('10000'), 'desc': '~45 DTE Medium-Term Desk'},
+                'desk_leaps': {'capital': Decimal('20000'), 'desc': 'LEAPs 1-2 Year Desk'},
+            }
+
+            created = 0
+            for desk_name, desk_info in desk_configs.items():
+                # Get risk limits from config if available
+                risk_limits = {}
+                cfg = rc.portfolios.get_by_name(desk_name)
+                if cfg:
+                    risk_limits = cfg.risk_limits or {}
+
+                portfolio = PortfolioORM(
+                    id=str(uuid.uuid4()),
+                    name=desk_name,
+                    portfolio_type='what_if',
+                    initial_capital=desk_info['capital'],
+                    cash_balance=desk_info['capital'],
+                    buying_power=desk_info['capital'],
+                    total_equity=desk_info['capital'],
+                    description=desk_info['desc'],
+                    max_portfolio_delta=Decimal(str(risk_limits.get('max_delta', 100))),
+                    max_position_size_pct=Decimal(str(risk_limits.get('max_position_size_pct', 10))),
+                )
+                session.add(portfolio)
+                created += 1
+                lines.append(
+                    f"  Created: {desk_name}  "
+                    f"capital=${float(desk_info['capital']):,.0f}  "
+                    f"type=what_if"
+                )
+
+            session.commit()
+
+            lines.extend([
+                "",
+                f"  Summary: {deleted} deleted, {created} created.",
+                "",
+                "  Trading desks ready:",
+                "    desk_0dte   — $10K  0DTE day trades (SPY, QQQ, IWM)",
+                "    desk_medium — $10K  ~45 DTE medium-term (top 10 underlyings)",
+                "    desk_leaps  — $20K  LEAPs 1-2 year (blue chips)",
+                "",
+                "  Next: 'scan' → 'propose' → 'deploy' → 'mark' → 'exits' → 'close auto'",
+            ])
+
+        # Refresh containers after desk setup
+        try:
+            self.engine._refresh_containers()
+        except Exception:
+            pass
+
+        return SystemResponse(message="\n".join(lines))

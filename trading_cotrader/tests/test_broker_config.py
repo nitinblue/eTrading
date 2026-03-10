@@ -206,19 +206,18 @@ class TestPortfolioConfig:
 
 
 class TestWhatIfInheritance:
-    """WhatIf strategy inheritance from real parent."""
+    """Trading desk configuration."""
 
-    def test_whatif_inherits_strategies(self):
-        """WhatIf with no strategies should inherit from mirrors_real parent."""
+    def test_desk_has_strategies(self):
+        """Trading desks should have allowed_strategies configured."""
         from trading_cotrader.config.risk_config_loader import RiskConfigLoader
         loader = RiskConfigLoader()
         config = loader.load()
 
-        whatif = config.portfolios.get_by_name('tastytrade_whatif')
-        real = config.portfolios.get_by_name('tastytrade')
-
-        assert whatif.allowed_strategies == real.allowed_strategies
-        assert whatif.active_strategies == real.active_strategies
+        desk = config.portfolios.get_by_name('desk_0dte')
+        assert desk is not None
+        assert desk.allowed_strategies  # has strategies defined
+        assert 'iron_condor' in desk.allowed_strategies
 
 
 class TestBrokerRouter:
@@ -420,14 +419,14 @@ class TestPortfolioManagerMultiBroker:
 
         pm = PortfolioManager(session, config=risk_config.portfolios, broker_registry=registry)
         portfolios = pm.initialize_portfolios()
-        assert len(portfolios) == 11
+        assert len(portfolios) == 13
 
         # Verify real vs whatif vs research
         real_count = sum(1 for p in portfolios if p.portfolio_type.value == 'real')
         whatif_count = sum(1 for p in portfolios if p.portfolio_type.value == 'what_if')
         research_count = sum(1 for p in portfolios if p.portfolio_type.value == 'research')
         assert real_count == 5
-        assert whatif_count == 1
+        assert whatif_count == 3  # desk_0dte, desk_medium, desk_leaps
         assert research_count == 5
 
     def test_portfolio_lookup_by_name(self, session):
@@ -459,7 +458,7 @@ class TestPortfolioManagerMultiBroker:
         pm = PortfolioManager(session, config=risk_config.portfolios, broker_registry=registry)
         first = pm.initialize_portfolios()
         second = pm.initialize_portfolios()
-        assert len(first) == len(second) == 11
+        assert len(first) == len(second) == 13
 
 
 class TestBrokerAdapterFactory:

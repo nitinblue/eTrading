@@ -171,7 +171,7 @@ class CorrelationAnalyzer:
     Analyze correlations between portfolio positions.
 
     Uses real yfinance historical data with 1-day caching.
-    Falls back to hardcoded estimates if yfinance unavailable.
+    Returns empty matrix if yfinance unavailable (no hardcoded fallbacks).
 
     Usage:
         analyzer = CorrelationAnalyzer()
@@ -270,13 +270,10 @@ class CorrelationAnalyzer:
                 key = (min(sym1, sym2), max(sym1, sym2))
                 matrix[key] = float(corr_matrix[i, j])
 
-        # For symbols we don't have data for, use estimates
-        for sym in symbols:
-            if sym not in valid_symbols:
-                for other in valid_symbols:
-                    key = (min(sym, other), max(sym, other))
-                    if key not in matrix:
-                        matrix[key] = self._estimate_correlation(sym, other)
+        # Symbols without return data get no correlation entries (None = unknown)
+        missing = [s for s in symbols if s not in valid_symbols]
+        if missing:
+            logger.info(f"No return data for {missing} — correlation unknown for these symbols")
 
         # Annualized volatilities (daily std * sqrt(252))
         volatilities = {}
@@ -297,22 +294,21 @@ class CorrelationAnalyzer:
         symbols: List[str],
         lookback_days: int
     ) -> CorrelationMatrix:
-        """Build matrix from hardcoded estimates (fallback)."""
-        matrix = {}
-        for i, sym1 in enumerate(symbols):
-            for sym2 in symbols[i + 1:]:
-                corr = self._estimate_correlation(sym1, sym2)
-                key = (min(sym1, sym2), max(sym1, sym2))
-                matrix[key] = corr
+        """Return empty correlation matrix when real data is unavailable.
 
-        # Default 25% annualized vol for all
-        volatilities = {sym: 0.25 for sym in symbols}
-
+        Zero-local-math policy: we don't guess correlations or volatilities.
+        The matrix will have no pairs and no volatilities, which callers
+        handle gracefully (treating unknown correlation as None).
+        """
+        logger.warning(
+            "No return data available for correlation matrix. "
+            "Returning empty matrix (no hardcoded fallbacks)."
+        )
         return CorrelationMatrix(
             symbols=symbols,
-            matrix=matrix,
+            matrix={},
             lookback_days=lookback_days,
-            volatilities=volatilities
+            volatilities={},
         )
 
     def find_correlated_positions(
@@ -450,27 +446,12 @@ class CorrelationAnalyzer:
 
         return weighted_corr
 
-    def _estimate_correlation(self, sym1: str, sym2: str) -> float:
+    def _estimate_correlation(self, sym1: str, sym2: str) -> Optional[float]:
         """
-        Fallback correlation estimates when yfinance data unavailable.
+        Return None when correlation data is unavailable.
+
+        Zero-local-math policy: never return hardcoded correlation guesses.
+        Callers must handle None (unknown correlation) gracefully.
         """
-        known_correlations = {
-            ('AAPL', 'MSFT'): 0.8,
-            ('AAPL', 'GOOGL'): 0.7,
-            ('MSFT', 'GOOGL'): 0.75,
-            ('SPY', 'QQQ'): 0.9,
-            ('SPY', 'IWM'): 0.85,
-            ('QQQ', 'IWM'): 0.75,
-            ('GLD', 'SPY'): -0.1,
-            ('TLT', 'SPY'): -0.3,
-            ('NVDA', 'QQQ'): 0.8,
-            ('NVDA', 'SPY'): 0.7,
-            ('NVDA', 'AAPL'): 0.65,
-            ('NVDA', 'MSFT'): 0.7,
-        }
-
-        key = (min(sym1, sym2), max(sym1, sym2))
-        if key in known_correlations:
-            return known_correlations[key]
-
-        return 0.5
+        logger.debug(f"No correlation data for ({sym1}, {sym2}) — returning None")
+        return None

@@ -100,14 +100,38 @@ class LimitCheckResult:
         return ", ".join(parts)
 
 
-# Default risk limits
+# Default risk limit config (loaded from risk_config.yaml if available)
+def _load_limit_defaults() -> dict:
+    """Load risk limit defaults from config. Returns dict of percentages."""
+    try:
+        from trading_cotrader.config.risk_config_loader import get_risk_config
+        rc = get_risk_config()
+        if rc.defaults:
+            return rc.defaults.get('risk_limits', {})
+    except Exception:
+        pass
+    return {}
+
+
 def get_default_limits(portfolio_value: Decimal) -> List[RiskLimit]:
-    """Get default risk limits scaled to portfolio size."""
+    """Get default risk limits scaled to portfolio size.
+
+    Reads percentages from risk_config.yaml defaults.risk_limits section.
+    If not configured, uses conservative defaults.
+    """
+    cfg = _load_limit_defaults()
+    var_pct = Decimal(str(cfg.get('var_pct', '0.03')))
+    max_delta = Decimal(str(cfg.get('max_delta', '100')))
+    theta_pct = Decimal(str(cfg.get('theta_pct', '0.001')))
+    vega_pct = Decimal(str(cfg.get('vega_pct', '0.01')))
+    max_loss_pct = Decimal(str(cfg.get('max_loss_pct', '0.20')))
+    max_drawdown_pct = Decimal(str(cfg.get('max_drawdown_pct', '15')))
+
     return [
         RiskLimit(
             name="Daily VaR (95%)",
             limit_type=LimitType.VAR,
-            value=portfolio_value * Decimal('0.03'),  # 3% of portfolio
+            value=portfolio_value * var_pct,
             description="Maximum 1-day Value at Risk at 95% confidence",
             unit="$",
             breach_action=LimitAction.BLOCK_NEW
@@ -115,7 +139,7 @@ def get_default_limits(portfolio_value: Decimal) -> List[RiskLimit]:
         RiskLimit(
             name="Portfolio Delta",
             limit_type=LimitType.DELTA,
-            value=Decimal('100'),  # 100 delta
+            value=max_delta,
             description="Maximum net delta exposure",
             unit="delta",
             breach_action=LimitAction.ALERT
@@ -123,7 +147,7 @@ def get_default_limits(portfolio_value: Decimal) -> List[RiskLimit]:
         RiskLimit(
             name="Daily Theta",
             limit_type=LimitType.THETA,
-            value=portfolio_value * Decimal('0.001'),  # 0.1% of portfolio
+            value=portfolio_value * theta_pct,
             description="Maximum daily theta (time decay)",
             unit="$",
             breach_action=LimitAction.ALERT
@@ -131,7 +155,7 @@ def get_default_limits(portfolio_value: Decimal) -> List[RiskLimit]:
         RiskLimit(
             name="Vega Exposure",
             limit_type=LimitType.VEGA,
-            value=portfolio_value * Decimal('0.01'),  # 1% of portfolio
+            value=portfolio_value * vega_pct,
             description="Maximum vega exposure",
             unit="$",
             breach_action=LimitAction.ALERT
@@ -139,7 +163,7 @@ def get_default_limits(portfolio_value: Decimal) -> List[RiskLimit]:
         RiskLimit(
             name="Max Loss",
             limit_type=LimitType.MAX_LOSS,
-            value=portfolio_value * Decimal('0.2'),  # 20% max loss
+            value=portfolio_value * max_loss_pct,
             description="Maximum theoretical loss",
             unit="$",
             breach_action=LimitAction.REDUCE
@@ -147,7 +171,7 @@ def get_default_limits(portfolio_value: Decimal) -> List[RiskLimit]:
         RiskLimit(
             name="Drawdown",
             limit_type=LimitType.DRAWDOWN,
-            value=Decimal('15'),  # 15%
+            value=max_drawdown_pct,
             description="Maximum drawdown from peak",
             unit="%",
             breach_action=LimitAction.REDUCE

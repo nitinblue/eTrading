@@ -40,8 +40,8 @@ from trading_cotrader.agents.domain.atlas import AtlasAgent
 from trading_cotrader.adapters.broker_router import BrokerRouter
 from trading_cotrader.agents.workflow.interaction import InteractionManager
 
-# Services replacing former agents (calendar, market_data, macro)
-from trading_cotrader.services.macro_context_service import MacroContextService, MacroOverride
+# MacroContextService is available for manual override but not called in the pipeline —
+# Scout's MarketAnalyzer handles all macro context (regime, VIX, calendar) via ma.context.
 
 
 logger = logging.getLogger(__name__)
@@ -127,11 +127,8 @@ class WorkflowEngine:
         self.sentinel = SentinelAgent(config=self.config, container_manager=self.container_manager)
         self.scout = ScoutAgent(container=research_container, config=self.config)
         self.steward = StewardAgent(container_manager=self.container_manager, config=self.config)
-        self.maverick = MaverickAgent(container_manager=self.container_manager, config=self.config)
+        self.maverick = MaverickAgent(container_manager=self.container_manager, config=self.config, broker=broker)
         self.atlas = AtlasAgent(config=self.config)
-
-        # Service replacing MacroAgent
-        self._macro_service = MacroContextService(broker=broker)
 
         # Interaction manager (command router, not an agent)
         self.interaction = InteractionManager(self)
@@ -181,8 +178,8 @@ class WorkflowEngine:
     # -----------------------------------------------------------------
 
     def on_enter_booting(self, event):
-        """Boot sequence: infrastructure only — all agents disabled."""
-        logger.info("=== WORKFLOW BOOT (agents disabled) ===")
+        """Boot sequence: sync → populate containers → run agents."""
+        logger.info("=== WORKFLOW BOOT ===")
         self.context['cycle_count'] = self.context.get('cycle_count', 0) + 1
 
         # Calendar check (inlined — was CalendarAgent)
@@ -199,7 +196,10 @@ class WorkflowEngine:
         # Refresh containers from DB so API has data
         self._refresh_containers()
 
-        # Skip all agents — go straight to monitoring
+        # Run full agent pipeline
+        self._run_agent_pipeline()
+
+        # Advance to monitoring
         self.check_macro()
 
     def on_enter_macro_check(self, event):
@@ -263,6 +263,139 @@ class WorkflowEngine:
         self._persist_state()
 
     # -----------------------------------------------------------------
+    # Agent pipeline
+    # -----------------------------------------------------------------
+
+    def _run_agent_pipeline(self):
+        """
+        Run the full agent pipeline:
+        Steward.populate → Sentinel.run → Steward.run → Scout.populate → Scout.run → Maverick.run
+
+        Each agent is wrapped in try/except so one failure doesn't block the rest.
+        """
+        logger.info("--- Agent pipeline start ---")
+
+        # 1. Steward: load portfolio state from DB into containers
+        try:
+            result = self.steward.populate(self.context)
+            logger.info(f"Steward.populate: {result.status.value} — {result.messages}")
+        except Exception as e:
+            logger.warning(f"Steward.populate failed: {e}")
+
+        # 2. Sentinel: risk checks
+        try:
+            result = self.sentinel.run(self.context)
+            logger.info(f"Sentinel.run: {result.status.value} — {result.messages}")
+        except Exception as e:
+            logger.warning(f"Sentinel.run failed: {e}")
+
+        # 3. Steward: capital analysis
+        try:
+            result = self.steward.run(self.context)
+            logger.info(f"Steward.run: {result.status.value} — {result.messages}")
+        except Exception as e:
+            logger.warning(f"Steward.run failed: {e}")
+
+        # 4. Scout: populate research from MarketAnalyzer
+        try:
+            result = self.scout.populate(self.context)
+            logger.info(f"Scout.populate: {result.status.value} — {result.messages}")
+        except Exception as e:
+            logger.warning(f"Scout.populate failed: {e}")
+
+        # 5. Scout: screening + ranking
+        try:
+            result = self.scout.run(self.context)
+            logger.info(f"Scout.run: {result.status.value} — {result.messages}")
+        except Exception as e:
+            logger.warning(f"Scout.run failed: {e}")
+
+        # 6. Mark-to-market: update open trade prices before Maverick checks exits
+        try:
+            m2m_result = self.maverick.mark_to_market()
+            if m2m_result.trades_marked > 0:
+                logger.info(
+                    f"Mark-to-market: {m2m_result.trades_marked} trades, "
+                    f"P&L=${m2m_result.total_pnl:+.2f}"
+                )
+        except Exception as e:
+            logger.warning(f"Mark-to-market failed: {e}")
+
+        # 7. Maverick: trade proposals + exit monitoring
+        try:
+            result = self.maverick.run(self.context)
+            logger.info(f"Maverick.run: {result.status.value} — {result.messages}")
+        except Exception as e:
+            logger.warning(f"Maverick.run failed: {e}")
+
+        # 7b. Auto-book proposed trades to WhatIf desks
+        proposals = self.context.get('trade_proposals', [])
+        proposed = [p for p in proposals if p.get('status') == 'proposed']
+        if proposed:
+            try:
+                book_results = self.maverick.book_proposals(self.context)
+                booked = sum(1 for r in book_results if r.get('success'))
+                if booked:
+                    logger.info(f"Auto-booked {booked} trade(s) to WhatIf desks")
+                    self._refresh_containers()
+                # Clear proposals after booking attempt
+                self.context['trade_proposals'] = []
+            except Exception as e:
+                logger.warning(f"Auto-book failed: {e}")
+
+        # 8. Auto-close trades on URGENT exit signals + profit targets
+        exit_signals = self.context.get('exit_signals', [])
+        if exit_signals:
+            try:
+                from trading_cotrader.services.trade_lifecycle import TradeLifecycleService
+                lifecycle = TradeLifecycleService(container_manager=self.container_manager)
+                close_results = lifecycle.auto_close_from_signals(exit_signals)
+                closed_count = sum(1 for r in close_results if r.get('success'))
+                if closed_count:
+                    logger.info(f"Auto-closed {closed_count} trade(s) from exit signals")
+                    # Refresh containers after closing
+                    self._refresh_containers()
+                    # Clear processed signals
+                    self.context['exit_signals'] = [
+                        s for s in exit_signals
+                        if s.severity not in ('URGENT',) and s.signal_type != 'PROFIT_TARGET'
+                    ]
+            except Exception as e:
+                logger.warning(f"Auto-close failed: {e}")
+
+        # 9. Run ML learning after closes (periodic — every 10th cycle)
+        cycle = self.context.get('cycle_count', 0)
+        if cycle % 10 == 0 and cycle > 0:
+            try:
+                from trading_cotrader.services.trade_learner import TradeLearner
+                learner = TradeLearner()
+                learn_result = learner.learn_from_history(days=90)
+                if learn_result.trades_analyzed > 0:
+                    logger.info(
+                        f"ML learning: {learn_result.trades_analyzed} trades, "
+                        f"{learn_result.patterns_updated} patterns updated"
+                    )
+            except Exception as e:
+                logger.debug(f"ML learning failed (non-blocking): {e}")
+
+        # Log summary
+        proposals = self.context.get('trade_proposals', [])
+        proposed = [p for p in proposals if p.get('status') == 'proposed']
+        exit_signals = self.context.get('exit_signals', [])
+        urgent_exits = [s for s in exit_signals if s.severity == 'URGENT']
+
+        parts = []
+        if proposed:
+            parts.append(f"{len(proposed)} trade proposal(s)")
+        if urgent_exits:
+            parts.append(f"{len(urgent_exits)} URGENT exit(s)")
+        if exit_signals and not urgent_exits:
+            parts.append(f"{len(exit_signals)} exit signal(s)")
+
+        summary = ", ".join(parts) if parts else "no proposals, no exits"
+        logger.info(f"--- Agent pipeline done: {summary} ---")
+
+    # -----------------------------------------------------------------
     # Condition methods (used by transitions library)
     # -----------------------------------------------------------------
 
@@ -300,9 +433,9 @@ class WorkflowEngine:
         """
         Called periodically (every 30 min) by APScheduler during market hours.
 
-        All agents disabled — only sync broker positions and refresh containers.
+        Syncs broker, refreshes containers, then runs agent pipeline.
         """
-        logger.info("--- Monitoring cycle (agents disabled) ---")
+        logger.info("--- Monitoring cycle ---")
 
         # Only run if in monitoring state
         current = self.state
@@ -310,9 +443,10 @@ class WorkflowEngine:
             logger.debug(f"Skip monitoring cycle: state is {current}")
             return
 
-        # Infrastructure only: sync broker + refresh containers
+        # Sync broker + refresh containers + run agents
         self._sync_broker_positions()
         self._refresh_containers()
+        self._run_agent_pipeline()
 
     def run_once(self):
         """Run a single complete cycle for testing."""

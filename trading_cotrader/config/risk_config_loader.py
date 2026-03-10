@@ -350,6 +350,9 @@ class RiskConfig:
     track_metrics: List[str] = field(default_factory=list)
     track_by: List[str] = field(default_factory=list)
 
+    # Defaults (configurable parameters — no hardcoding in code)
+    defaults: Dict[str, Any] = field(default_factory=dict)
+
 
 # =============================================================================
 # Configuration Loader
@@ -588,6 +591,10 @@ class RiskConfigLoader:
         if 'performance' in raw:
             config.track_metrics = raw['performance'].get('track_metrics', [])
             config.track_by = raw['performance'].get('track_by', [])
+
+        # Defaults (configurable parameters — no hardcoding in code)
+        if 'defaults' in raw:
+            config.defaults = raw['defaults']
 
         return config
 
