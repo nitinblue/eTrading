@@ -45,10 +45,6 @@ def _build_test_registry() -> BrokerRegistry:
             currency='INR', has_api=True, is_data_broker=True,
             adapter='zerodha',
         ),
-        'stallion': BrokerConfig(
-            name='stallion', display_name='Stallion Asset',
-            currency='INR', has_api=False, read_only=True,
-        ),
     })
 
 
@@ -72,14 +68,6 @@ def _build_test_portfolios() -> PortfoliosConfig:
             allowed_strategies=['single', 'covered_call'],
             active_strategies=['single'],
             risk_limits=PortfolioRiskLimits(max_portfolio_delta=1000),
-        ),
-        'stallion': PortfolioConfig(
-            name='stallion', display_name='Stallion Asset',
-            broker_firm='stallion', account_number='SACF5925',
-            portfolio_type='real', currency='INR',
-            initial_capital=5000000,
-            allowed_strategies=['single'],
-            active_strategies=['single'],
         ),
         'tastytrade_whatif': PortfolioConfig(
             name='tastytrade_whatif', display_name='Tastytrade (WhatIf)',
@@ -130,13 +118,12 @@ class TestBrokerRegistry:
 
     def test_read_only_flag(self):
         reg = _build_test_registry()
-        assert reg.get_by_name('stallion').read_only is True
         assert reg.get_by_name('fidelity').read_only is False
         assert reg.get_by_name('tastytrade').read_only is False
 
     def test_get_all(self):
         reg = _build_test_registry()
-        assert len(reg.get_all()) == 4
+        assert len(reg.get_all()) == 3
 
     def test_get_by_currency(self):
         reg = _build_test_registry()
@@ -145,8 +132,8 @@ class TestBrokerRegistry:
         assert {b.name for b in usd} == {'tastytrade', 'fidelity'}
 
         inr = reg.get_by_currency('INR')
-        assert len(inr) == 2
-        assert {b.name for b in inr} == {'zerodha', 'stallion'}
+        assert len(inr) == 1
+        assert {b.name for b in inr} == {'zerodha'}
 
 
 class TestPortfolioConfig:
@@ -171,11 +158,10 @@ class TestPortfolioConfig:
     def test_get_real_portfolios(self):
         config = _build_test_portfolios()
         real = config.get_real_portfolios()
-        assert len(real) == 3
+        assert len(real) == 2
         names = {p.name for p in real}
         assert 'tastytrade' in names
         assert 'fidelity_ira' in names
-        assert 'stallion' in names
 
     def test_get_whatif_portfolios(self):
         config = _build_test_portfolios()
@@ -197,12 +183,6 @@ class TestPortfolioConfig:
         config = _build_test_portfolios()
         name = config.get_config_name_for('unknown', 'unknown')
         assert name is None
-
-    def test_inr_portfolio(self):
-        config = _build_test_portfolios()
-        st = config.get_by_name('stallion')
-        assert st.currency == 'INR'
-        assert st.initial_capital == 5000000
 
 
 class TestWhatIfInheritance:
@@ -235,14 +215,6 @@ class TestBrokerRouter:
         assert result.manual is True
         assert 'MANUAL EXECUTION REQUIRED' in result.message
         assert 'Fidelity' in result.message
-
-    def test_read_only_stallion(self):
-        """Stallion (managed fund) trades are BLOCKED — no execution at all."""
-        config = _build_test_portfolios()
-        pc = config.get_by_name('stallion')
-        result = self.router.execute({'summary': 'Buy BSE'}, pc)
-        assert result.blocked is True
-        assert 'fully managed fund' in result.message
 
     def test_api_broker_no_adapter_blocked(self):
         """API broker without adapter loaded is blocked."""
@@ -375,7 +347,7 @@ class TestPortfolioManagerMultiBroker:
 
         pm = FakePM(config, registry)
         assert pm.is_manual_execution('fidelity_ira') is True
-        assert pm.is_manual_execution('stallion') is False  # read_only, not manual
+        assert pm.is_manual_execution('tastytrade') is False
         assert pm.is_manual_execution('tastytrade') is False
 
     def test_read_only_detection(self):
@@ -390,7 +362,6 @@ class TestPortfolioManagerMultiBroker:
                 self.broker_registry = broker_registry
 
         pm = FakePM(config, registry)
-        assert pm.is_read_only('stallion') is True
         assert pm.is_read_only('fidelity_ira') is False
         assert pm.is_read_only('tastytrade') is False
 
@@ -407,7 +378,7 @@ class TestPortfolioManagerMultiBroker:
 
         pm = FakePM(config, registry)
         assert pm.get_currency('tastytrade') == 'USD'
-        assert pm.get_currency('stallion') == 'INR'
+        assert pm.get_currency('unknown') == 'USD'  # default for missing
         assert pm.get_currency('fidelity_ira') == 'USD'
 
     def test_portfolio_initialization_multi_broker(self, session):
@@ -419,13 +390,13 @@ class TestPortfolioManagerMultiBroker:
 
         pm = PortfolioManager(session, config=risk_config.portfolios, broker_registry=registry)
         portfolios = pm.initialize_portfolios()
-        assert len(portfolios) == 13
+        assert len(portfolios) == 12
 
         # Verify real vs whatif vs research
         real_count = sum(1 for p in portfolios if p.portfolio_type.value == 'real')
         whatif_count = sum(1 for p in portfolios if p.portfolio_type.value == 'what_if')
         research_count = sum(1 for p in portfolios if p.portfolio_type.value == 'research')
-        assert real_count == 5
+        assert real_count == 4
         assert whatif_count == 3  # desk_0dte, desk_medium, desk_leaps
         assert research_count == 5
 
@@ -458,7 +429,7 @@ class TestPortfolioManagerMultiBroker:
         pm = PortfolioManager(session, config=risk_config.portfolios, broker_registry=registry)
         first = pm.initialize_portfolios()
         second = pm.initialize_portfolios()
-        assert len(first) == len(second) == 13
+        assert len(first) == len(second) == 12
 
 
 class TestBrokerAdapterFactory:
@@ -477,16 +448,16 @@ class TestBrokerAdapterFactory:
         assert adapter.currency == 'USD'
         assert adapter.is_authenticated is True
 
-    def test_factory_creates_readonly_for_stallion(self):
+    def test_factory_creates_readonly_for_read_only_broker(self):
         from trading_cotrader.adapters.factory import BrokerAdapterFactory
         from trading_cotrader.adapters.base import ReadOnlyAdapter
 
         config = BrokerConfig(
-            name='stallion', currency='INR', read_only=True,
+            name='readonly_fund', currency='INR', read_only=True,
         )
         adapter = BrokerAdapterFactory.create(config)
         assert isinstance(adapter, ReadOnlyAdapter)
-        assert adapter.name == 'stallion'
+        assert adapter.name == 'readonly_fund'
         assert adapter.currency == 'INR'
         assert adapter.get_positions() == []
 
@@ -580,11 +551,10 @@ class TestContainerBundles:
         cm = ContainerManager()
         config = _build_test_portfolios()
         cm.initialize_bundles(config)
-        # 3 real portfolios → 3 bundles
-        assert len(cm.get_all_bundles()) == 3
+        # 2 real portfolios → 2 bundles
+        assert len(cm.get_all_bundles()) == 2
         assert 'tastytrade' in cm.get_bundle_names()
         assert 'fidelity_ira' in cm.get_bundle_names()
-        assert 'stallion' in cm.get_bundle_names()
 
     def test_container_manager_whatif_resolves_to_parent(self):
         from trading_cotrader.containers.container_manager import ContainerManager
@@ -604,7 +574,7 @@ class TestContainerBundles:
         usd = cm.get_bundles_by_currency('USD')
         inr = cm.get_bundles_by_currency('INR')
         assert len(usd) == 2  # tastytrade, fidelity_ira
-        assert len(inr) == 1  # stallion
+        assert len(inr) == 0  # no INR portfolios in test fixture
 
     def test_container_manager_backward_compat_properties(self):
         from trading_cotrader.containers.container_manager import ContainerManager
@@ -631,9 +601,9 @@ class TestContainerBundles:
         cm = ContainerManager()
         config = _build_test_portfolios()
         cm.initialize_bundles(config)
-        state = cm.get_full_state('stallion')
-        assert state['config_name'] == 'stallion'
-        assert state['currency'] == 'INR'
+        state = cm.get_full_state('fidelity_ira')
+        assert state['config_name'] == 'fidelity_ira'
+        assert state['currency'] == 'USD'
 
     def test_container_manager_get_all_states(self):
         from trading_cotrader.containers.container_manager import ContainerManager
@@ -641,7 +611,7 @@ class TestContainerBundles:
         config = _build_test_portfolios()
         cm.initialize_bundles(config)
         states = cm.get_all_states()
-        assert len(states) == 3
+        assert len(states) == 2
 
     def test_container_manager_empty_state(self):
         from trading_cotrader.containers.container_manager import ContainerManager
@@ -661,7 +631,7 @@ class TestLoadBrokerRegistryFromYAML:
 
     def test_load_from_yaml(self):
         registry = load_broker_registry()
-        assert len(registry.get_all()) == 4
+        assert len(registry.get_all()) == 3
 
         tt = registry.get_by_name('tastytrade')
         assert tt.currency == 'USD'
@@ -672,7 +642,6 @@ class TestLoadBrokerRegistryFromYAML:
         assert fid.manual_execution is True
         assert fid.has_api is False
 
-        stallion = registry.get_by_name('stallion')
-        assert stallion.read_only is True
-        assert stallion.manual_execution is False
-        assert stallion.currency == 'INR'
+        zr = registry.get_by_name('zerodha')
+        assert zr.currency == 'INR'
+        assert zr.has_api is True

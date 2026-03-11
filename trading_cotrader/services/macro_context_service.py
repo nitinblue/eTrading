@@ -70,6 +70,10 @@ class MacroContextService:
         Path('trading_cotrader/config/daily_macro.yaml'),
     ]
 
+    def __init__(self, market_data=None, market_metrics=None):
+        self._market_data = market_data
+        self._market_metrics = market_metrics
+
     def evaluate(
         self, override: Optional[MacroOverride] = None
     ) -> MacroAssessment:
@@ -96,7 +100,10 @@ class MacroContextService:
         """Auto-assess macro via MarketAnalyzer context service."""
         try:
             from market_analyzer import MarketAnalyzer
-            ma = MarketAnalyzer()
+            ma = MarketAnalyzer(
+                market_data=self._market_data,
+                market_metrics=self._market_metrics,
+            )
             ctx = ma.context.assess()
 
             env = ctx.environment_label or 'cautious'

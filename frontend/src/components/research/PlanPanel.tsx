@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { clsx } from 'clsx'
 import { usePlan } from '../../hooks/usePlan'
 import { Spinner } from '../common/Spinner'
-import type { PlanTrade, DailyTradingPlan } from '../../api/types'
+import type { PlanTrade, DeskPlan, DailyTradingPlan } from '../../api/types'
 
 const VERDICT_STYLE: Record<string, { bg: string; text: string; label: string }> = {
   trade: { bg: 'bg-green-900/30', text: 'text-green-400', label: 'TRADE' },
@@ -11,11 +11,10 @@ const VERDICT_STYLE: Record<string, { bg: string; text: string; label: string }>
   no_trade: { bg: 'bg-red-900/50', text: 'text-red-300', label: 'NO TRADE' },
 }
 
-const HORIZON_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-  '0dte': { bg: 'bg-red-900/20', text: 'text-red-400', label: '0DTE' },
-  weekly: { bg: 'bg-amber-900/20', text: 'text-amber-400', label: 'WEEKLY' },
-  monthly: { bg: 'bg-blue-900/20', text: 'text-blue-400', label: 'MONTHLY' },
-  leap: { bg: 'bg-purple-900/20', text: 'text-purple-400', label: 'LEAP' },
+const DESK_STYLE: Record<string, { bg: string; text: string; icon: string }> = {
+  desk_0dte: { bg: 'bg-red-900/20', text: 'text-red-400', icon: '\u26A1' },
+  desk_medium: { bg: 'bg-blue-900/20', text: 'text-blue-400', icon: '\u23F1' },
+  desk_leaps: { bg: 'bg-purple-900/20', text: 'text-purple-400', icon: '\uD83D\uDCC8' },
 }
 
 const TRADE_VERDICT: Record<string, { bg: string; text: string }> = {
@@ -32,14 +31,10 @@ const DIR_CLR: Record<string, string> = {
 
 function TradeRow({ t }: { t: PlanTrade }) {
   const tv = TRADE_VERDICT[t.verdict.toLowerCase()] || TRADE_VERDICT.no_go
-  const hs = HORIZON_STYLE[t.horizon] || HORIZON_STYLE.monthly
   return (
     <tr className="border-b border-border-secondary/40 hover:bg-bg-hover/50">
       <td className="py-0.5 px-1.5 text-2xs font-mono text-text-muted text-center">{t.rank}</td>
       <td className="py-0.5 px-1.5 text-xs font-mono font-bold text-accent-blue">{t.ticker}</td>
-      <td className="py-0.5 px-1.5">
-        <span className={clsx('px-1 py-0.5 rounded text-2xs font-semibold', hs.bg, hs.text)}>{hs.label}</span>
-      </td>
       <td className="py-0.5 px-1.5 text-2xs text-text-secondary">{t.strategy_type.replace(/_/g, ' ')}</td>
       <td className="py-0.5 px-1.5">
         <span className={clsx('px-1 py-0.5 rounded text-2xs font-semibold uppercase', tv.bg, tv.text)}>
@@ -72,18 +67,45 @@ function TradeRow({ t }: { t: PlanTrade }) {
   )
 }
 
-function HorizonSection({ horizon, trades }: { horizon: string; trades: PlanTrade[] }) {
-  const hs = HORIZON_STYLE[horizon] || HORIZON_STYLE.monthly
-  if (!trades.length) return null
+function DeskSection({ desk }: { desk: DeskPlan }) {
+  const ds = DESK_STYLE[desk.desk_key] || DESK_STYLE.desk_medium
+  if (desk.error) {
+    return (
+      <div className={clsx('px-2 py-1 border-b border-border-secondary/60', ds.bg)}>
+        <span className={clsx('text-2xs font-bold uppercase tracking-wider mr-2', ds.text)}>
+          {ds.icon} {desk.display_name}
+        </span>
+        <span className="text-2xs text-accent-red">Error: {desk.error}</span>
+      </div>
+    )
+  }
+  if (!desk.trades.length) {
+    return (
+      <div className={clsx('px-2 py-1 border-b border-border-secondary/60', ds.bg)}>
+        <span className={clsx('text-2xs font-bold uppercase tracking-wider mr-2', ds.text)}>
+          {ds.icon} {desk.display_name}
+        </span>
+        <span className="text-2xs text-text-muted">No trades</span>
+        <span className="text-2xs text-text-muted ml-2">({desk.tickers.join(', ')})</span>
+      </div>
+    )
+  }
   return (
     <div>
-      <div className={clsx('flex items-center gap-2 px-1.5 py-0.5 border-b border-border-secondary/60', hs.bg)}>
-        <span className={clsx('text-2xs font-bold uppercase tracking-wider', hs.text)}>{hs.label}</span>
-        <span className="text-2xs text-text-muted">{trades.length} trade{trades.length !== 1 ? 's' : ''}</span>
+      <div className={clsx('flex items-center gap-2 px-2 py-0.5 border-b border-border-secondary/60', ds.bg)}>
+        <span className={clsx('text-2xs font-bold uppercase tracking-wider', ds.text)}>
+          {ds.icon} {desk.display_name}
+        </span>
+        <span className="text-2xs text-text-muted">
+          {desk.trade_count} trade{desk.trade_count !== 1 ? 's' : ''}
+        </span>
+        <span className="text-2xs text-text-muted">
+          ${desk.capital.toLocaleString()} capital
+        </span>
       </div>
       <table className="w-full text-xs">
         <tbody>
-          {trades.map(t => <TradeRow key={`${t.ticker}-${t.strategy_type}`} t={t} />)}
+          {desk.trades.map(t => <TradeRow key={`${t.ticker}-${t.strategy_type}`} t={t} />)}
         </tbody>
       </table>
     </div>
@@ -99,7 +121,7 @@ export function PlanPanel({ tickers }: { tickers: string[] }) {
       <div className="card">
         <div className="card-body flex items-center justify-center py-3">
           <Spinner size="sm" />
-          <span className="text-xs text-text-muted ml-2">Generating daily plan...</span>
+          <span className="text-xs text-text-muted ml-2">Generating daily plan across desks...</span>
         </div>
       </div>
     )
@@ -118,7 +140,7 @@ export function PlanPanel({ tickers }: { tickers: string[] }) {
   if (!data) return null
 
   const vs = VERDICT_STYLE[data.day_verdict] || VERDICT_STYLE.avoid
-  const horizons = ['0dte', 'weekly', 'monthly', 'leap'] as const
+  const hasDesks = data.desk_plans && data.desk_plans.length > 0
 
   return (
     <div className="card">
@@ -129,6 +151,9 @@ export function PlanPanel({ tickers }: { tickers: string[] }) {
           <span className="text-2xs text-text-muted">{data.plan_for_date}</span>
           {data.total_trades > 0 && (
             <span className="text-2xs text-text-muted">{data.total_trades} trades</span>
+          )}
+          {hasDesks && (
+            <span className="text-2xs text-text-muted">{data.desk_plans!.length} desks</span>
           )}
         </div>
         <div className="flex items-center gap-3 text-2xs text-text-muted">
@@ -162,7 +187,7 @@ export function PlanPanel({ tickers }: { tickers: string[] }) {
             </div>
           )}
 
-          {/* Trades by horizon */}
+          {/* Trades by desk */}
           {data.total_trades > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -170,7 +195,6 @@ export function PlanPanel({ tickers }: { tickers: string[] }) {
                   <tr className="text-text-muted text-2xs uppercase tracking-wider border-b border-border-secondary">
                     <th className="py-0.5 px-1.5 text-center w-6">#</th>
                     <th className="py-0.5 px-1.5">Ticker</th>
-                    <th className="py-0.5 px-1.5">Horizon</th>
                     <th className="py-0.5 px-1.5">Strategy</th>
                     <th className="py-0.5 px-1.5">Verdict</th>
                     <th className="py-0.5 px-1.5">Score</th>
@@ -180,17 +204,20 @@ export function PlanPanel({ tickers }: { tickers: string[] }) {
                   </tr>
                 </thead>
               </table>
-              {horizons.map(h => {
-                const trades = data.trades_by_horizon[h]
-                return trades && trades.length > 0
-                  ? <HorizonSection key={h} horizon={h} trades={trades} />
-                  : null
-              })}
+              {hasDesks ? (
+                data.desk_plans!.map(d => <DeskSection key={d.desk_key} desk={d} />)
+              ) : (
+                <table className="w-full text-xs">
+                  <tbody>
+                    {data.all_trades.map(t => <TradeRow key={`${t.ticker}-${t.strategy_type}`} t={t} />)}
+                  </tbody>
+                </table>
+              )}
             </div>
           ) : (
             <div className="px-2 py-2 text-2xs text-text-muted text-center">
               {data.day_verdict === 'no_trade' || data.day_verdict === 'avoid'
-                ? 'No trades today — see verdict above'
+                ? 'No trades today -- see verdict above'
                 : 'No actionable trades found'}
             </div>
           )}

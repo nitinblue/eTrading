@@ -113,6 +113,18 @@ class WorkflowEngine:
         self.broker_router = BrokerRouter(self.broker_registry, adapters)
         self._adapters = adapters  # Expose for API endpoints (agent brain, transactions, etc.)
 
+        # Extract market data providers from the broker adapter (SaaS pattern:
+        # eTrading owns credentials, passes pre-authenticated sessions to MarketAnalyzer).
+        self._market_data = None
+        self._market_metrics = None
+        tt_adapter = adapters.get('tastytrade')
+        if tt_adapter and hasattr(tt_adapter, 'get_market_providers'):
+            try:
+                self._market_data, self._market_metrics = tt_adapter.get_market_providers()
+                logger.info("Market providers extracted from broker adapter — single connection")
+            except Exception as e:
+                logger.warning(f"Could not extract market providers from broker: {e}")
+
         # Shared context between all agents
         self.context: dict = {
             'cycle_count': 0,
@@ -125,7 +137,10 @@ class WorkflowEngine:
         # Initialize the 5 domain agents (BaseAgent subclasses)
         research_container = self.container_manager.research if self.container_manager else None
         self.sentinel = SentinelAgent(config=self.config, container_manager=self.container_manager)
-        self.scout = ScoutAgent(container=research_container, config=self.config)
+        self.scout = ScoutAgent(
+            container=research_container, config=self.config,
+            market_data=self._market_data, market_metrics=self._market_metrics,
+        )
         self.steward = StewardAgent(container_manager=self.container_manager, config=self.config)
         self.maverick = MaverickAgent(container_manager=self.container_manager, config=self.config, broker=broker)
         self.atlas = AtlasAgent(config=self.config)

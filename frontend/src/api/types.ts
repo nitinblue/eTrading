@@ -1623,6 +1623,18 @@ export interface PlanTrade {
   rationale: string
   risk_notes: string[]
   expiry_note: string | null
+  desk?: string
+  desk_key?: string
+}
+
+export interface DeskPlan {
+  desk_key: string
+  display_name: string
+  capital: number
+  tickers: string[]
+  trades: PlanTrade[]
+  trade_count: number
+  error?: string
 }
 
 export interface DailyTradingPlan {
@@ -1637,6 +1649,7 @@ export interface DailyTradingPlan {
   all_trades: PlanTrade[]
   total_trades: number
   summary: string
+  desk_plans?: DeskPlan[]
 }
 
 // WebSocket message types

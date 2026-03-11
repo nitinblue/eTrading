@@ -4,7 +4,7 @@ Broker Router — Routes trade execution to the correct broker handler.
 Safety invariants:
     1. Cross-broker routing: Fidelity trade NEVER routes to Tastytrade API
     2. Currency isolation: USD trade cannot land in INR portfolio
-    3. Manual execution: Fidelity/Stallion trades return MANUAL status
+    3. Manual execution: Fidelity trades return MANUAL status
     4. Data broker per currency: USD → Tastytrade, INR → Zerodha
 
 Usage:
@@ -66,7 +66,7 @@ class BrokerRouter:
                 message=f"Unknown broker: {broker_name}"
             )
 
-        # Safety: read-only fund (Stallion) — no execution at all
+        # Safety: read-only fund — no execution at all
         if broker_cfg.read_only:
             return ExecutionResult(
                 blocked=True,

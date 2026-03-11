@@ -54,8 +54,8 @@ def _load_portfolio_aliases() -> dict[str, str]:
         for key, pc in rc.portfolios.portfolios.items():
             # Auto-generate short aliases:
             #   tastytrade → tt, fidelity_ira → fira, fidelity_personal → fp
-            #   zerodha → zr, stallion → st
-            #   *_whatif → append 'w' (ttw, firaw, fpw, zrw, stw)
+            #   zerodha → zr
+            #   *_whatif → append 'w' (ttw, firaw, fpw, zrw)
             _PORTFOLIO_ALIASES[key] = key  # full name always works
     except Exception:
         pass
@@ -63,7 +63,7 @@ def _load_portfolio_aliases() -> dict[str, str]:
     # Hardcoded shortcuts (stable, won't break if YAML changes)
     shortcuts = {
         'tt': 'tastytrade', 'fira': 'fidelity_ira', 'fp': 'fidelity_personal',
-        'zr': 'zerodha', 'st': 'stallion',
+        'zr': 'zerodha',
         # Trading desks
         '0dte': 'desk_0dte', 'zero': 'desk_0dte',
         'med': 'desk_medium', 'medium': 'desk_medium', '45dte': 'desk_medium',

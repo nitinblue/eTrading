@@ -11,5 +11,6 @@ export function useWorkflowStatus() {
       return data
     },
     refetchInterval: 5_000,
+    retry: 1,
   })
 }

@@ -1,245 +1,230 @@
-# CLAUDE.md
-# Project: Trading CoTrader
-# Last Updated: February 26, 2026 (session 36)
-# Historical reference: CLAUDE_ARCHIVE.md (architecture decisions, session log s1-s26)
+# CLAUDE.md — Trading CoTrader
+# Last Updated: March 11, 2026 (session 39)
 
-## MISSION — READ THIS EVERY SESSION
+## PRIME DIRECTIVE
 
-**This system exists to make money.** $250K sits idle — $50K personal, $200K self-directed IRA. The goal is to deploy this capital systematically to fund Nitin's daughter's college education.
+**We are building a money-making machine, not a tech project.**
 
-Every session, before doing anything, ask: **"Does this task move us closer to placing real trades with real money?"** If the answer is no, challenge it. Tech debt, UI polish, and refactoring only matter if they unblock revenue-generating capability.
+$250K capital ($50K personal, $200K self-directed IRA). Goal: deploy systematically to fund Nitin's daughter's college education through options trading.
 
-**The measure of progress is not lines of code or test count. It is: can Maverick place a trade today?**
+### Non-Negotiable Rules
 
-Current blockers to first real trade:
-1. Maverick can produce trading signals — but cannot execute them (no order placement)
-2. No approval workflow for generated trades (human-in-the-loop before execution)
-3. No position sizing based on risk budget
-4. No P&L tracking of trades Maverick recommended
+1. **Never book a bogus trade.** Every trade must come from the full pipeline with real market data. No mock data, no fabricated positions, no "just to test" entries.
+2. **Never take action for the sake of taking action.** Every action requires 90%+ confidence based on data lineage. If confidence is below threshold, call out the gap — don't work around it.
+3. **No mocked data in production flow.** Everything must be tradeable. If data isn't available, say so.
+4. **Every event is data.** Log everything as events. No data gets wasted — it feeds ML/RL. The system must become intelligent over time.
+5. **Measure progress by: can Maverick execute a real trade today?** Not lines of code. Not test count.
 
-**If Nitin asks for UI work, cleanup, or refactoring — do it, but remind him what's still blocking the first trade.**
+### Accountability Model
 
----
+**Agents own their WhatIf desk P&L — fully, no excuses.**
+- Each agent's desk has a WhatIf portfolio. The agent is 100% accountable for its performance: win rate, P&L, Sharpe, drawdown.
+- Agents scan, propose, book, monitor, and close trades in their WhatIf portfolios autonomously.
+- On cloud (SaaS), agent desk performance is the product's track record. There will be no excuses — the numbers speak.
 
-## STANDING INSTRUCTIONS
-- **ALWAYS update CLAUDE.md** after major changes — update: code map, open items, session log.
-- **ALWAYS update MEMORY.md** (`~/.claude/projects/.../memory/MEMORY.md`) with session summary.
-- **Force reinstall market_analyzer** at start of each session: `pip install --force-reinstall --no-deps -e ../market_analyzer`
-- If context is running low, prioritize writing updates BEFORE doing more work.
+**Agents never touch real portfolio P&L.**
+- Humans decide what to promote from WhatIf → real execution.
+- The human bears full responsibility for actual capital deployment.
+- The system's job is to make the WhatIf track record so compelling that promotion is obvious.
 
----
-
-## WHY THIS EXISTS
-
-20 years pricing and risk analytics on institutional trading floors — IR, commodities, FX, mortgages.
-The gap: 1. Time flies by, opportunity cost enormous. 2. Believes in systems and automation — now possible with Agentic AI. 3. Failing in managing own money is a behaviour problem, not knowledge. 4. Institutional discipline never applied to personal wealth. 250K sits idle (50K personal, 200K self-directed IRA).
-Agent-based approach deploys capital systematically, safely, with full risk visibility at every level: trade, strategy, portfolio.
-Mental model: Macro Context -> My Exposure -> Action Required. Never "I have an iron condor." Always "I have -150 SPY delta, +$450 theta/day. Am I within limits?"
+### Before Every Session
+- Ask: **"Does this move us closer to real trades with real money?"**
+- If asked for UI/cleanup/refactoring — do it, but state what's blocking the first trade.
+- Review `GAPS.md` — the standing gap analysis.
+- Force reinstall: `pip install --force-reinstall --no-deps -e ../market_analyzer`
+- Update CLAUDE.md and MEMORY.md after major changes.
 
 ---
 
-## APPROACH — BUILD AGENTS ONE AT A TIME
-
-We are building core agents **one at a time, in a controlled way**. There is only ONE workflow agent: **Maverick (Trader)**. No plans to prioritize beyond what's described here.
-
-**Maverick is the only agent that runs in the workflow state machine.** Scout, Steward, and Sentinel are data/analysis agents that Maverick orchestrates. Atlas is infrastructure — no autonomous decisions.
-
-### The 5 Domain Agents
-
-| Agent | Role | Status | What's Done |
-|-------|------|--------|-------------|
-| **Scout** (Quant) | Market analysis, screening, ranking | DONE | populate() fills ResearchContainer from MarketAnalyzer. run() does screening + ranking + black swan + context. |
-| **Steward** (PortfolioManager) | Portfolio state, positions, P&L, capital | DONE | populate() fills PortfolioBundle from DB. run() does capital utilization analysis. |
-| **Sentinel** (RiskManager) | Circuit breakers, constraints, risk reads | DONE | Merged Guardian+Risk. Reads risk from containers, falls back to DB. |
-| **Maverick** (Trader) | **THE workflow agent** — orchestrates everything | WIRED | run() cross-references Steward+Scout containers, produces trading signals. Next: build out execution, notifications, discipline. |
-| **Atlas** (TechArchitect) | Infrastructure, system health | Skeleton | Not prioritized. |
-
-### Agent Pattern (Scout = exemplar)
-```
-Agent owns Container -> populate() fills from data source -> save_to_db() -> API reads from container -> UI renders
-```
-Every agent follows this. No exceptions. No page calls services directly.
-
----
-
-## DIRECTORY STRUCTURE
+## ARCHITECTURE — How Money Gets Made
 
 ```
-trading_cotrader/
-  agents/                    # THE agent system
-    base.py                  #   BaseAgent ABC
-    protocol.py              #   AgentResult/AgentStatus
-    messages.py              #   Message types
-    domain/                  #   5 domain agents
-      scout.py               #     Quant (EXEMPLAR)
-      steward.py             #     PortfolioManager
-      sentinel.py            #     RiskManager
-      maverick.py            #     Trader (THE workflow agent)
-      atlas.py               #     TechArchitect (skeleton)
-    workflow/                #   State machine + scheduling
-      engine.py              #     12-state orchestrator
-      states.py              #     State definitions
-      scheduler.py           #     APScheduler (30min cycle)
-      interaction.py         #     CLI command router
-  adapters/                  # Broker abstraction
-    base.py                  #   ABC + Manual + ReadOnly
-    factory.py               #   Create adapters by broker
-    broker_router.py         #   Route to correct adapter
-    tastytrade_adapter.py    #   TastyTrade (primary, 40+ methods)
-  containers/                # In-memory data stores
-    container_manager.py     #   Orchestrates all bundles + research
-    research_container.py    #   Scout's container (~155 fields)
-    portfolio_bundle.py      #   Steward's container (per-portfolio)
-    position_container.py    #   Individual positions
-    portfolio_container.py   #   Portfolio state
-    risk_factor_container.py #   Risk aggregation + limits
-    trade_container.py       #   Trade tracking
-    market_data_container.py #   Technicals cross-portfolio
-  services/                  # Tools agents use (not autonomous)
-    agent_brain.py           #   LLM via Claude API
-    macro_context_service.py #   VIX regime, macro gates
-    performance_metrics_service.py  # Win rate, Sharpe, drawdown
-    portfolio_manager.py     #   Portfolio state management
-    portfolio_sync.py        #   Broker -> DB sync
-    snapshot_service.py      #   Daily portfolio snapshots
-    trade_booking_service.py #   Book trades with legs + Greeks
-    risk/                    #   Risk calculations
-    risk_factors/            #   Risk factor models + resolver
-  web/                       # FastAPI endpoints
-    approval_api.py          #   Server factory + CORS
-    api_v2.py                #   MarketAnalyzer facade (25+ endpoints)
-    api_research.py          #   Research container endpoints
-    api_agents.py            #   Agent registry + status
-    api_trading_sheet.py     #   Trading hub (positions, WhatIf, risk)
-    api_reports.py           #   Portfolio reports
-    api_terminal.py          #   Terminal/CLI endpoints
-    api_explorer.py          #   Data query builder
-    api_admin.py             #   Admin/config endpoints
-  core/                      # Database + domain models
-    database/schema.py       #   21 SQLAlchemy ORM tables
-    database/session.py      #   DB session factory
-    models/domain.py         #   Frozen dataclasses
-    models/events.py         #   Event domain models
-    models/strategy_templates.py  # Trade templates
-  config/                    # Configuration
-    risk_config.yaml         #   15 portfolios (5 real + 5 WhatIf + 5 research)
-    brokers.yaml             #   4 brokers
-    workflow_rules.yaml      #   Circuit breakers, limits
-    market_watchlist.yaml    #   Watchlist tickers for Scout
-  repositories/              # DB repository layer (7 files)
-  cli/                       # CLI commands (4 commands)
-  runners/run_workflow.py    # THE main entry point
-  harness/                   # Integration test harness (9 steps)
-  tests/                     # 149 pytest (9 files)
-  frontend/                  # Vite + React 18 + TS + Tailwind + AG Grid
-  playground/                # Archived code (math + screeners)
+Market Data (TastyTrade DXLink) → Scout (screen + rank) → Maverick (6 gates + sizing)
+  → WhatIf Portfolio (paper) → Human Review → Real Order (TastyTrade API)
+  → Exit Monitor → Close Order → P&L → ML/RL Learning Loop
+```
+
+### The Pipeline (scan → propose → deploy → execute)
+
+| Step | What | Status |
+|------|------|--------|
+| `scan` | Scout screens watchlist, ranks candidates, Maverick applies 6 gates | DONE |
+| `propose` | Show scored proposals with trade specs | DONE |
+| `deploy` | Book approved trades to WhatIf portfolio | DONE |
+| `execute <id>` | Dry-run preflight (buying power, fees, risk) | DONE |
+| `execute <id> --confirm` | Place real order on TastyTrade | DONE |
+| `orders` | Check fill status, auto-update trade on fill | DONE |
+| `exits` | Monitor profit targets, stop losses, DTE | DONE |
+| `close <id>` | Close specific trade (DB + event + outcome) | DONE |
+| `close auto` | Auto-close all URGENT + profit target signals | DONE |
+| `learn` | Feed outcomes to ML/RL pattern recognition | DONE |
+
+### Maverick's 6 Gates (every trade must pass ALL)
+1. **Verdict** — MarketAnalyzer says GO or CAUTION (not NO_GO)
+2. **Score** — Composite score ≥ 0.35
+3. **Trade spec** — Valid legs, strikes, expiration exist
+4. **Duplicate** — Not already in portfolio (underlying:strategy key)
+5. **Position limit** — Under desk max positions
+6. **ML score** — Pattern recognition doesn't flag negative (when data exists)
+
+### Trading Desks (capital allocation)
+| Desk | Capital | DTE | Underlyings | Exit Rules |
+|------|---------|-----|-------------|------------|
+| desk_0dte | $10K | 0 DTE | SPY, QQQ, IWM | No stop (defined risk), 90% TP |
+| desk_medium | $10K | ~45 DTE | Top 10 | 50% TP, 2× credit SL, close ≤21 DTE |
+| desk_leaps | $20K | 180+ DTE | Blue chips | 100% TP, 50% SL |
+
+### Credential Flow (SaaS Pattern)
+eTrading authenticates with TastyTrade → passes pre-authenticated sessions to MarketAnalyzer.
+MarketAnalyzer never touches credentials. Single connection reused everywhere.
+```
+TastytradeAdapter.authenticate() → session + data_session
+  → adapter.get_market_providers() → (MarketDataProvider, MarketMetricsProvider)
+  → injected into Scout → MarketAnalyzer(market_data=..., market_metrics=...)
+  → also available to API endpoints via engine._market_data/_market_metrics
 ```
 
 ---
 
-## MARKET ANALYZER — External Library
+## AGENTS
 
-**Location**: `../market_analyzer` (editable install in eTrading venv)
+| Agent | Role | Status |
+|-------|------|--------|
+| **Scout** (Quant) | Screen, rank, regime, technicals, opportunities | DONE |
+| **Steward** (Portfolio Mgr) | Portfolio state, positions, P&L, capital | DONE |
+| **Sentinel** (Risk Mgr) | Circuit breakers, constraints, risk limits | DONE |
+| **Maverick** (Trader) | THE workflow agent — orchestrates everything | WIRED (no order execution yet) |
+| **Atlas** (Tech Architect) | Infrastructure | Skeleton — not prioritized |
 
-```python
-ma = MarketAnalyzer()
-ma.regime.detect(ticker)           # R1-R4 regime classification
-ma.technicals.snapshot(ticker)     # TechnicalSnapshot (price, RSI, ATR, etc.)
-ma.phase.detect(ticker)            # Wyckoff phase detection
-ma.opportunity.assess_*(ticker)    # 10 strategy assessments (GO/CAUTION/NO_GO)
-ma.levels.analyze(ticker)          # Support/resistance, stop loss, targets
-ma.fundamentals.fetch(ticker)      # Market cap, P/E, dividend, sector
-ma.macro.calendar()                # 30-day macro event calendar
-ma.screening.scan(tickers)         # Screen watchlist
-ma.ranking.rank(tickers)           # Rank candidates
-ma.black_swan.alert(tickers)       # Black swan detection
-ma.context.assess(tickers)         # Market context assessment
+**Pattern:** Agent owns Container → populate() fills from data → save_to_db() → API reads → UI renders
+
+**Engine pipeline** (BOOTING + MONITORING states):
+Steward.populate → Sentinel.run → Steward.run → Scout.populate → Scout.run → Maverick.run
+
+---
+
+## EVENT & LEARNING SYSTEM
+
+Every action creates a `TradeEvent` with full context:
+- **MarketContext**: VIX, IV rank, regime, technicals, macro
+- **DecisionContext**: rationale, confidence (1-10), outlook, alternatives considered
+- **TradeOutcomeData**: WIN/LOSS, P&L, close reason, Greeks attribution
+
+**Learning loop:** TradeLearner (Q-learning) reads closed trade events → builds patterns (regime:iv:strategy:dte:side) → scores future trades → feeds back into Maverick gate 6.
+
+**Confidence framework** (to build): Every event gets a confidence level based on data lineage. Over time, reports identify habitual vs merit-based actions.
+
+---
+
+## KEY FILES
+
 ```
-
----
-
-## WORKFLOW ENGINE
-
-Maverick is the only workflow agent. Engine runs in `agents/workflow/engine.py`.
-
-**Active states:** BOOTING and MONITORING call agents. All other states are stubs (legacy agents deleted).
-
-| State | What Happens |
-|-------|-------------|
-| **BOOTING** | Calendar check -> PortfolioSync -> Steward.populate() -> Sentinel.run() -> Steward.run() -> Scout.populate() -> Maverick.run() |
-| **MONITORING** (30min) | PortfolioSync -> Steward.populate()+run() -> Sentinel.run() -> Scout.run()+populate() -> Maverick.run() |
-| **Others** | Stubs — no agents wired yet |
-
----
-
-## UI PAGES
-
-### Primary (always in sidebar)
-| Page | Route | Data Source |
-|------|-------|-------------|
-| Market Analysis | `/` (landing) | Scout -> ResearchContainer -> `api_research.py` |
-| Ticker Detail | `/market/:ticker` | Scout + MarketAnalyzer endpoints |
-| Portfolio | `/portfolio` | Steward -> PortfolioBundle -> `api_v2.py` |
-| Agents | `/agents` | `api_agents.py` -> BaseAgent metadata |
-
-### Archived (under "Other" menu)
-Trading/WhatIf, Capital, Reports, Data Explorer, Funds
-
-### Config
-`/settings/portfolios`, `/settings/risk`, `/settings/workflow`, `/settings/capital`
+runners/run_workflow.py          # THE entry point
+agents/workflow/engine.py        # 12-state orchestrator
+agents/domain/maverick.py        # Trader (6 gates, proposals, booking, sizing)
+agents/domain/scout.py           # Quant (screening, ranking)
+agents/domain/steward.py         # Portfolio manager
+agents/domain/sentinel.py        # Risk manager
+adapters/tastytrade_adapter.py   # Broker (40+ methods, SaaS credential pattern)
+services/trade_booking_service.py # Book trades with legs + Greeks
+services/trade_lifecycle.py      # Close trades, record outcomes
+services/exit_monitor.py         # Profit target, stop loss, DTE exit
+services/mark_to_market.py       # Update P&L from live quotes
+services/trade_learner.py        # ML/RL pattern recognition
+core/models/events.py            # TradeEvent, DecisionContext, MarketContext
+repositories/event.py            # Event persistence + queries
+config/risk_config.yaml          # 15 portfolios, 3 desks
+config/workflow_rules.yaml       # Circuit breakers, limits
+```
 
 ---
 
 ## CODING STANDARDS
 
 - `Decimal` for ALL money/price values. Never float.
-- Type hints on every function signature. `dataclass` for domain models.
-- Always use `session_scope()` for DB — never raw sessions.
-- **ALL imports at top of file.** No inline/deferred imports unless circular import avoidance.
-- **Agent files = NOUNS** (what it is). **Service files = VERBS** (what it does).
-- **ZERO DEAD CODE POLICY**: Every file, class, function must be imported and called. Never create stubs "for future use." After every change: `pytest` + `pnpm build`.
-- **ZERO local math**: Greeks and prices ALWAYS come from the broker (TastyTrade DXLink streaming). No Black-Scholes, no POP/EV, no VaR calculations.
+- Type hints on every function. `dataclass` for domain models.
+- `session_scope()` for DB. No raw sessions.
+- ALL imports at file top (unless circular avoidance).
+- Agent files = NOUNS. Service files = VERBS.
+- **ZERO dead code.** Every file/class/function must be called. No stubs.
+- **ZERO local math.** Greeks/prices from broker only. No Black-Scholes, POP/EV, VaR.
+- **ZERO bogus data.** No mock trades in production flow. No fabricated positions.
 
 ---
 
 ## DEV COMMANDS
 
 ```bash
-pip install --force-reinstall --no-deps -e ../market_analyzer  # EVERY SESSION
-pytest trading_cotrader/tests/ -v                               # 149 tests
-python -m trading_cotrader.scripts.setup_database               # create DB tables
-python -m trading_cotrader.runners.run_workflow --paper --web    # with broker
-python -m trading_cotrader.runners.run_workflow --paper --no-broker --web  # without broker
+pip install --force-reinstall --no-deps -e ../market_analyzer
+pytest trading_cotrader/tests/ -v
+python -m trading_cotrader.runners.run_workflow --paper --web          # with broker
 python -m trading_cotrader.runners.run_workflow --once --no-broker --mock  # single cycle
-python -m trading_cotrader.harness.runner --skip-sync            # integration harness
-cd frontend && pnpm dev                                          # React dev at :5173
-cd frontend && pnpm build                                        # production build
+cd frontend && pnpm dev                                                # React :5173
+cd frontend && pnpm build                                              # production build
 ```
 
 ---
 
-## OPEN ITEMS
+## UI (8 pages)
 
-### Maverick (Trader) — THE priority
-Only workflow agent. Currently wired: run() produces trading signals from Steward+Scout containers. Next: build out execution (place orders via broker adapter), notifications, trading discipline. Build one capability at a time.
-
-### AgentBrain Service
-LLM chat via Claude API (`services/agent_brain.py`). 3 methods without endpoints, stateless chat, uses raw broker data not containers. Requires `ANTHROPIC_API_KEY`.
-
-### UI
-- Sidebar: restructure per primary/archived/config layout
-- Portfolio page: should read from Steward's container
-- Market Analysis: click-through to ticker detail needs polish
+| Route | Page | Tabs |
+|-------|------|------|
+| `/` | Research Dashboard | Landing — Scout data, daily plan, screener |
+| `/trading` | Trading Dashboard | Positions, WhatIf, risk |
+| `/portfolio` | Portfolio | Positions, Performance, Capital |
+| `/risk` | Risk | Risk dashboard |
+| `/agents` | Agents | Workflow, Active Agents, Quant, Knowledge, ML/RL |
+| `/reports` | Reports | Portfolio reports |
+| `/data` | Data Explorer | Query builder |
+| `/settings` | Config | Portfolios, Risk, Workflow, Capital (tabbed) |
 
 ---
 
-## SESSION LOG (recent)
+## SAAS VISION
 
-| Session | Date | What |
-|---------|------|------|
-| s36 | Feb 26 | Tech debt mega-cleanup. 3 phases: (1) Deleted 8 legacy agents + 7 empty dirs, moved BrokerRouter→adapters/, InteractionManager→agents/workflow/. (2) Deleted ai_cotrader ML pipeline. (3) Killed recommendation service + screeners. Then: deleted analytics/ (empty), services/pricing/ (empty), 11 dead services, 3 harness-only service dirs, 4 harness steps, dead CLI/scripts. Moved workflow/→agents/workflow/. Fixed bare imports in risk_factors/resolver.py. services/ went from 35→16 files. 149 tests pass. |
-| s35e | Feb 25 | MarketAnalyzer upgrade + research template retirement. New services: BlackSwan, Context, Screening, Ranking + 5 opportunity assessments. 8 new API endpoints. Frontend: BlackSwanBar + MarketContextStrip. Retired research templates. Rewrote Scout.run(). 166 tests. |
-| s35d | Feb 23 | Math purge: moved 14 files to playground/archived_math/. Zero local math policy. 257 tests. |
-| s35c | Feb 23 | Wired Maverick as domain orchestrator. Container-first trading dashboard. 296 tests. |
-| s35b | Feb 23 | Built Steward + enhanced Sentinel with containers. 285 tests. |
-| s35 | Feb 23 | Agent architecture reorganization. 5 domain agents in agents/domain/. 272 tests. |
+This system will become a cloud-hosted SaaS product. Design every feature with multi-tenancy in mind.
+
+**Architecture direction:**
+- **User authentication** — OAuth/SSO. Multiple users per account (family, advisor+client).
+- **Desk setup** — First-time user onboarding: create desks, allocate capital, select underlyings. Desks are the core organizational unit regardless of portfolio/broker.
+- **Broker integration** — SaaS pattern already implemented: credentials stay with eTrading, MarketAnalyzer gets pre-authenticated sessions. Each user connects their own broker account.
+- **Cloud hosting** — Deploy to cloud (AWS/GCP). DB → PostgreSQL. Async task queue for agent pipeline. WebSocket for real-time updates.
+- **Multi-tenancy** — Tenant isolation at DB level. Each user's agents, desks, portfolios, events, ML models are scoped to their account.
+
+**What's already SaaS-ready:**
+- Credential separation (SaaS pattern for MarketAnalyzer)
+- Desk abstraction (capital buckets independent of broker)
+- Event system (per-trade audit trail)
+- ML/RL learning loop (per-user pattern recognition)
+
+**What needs work for SaaS:**
+- User model + auth (currently single-user)
+- Tenant-scoped DB queries
+- API rate limiting + quotas
+- Cloud deployment (Docker, K8s)
+- Admin dashboard for user management
+
+---
+
+## OPEN GAPS (see GAPS.md for full detail)
+
+**The full pipeline is BUILT:** scan → propose → deploy → execute → mark → exits → close auto → learn.
+No gaps in the trading flow itself. What remains:
+
+1. **End-to-end validation with live broker** — run the full pipeline with real market data, real broker connection. Prove it works.
+2. **Confidence framework** — Assign confidence levels to events, track data lineage, report habitual vs merit-based actions.
+3. **SaaS: user model + auth + multi-tenancy** — no user table, no login, no tenant scoping.
+4. **SaaS: desk onboarding UI** — `setup-desks` is CLI only, needs wizard for new users.
+5. **SPX ticker handling** — SPX fails on yfinance (it's an index). Use SPY or handle gracefully.
+
+---
+
+## SESSION LOG
+
+| Session | Date | Key Outcome |
+|---------|------|-------------|
+| s39 | Mar 11 | Fixed ranking bug (.ranked→.top_trades). CLAUDE.md rewritten ("money-making machine"). Corrected stale GAPS (pipeline fully built, no blockers). MarketAnalyzer REQ-1→5: dxlink_symbols, position_size(), exit_plan field, IntradayService for 0DTE. 168+940 tests. |
+| s38 | Mar 10 | UI consolidation (6 pages→3 via tabs). Desk-aware daily plan. SaaS credential refactoring. Stallion deletion. |
+| s37b | Mar 9 | Trading desks + full lifecycle. 3 desks, CLI: close/perf/learn. Auto-booking. 170 tests. |
+| s37 | Mar 9 | Full trading workflow. Maverick 5 gates + proposals + booking + sizing. 163 tests. |
+| s36 | Feb 26 | Tech debt mega-cleanup. Deleted legacy agents, dead services. 149 tests. |

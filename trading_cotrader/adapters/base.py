@@ -4,7 +4,7 @@ Broker Adapter Base — Abstract interface all broker adapters must implement.
 Provides:
     - BrokerAdapterBase: ABC with full method signatures
     - ManualBrokerAdapter: For brokers where user executes trades manually (Fidelity)
-    - ReadOnlyAdapter: For fully managed funds (Stallion) — no trading at all
+    - ReadOnlyAdapter: For fully managed/read-only funds — no trading at all
 
 Usage:
     from trading_cotrader.adapters.base import BrokerAdapterBase
@@ -170,7 +170,7 @@ class ManualBrokerAdapter(BrokerAdapterBase):
 
 class ReadOnlyAdapter(BrokerAdapterBase):
     """
-    For fully managed funds (e.g., Stallion) — no trading at all.
+    For fully managed/read-only funds — no trading at all.
 
     All methods return empty results. Holdings loaded via CLI tools.
     """

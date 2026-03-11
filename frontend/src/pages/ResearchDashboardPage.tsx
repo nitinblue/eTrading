@@ -5,8 +5,6 @@ import { useResearch, useRefreshResearch, useWatchlist, useAddWatchlistTicker, u
 import { Spinner } from '../components/common/Spinner'
 import { AgentBadge } from '../components/common/AgentBadge'
 import { TickerDetailPanel } from '../components/research/TickerDetailPanel'
-import { RankingPanel } from '../components/research/RankingPanel'
-import { PlanPanel } from '../components/research/PlanPanel'
 import { BlackSwanBar } from '../components/research/BlackSwanBar'
 import { MarketContextStrip } from '../components/research/MarketContextStrip'
 import type { ResearchEntry, ResearchMacroContext, MacroEvent } from '../api/types'
@@ -276,10 +274,6 @@ export function ResearchDashboardPage() {
 
           {/* Watchlist manager (expandable) */}
           {showWatchlistManager && <WatchlistManager onClose={() => setShowWatchlistManager(false)} />}
-
-          {/* Row 5: Daily Plan + Ranking */}
-          {data.length > 0 && <PlanPanel tickers={data.map(d => d.symbol)} />}
-          {data.length > 0 && <RankingPanel tickers={data.map(d => d.symbol)} />}
 
           {/* Main table */}
           {isLoading ? (

@@ -30,10 +30,3 @@ brokers:
     adapter: zerodha             # future adapter
     manual_execution: false
 
-  stallion:
-    display_name: "Stallion Asset"
-    currency: INR
-    has_api: false
-    is_data_broker: false
-    manual_execution: false
-    read_only: true              # fully managed fund — user cannot place trades

@@ -1,3 +1,9 @@
+import sys
+import os
+# Prevent stale .pyc from causing AttributeError on editable-installed packages
+sys.dont_write_bytecode = True
+os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+
 """
 Workflow Engine Runner — CLI entry point for the continuous trading workflow.
 

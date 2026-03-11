@@ -91,7 +91,7 @@ class TestScoutAgentRun:
         mock_ranked = MagicMock()
         mock_ranked.model_dump.return_value = {'ticker': 'SPY', 'score': 0.9, 'rank': 1}
         mock_rank_result = MagicMock()
-        mock_rank_result.ranked = [mock_ranked]
+        mock_rank_result.top_trades = [mock_ranked]
         mock_ma.ranking.rank.return_value = mock_rank_result
 
         # Mock black swan

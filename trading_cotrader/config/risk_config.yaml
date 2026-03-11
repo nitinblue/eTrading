@@ -8,7 +8,7 @@
 # =============================================================================
 # PORTFOLIOS — Real brokerage accounts + WhatIf mirrors
 # =============================================================================
-# 5 real portfolios (3 USD, 2 INR) + 5 WhatIf mirrors.
+# 4 real portfolios (3 USD, 1 INR) + 3 trading desks.
 # Each portfolio references a broker_firm (key into brokers.yaml).
 # WhatIf portfolios inherit strategies from their real parent.
 
@@ -193,36 +193,6 @@ portfolios:
       max_total_risk_pct: 50
       min_cash_reserve_pct: 10
       max_concentration_pct: 25
-
-    preferred_underlyings: []
-
-  stallion:
-    display_name: "Stallion Asset"
-    description: "Stallion Core Fund (SACF5925) — managed equity portfolio. 29 Indian stocks, INR 50L contribution, managed by Stallion Asset."
-    broker_firm: stallion
-    account_number: "SACF5925"
-    portfolio_type: real
-    currency: INR
-    initial_capital: 5000000
-    target_annual_return_pct: 15
-    exit_rule_profile: balanced
-    tags: ["india", "equity", "managed_fund", "stallion_core"]
-
-    allowed_strategies:
-      - single           # long stock positions (managed by Stallion)
-
-    active_strategies:
-      - single
-
-    risk_limits:
-      max_portfolio_delta: 1000
-      max_positions: 35
-      max_single_position_pct: 15
-      max_single_trade_risk_pct: 5
-      risk_per_trade_pct: 1
-      max_total_risk_pct: 100
-      min_cash_reserve_pct: 5
-      max_concentration_pct: 15
 
     preferred_underlyings: []
 

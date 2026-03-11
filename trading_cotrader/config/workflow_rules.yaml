@@ -19,7 +19,6 @@ circuit_breakers:
     fidelity_ira: 15.0
     fidelity_personal: 20.0
     zerodha: 25.0
-    stallion: 20.0
 
 trading_constraints:
   max_trades_per_day: 3
@@ -66,7 +65,6 @@ capital_deployment:
     fidelity_ira: 15.0
     fidelity_personal: 10.0
     zerodha: 10.0
-    stallion: 10.0
   escalation:
     warning_days_idle: 5
     critical_days_idle: 10
@@ -76,7 +74,6 @@ capital_deployment:
     fidelity_ira: 12.5
     fidelity_personal: 25.0
     zerodha: 0.0
-    stallion: 0.0
   # Staggered deployment — don't nag to deploy everything day 1.
   # ramp_weeks: number of weeks to reach full target deployment.
   # max_deploy_per_week_pct: cap on how much of idle capital to deploy per week.
@@ -87,7 +84,6 @@ capital_deployment:
       fidelity_ira: 15.0
       fidelity_personal: 20.0
       zerodha: 25.0
-      stallion: 15.0
 
 execution_defaults:
   order_type: "limit"              # limit only (no market orders)

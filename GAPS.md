@@ -1,152 +1,115 @@
 # Money-Making Machine — Standing Gap Analysis
-# Last Updated: 2026-03-09 (Session 37)
+# Last Updated: 2026-03-11 (Session 39)
 # Review this every session. Cross off what's done. Add what emerges.
 
 ## THE MISSION
 Deploy $250K systematically. Generate cash flow through options trading.
-Every gap below is a blocker between "software project" and "money-making machine."
+Agents own their desk WhatIf P&L — fully, no excuses.
+Humans promote WhatIf → real when the track record proves out.
 
 ---
 
-## ✅ CLOSED GAPS (Done this session)
+## ✅ FULL PIPELINE — BUILT AND WORKING
 
-| Gap | What | How |
-|-----|------|-----|
-| ~~Maverick → Booking Bridge~~ | Maverick consumes Scout rankings, books WhatIf trades | `maverick.py` rewritten: 5 gates → proposals → `book_proposals()` |
-| ~~Agent Pipeline Disabled~~ | Engine never ran agents | `engine.py` calls `_run_agent_pipeline()` in BOOTING + MONITORING |
-| ~~Position Sizing~~ | All trades were 1-lot | `_compute_position_size()`: 2% of capital / max_risk_per_spread |
-| ~~Duplicate Prevention~~ | Same trade booked every 30 min | `underlying:strategy_type` key check against open WhatIf trades |
-| ~~P&L Mark-to-Market~~ | Trades frozen at entry price | `services/mark_to_market.py`: fetches quotes+Greeks, updates DB |
-| ~~Exit Monitoring~~ | No one watched exit rules | `services/exit_monitor.py`: profit target, stop loss, DTE, expired |
-| ~~CLI Workflow~~ | No way to scan/propose/deploy | `scan`, `propose`, `deploy`, `mark`, `exits` commands |
-| ~~Hardcoded Market Data~~ | Correlations, rates, limits hardcoded | Audit utility + all violations fixed, config-driven |
-| ~~Context Propagation~~ | TradeSpec was dict, not Pydantic | Maverick works with dicts via `.get()` — clean and working |
+The end-to-end trading lifecycle is implemented:
 
----
+| Step | Command | What | Service/File |
+|------|---------|------|-------------|
+| Screen + rank | `scan` | Scout screens watchlist, Maverick applies 6 gates | scout.py, maverick.py |
+| Review proposals | `propose` | Show scored trade specs with rationale | interaction.py |
+| Book to WhatIf | `deploy` | Book trades to WhatIf portfolio | trade_booking_service.py |
+| Go live preview | `execute <id>` | Dry-run preflight: buying power, fees, risk | tastytrade_adapter.py |
+| Place real order | `execute <id> --confirm` | Place order on TastyTrade | adapter.place_order() |
+| Check fills | `orders` | Auto-update trade status on fill | interaction.py |
+| Mark to market | `mark` | Live quotes + Greeks via DXLink | mark_to_market.py |
+| Exit signals | `exits` | Profit target, stop loss, DTE, expired | exit_monitor.py |
+| Close trades | `close auto` | Auto-close URGENT + profit target signals | trade_lifecycle.py |
+| Close specific | `close <id>` | Manual close with reason | trade_lifecycle.py |
+| ML learning | `learn` | Q-learning from closed trade outcomes | trade_learner.py |
+| Performance | `perf [desk]` | Win rate, Sharpe, P&L by desk | performance_metrics.py |
 
-## 🔴 OPEN GAPS — Blocking Real Money
-
-### GAP A: Order Execution (CRITICAL — #1 blocker)
-**Current:** `deploy` books to WhatIf DB. `execute` command exists but is dry-run only.
-**Needed:** Place real orders on TastyTrade via broker adapter.
-**What's missing:**
-1. `TastytradeAdapter.place_order(legs, order_type, price)` — the actual API call
-2. Order lifecycle: submit → working → filled → update trade
-3. Fill confirmation: update TradeORM with actual fill prices, fees
-4. OCO/bracket orders vs system-triggered exits (see Gap B)
-**Approach:** System triggers exit orders (not resting OCO on broker). Our exit monitor
-detects conditions every 30 min → places closing order when triggered.
-**Files:** `adapters/tastytrade_adapter.py`, `agents/workflow/interaction.py`
-
-### GAP B: Exit Order Placement (CRITICAL — #2 blocker)
-**Current:** ExitMonitorService generates signals (PROFIT_TARGET, STOP_LOSS, DTE_EXIT).
-Signals are displayed via `exits` CLI command. Nothing acts on them.
-**Needed:** When exit signal fires, automatically (or with approval) place closing order.
-**Two exit models by strategy:**
-- **0DTE / Defined-risk:** No stop loss needed (risk capped by wings). Profit target 90%.
-  Hold through expiration if target not hit — max loss is already defined.
-- **Standard trades:** Both profit target (50%) and stop loss (2× credit or 50% debit).
-  System places closing order when triggered.
-**Exit profiles** already coded in `exit_monitor.py` → `_get_exit_profile()`.
-**Files:** `agents/domain/maverick.py`, `adapters/tastytrade_adapter.py`
-
-### GAP C: Approval Workflow Before Real Execution
-**Current:** `approve`/`reject` commands exist but don't connect to order placement.
-**Needed:** Human-in-the-loop before any real money moves:
-1. `scan` generates proposals (automatic)
-2. `propose` shows them (human reviews)
-3. `approve <id>` or `deploy --approve` (human confirms)
-4. System places order (automatic)
-5. `orders` shows fill status (automatic)
-**Status:** Partially wired. Needs approval → order flow.
-
-### GAP D: Real Broker Position Sync for WhatIf P&L
-**Current:** Mark-to-market fetches quotes via broker DXLink. Works for real positions.
-For WhatIf trades, need the same symbols to be quote-able.
-**Risk:** WhatIf trades may reference options that have expired or been delisted.
-**Needed:** Graceful handling when quotes unavailable (keep last known price).
+Supporting infrastructure:
+- 3 trading desks (0DTE $10K, medium $10K, LEAPs $20K)
+- Position sizing (2% capital / max risk per spread)
+- Duplicate prevention (underlying:strategy key)
+- Exit profiles by strategy type (0DTE: no stop/90% TP, credit: 50% TP/2× SL, etc.)
+- Event system with full audit trail (market + decision context)
+- SaaS credential pattern (broker sessions passed to MarketAnalyzer)
+- Expired options handled gracefully (keep last price, exit monitor catches DTE ≤ 0)
 
 ---
 
-## 🟡 IMPORTANT GAPS — Revenue Enablers
+## 🔴 MUST VALIDATE — Prove the Machine Works
 
-### GAP E: Portfolio Selection & Capital Allocation
-**Current:** All proposals go to `tastytrade_whatif`. No per-portfolio capital budgets.
-**Needed:**
-- Route trades to appropriate portfolio based on strategy type and account type
-- IRA: conservative (covered calls, collars, cash-secured puts)
-- Personal: aggressive (IC, verticals, 0DTE)
-- Capital allocation: what % goes to each strategy bucket
+### V1: End-to-End with Live Broker
+**What:** Run full `scan → propose → deploy → mark → exits` with real broker connection and real market data.
+**Why:** Ranking bug (.ranked → .top_trades) was preventing proposals from flowing. Fixed s38b. Need to validate the fix produces real proposals.
+**How:** Connect broker, run `scan`, verify proposals flow, `deploy` to WhatIf, `mark` to get live prices, `exits` to check.
 
-### GAP F: Daily P&L Dashboard
-**Current:** `positions` and `portfolios` CLI commands show state. No daily P&L summary.
-**Needed:** Morning report: overnight changes, today's theta decay earned, exit signals,
-positions approaching expiration, total cash flow generated this week/month.
-
-### GAP G: Trade Journal / Decision Tracking
-**Current:** TradeEventORM captures events. Nothing aggregates or analyzes.
-**Needed:** After closing a trade: what did we learn? Win/loss, how close to max profit,
-did exit rules fire correctly, was entry timing good?
-Performance metrics service exists but isn't wired to trade lifecycle.
-
-### GAP H: Live Streaming vs Polling
-**Current:** Mark-to-market runs every 30 min via scheduler. For 0DTE trades this is
-too slow — a 30-min-old quote could miss a stop or profit target.
-**Needed for 0DTE:** Real-time price streaming via DXLink WebSocket.
-Non-0DTE can stay on 30-min polling.
-
-### GAP I: Multi-Account Order Routing
-**Current:** BrokerRouter exists but routes to one broker. Real setup: TastyTrade (options),
-Fidelity IRA (conservative), Fidelity personal (moderate).
-**Needed:** Order router that knows: this strategy on this portfolio → this broker.
+### V2: Track WhatIf Performance Over 5+ Trading Days
+**What:** Book trades via the pipeline, let mark-to-market and exit monitor run daily, close when signals fire.
+**Why:** This IS the product. Agent desk P&L is what proves the system works. No excuses on cloud.
 
 ---
 
-## 🟢 NICE-TO-HAVE GAPS — Polish
+## 🟡 BUILD NEXT — Product Quality
 
-### GAP J: Notifications (Slack/Email)
-Alert when: exit signal fires, trade booked, P&L threshold hit, black swan detected.
+### Confidence Framework
+Every event gets a confidence level based on data lineage. Over time: report habitual vs merit-based actions. "I would rather take no action than compulsions."
+- Data freshness (how old is the quote/regime/ranking?)
+- Data completeness (how many fields populated vs empty?)
+- Decision lineage (which data points informed each gate?)
 
-### GAP K: UI Dashboard
-React frontend exists. Needs: real-time P&L chart, trade proposal cards, exit signal alerts.
+### Daily P&L Report
+Morning report: overnight changes, theta decay earned, exit signals, positions approaching expiration, cash flow this week/month.
 
-### GAP L: Backtesting
-Run historical data through the full pipeline to validate strategy selection.
+### Real-Time Streaming for 0DTE
+30-min polling too slow for day trades. IntradayService (REQ-5) built in market_analyzer —
+needs to be wired into engine's monitoring cycle with shorter interval for 0DTE desk.
+
+### Trade Journal / Decision Analysis
+Events exist but nothing aggregates learnings. After closing: was entry timing good? Did exit rules fire correctly?
+
+### Notifications
+Slack/email on: exit signal, trade booked, black swan, P&L threshold.
 
 ---
 
-## MARKET ANALYZER REQUIREMENTS (for their backlog)
+## 🟢 SAAS — Multi-User Platform
 
-See `MARKET_ANALYZER_REQUIREMENTS.md` for detailed specs. Summary:
-1. **REQ-1:** Add `dxlink_symbols` property to TradeSpec (DXLink format, not OCC)
-2. **REQ-2:** Position sizing method on TradeSpec (capital, risk_pct → contracts)
-3. **REQ-3:** Exit plan as first-class object on TradeSpec
-4. **REQ-4:** Strategy-level expected value (risk/reward without Black-Scholes)
-5. **REQ-5:** Intraday signals for 0DTE management
-6. **REQ-6:** Backtest harness for strategy validation
+| Item | What | Status |
+|------|------|--------|
+| User model + auth | OAuth/SSO, user table, login | Not started |
+| Multi-tenancy | Tenant-scoped DB queries | Not started |
+| Desk onboarding UI | Wizard for new users (create desks, allocate capital) | CLI only (`setup-desks`) |
+| Broker account linking | Each user connects their own broker | Single-user only |
+| PostgreSQL | Replace SQLite | Not started |
+| Cloud deployment | Docker, K8s, async task queue | Not started |
+| API rate limiting | Quotas per user | Not started |
+| Multi-broker routing | Route orders by portfolio/broker | BrokerRouter exists, single broker |
+
+---
+
+## MARKET ANALYZER REQUIREMENTS
+
+| Req | What | Status |
+|-----|------|--------|
+| ~~REQ-1~~ | `dxlink_symbols` on TradeSpec → `.SPY260327P580` format | ✅ DONE (s38b) |
+| ~~REQ-2~~ | `position_size(capital, risk_pct)` on TradeSpec | ✅ DONE (s38b) |
+| ~~REQ-3~~ | `exit_plan: ExitPlan` field on TradeSpec | ✅ DONE (s38b) |
+| ~~REQ-5~~ | IntradayService for 0DTE signals (`ma.intraday.monitor()`) | ✅ DONE (s38b) |
+| REQ-6 | Backtest harness | Deferred (not needed now) |
 
 ---
 
 ## WEEKLY SCORECARD
 
-Track these metrics to know if the machine is working:
-
 | Metric | Target | Current |
 |--------|--------|---------|
-| Trades proposed per week | 5-10 | TBD (run `scan` daily) |
-| WhatIf P&L this week | Track | TBD (run `mark` daily) |
+| Trades proposed per week | 5-10 | TBD (validate with live scan) |
+| WhatIf P&L this week | Track | TBD |
 | Exit signals acted on | 100% | TBD |
 | Win rate (closed trades) | >60% | TBD |
 | Average days held | 15-30 | TBD |
 | Capital utilization | 50-80% | TBD |
 | Theta decay earned/day | >0 | TBD |
-
----
-
-## NEXT ACTIONS (Priority Order)
-
-1. **Run `scan` end-to-end** with live broker to validate the full pipeline
-2. **Build `TastytradeAdapter.place_order()`** — the #1 blocker to real money
-3. **Wire exit signals → closing orders** — the #2 blocker
-4. **Add approval-before-execution** guard for real trades
-5. **Daily P&L report** CLI command

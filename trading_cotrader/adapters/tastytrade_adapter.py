@@ -165,6 +165,15 @@ class TastytradeAdapter(BrokerAdapterBase):
             logger.exception("Full error:")
             return False
 
+    def get_market_providers(self):
+        """Return (MarketDataProvider, MarketMetricsProvider) backed by this adapter's sessions.
+
+        Allows MarketAnalyzer to reuse the adapter's authenticated connection
+        instead of opening a second one.  SaaS pattern: credentials stay in eTrading.
+        """
+        from market_analyzer.broker.tastytrade import connect_from_sessions
+        return connect_from_sessions(self.session, self.data_session)
+
     def get_account_balance(self) -> Dict[str, Decimal]:
         """Get account balances"""
         try:

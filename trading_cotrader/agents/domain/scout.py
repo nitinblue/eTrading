@@ -68,8 +68,11 @@ class ScoutAgent(BaseAgent):
     ]
     runs_during: ClassVar[List[str]] = ["monitoring"]
 
-    def __init__(self, container: 'ResearchContainer' = None, config=None):
+    def __init__(self, container: 'ResearchContainer' = None, config=None,
+                 market_data=None, market_metrics=None):
         super().__init__(container=container, config=config)
+        self._injected_market_data = market_data
+        self._injected_market_metrics = market_metrics
 
     def safety_check(self, context: dict) -> tuple[bool, str]:
         """Research pipeline is always safe -- no real capital involved."""
@@ -253,11 +256,19 @@ class ScoutAgent(BaseAgent):
         return stats
 
     def _get_market_analyzer(self):
-        """Lazy-init MarketAnalyzer facade singleton."""
+        """Lazy-init MarketAnalyzer facade singleton.
+
+        Uses broker-provided market_data/metrics if available (single connection,
+        SaaS-ready).  Falls back to standalone mode (no live broker quotes).
+        """
         if not hasattr(self, '_market_analyzer'):
             from market_analyzer import MarketAnalyzer
             from market_analyzer.data import DataService
-            self._market_analyzer = MarketAnalyzer(data_service=DataService())
+            self._market_analyzer = MarketAnalyzer(
+                data_service=DataService(),
+                market_data=self._injected_market_data,
+                market_metrics=self._injected_market_metrics,
+            )
         return self._market_analyzer
 
     def _load_watchlist(self) -> None:
@@ -331,7 +342,7 @@ class ScoutAgent(BaseAgent):
 
         try:
             rank_result = ma.ranking.rank(ranked_tickers)
-            for r in rank_result.ranked:
+            for r in rank_result.top_trades:
                 ranking.append(r.model_dump(mode='json'))
             messages.append(f"Ranking: {len(ranking)} ranked candidates")
         except Exception as e:
