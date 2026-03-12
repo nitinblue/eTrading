@@ -129,6 +129,7 @@ class InteractionManager:
             'templates': self._templates,
             # Trading workflow: plan → scan → propose → deploy → mark → exits
             'plan': self._plan,
+            'strategies': self._strategies,
             'scan': self._scan,
             'propose': self._propose,
             'deploy': self._deploy,
@@ -320,6 +321,7 @@ class InteractionManager:
                 "\n"
                 "  Trading Workflow:\n"
                 "    plan                          — Daily plan: desk-aware trade ideas (fast, single call)\n"
+                "    strategies <ticker>             — 9-strategy assessment for a ticker (detailed)\n"
                 "    scan                          — Full scan: Scout populate + screen + Maverick gates\n"
                 "    propose                       — Show Maverick's trade proposals (from last scan)\n"
                 "    deploy                        — Book all proposed trades to WhatIf portfolio\n"
@@ -368,7 +370,7 @@ class InteractionManager:
                 "  help               — Show this help\n"
                 "  quit               — Stop the workflow engine"
             ),
-            available_actions=['plan', 'scan', 'propose', 'deploy', 'mark', 'exits',
+            available_actions=['plan', 'strategies', 'scan', 'propose', 'deploy', 'mark', 'exits',
                              'close', 'perf', 'performance', 'learn', 'setup-desks',
                              'approve', 'reject', 'defer', 'status', 'list',
                              'halt', 'resume', 'override', 'help', 'quit',
@@ -1712,6 +1714,89 @@ class InteractionManager:
                 'total_trades': total,
                 'desks': len(desk_plans),
                 'verdict': result.get('day_verdict', '?'),
+            },
+        )
+
+    def _strategies(self, intent: UserIntent = None) -> SystemResponse:
+        """Run 9 strategy assessments for a single ticker."""
+        if not intent or not intent.target:
+            return SystemResponse(
+                message="Usage: strategies <ticker>\n  Example: strategies AAPL",
+                requires_action=True,
+            )
+
+        ticker = intent.target.upper()
+        engine = self.engine
+
+        # Get MarketAnalyzer
+        try:
+            ma = engine.scout._get_market_analyzer()
+        except Exception as e:
+            return SystemResponse(message=f"Cannot init MarketAnalyzer: {e}")
+
+        strategies = [
+            ('Iron Condor', ma.opportunity.assess_iron_condor),
+            ('Iron Butterfly', ma.opportunity.assess_iron_butterfly),
+            ('Calendar', ma.opportunity.assess_calendar),
+            ('Diagonal', ma.opportunity.assess_diagonal),
+            ('0DTE', ma.opportunity.assess_zero_dte),
+            ('Breakout', ma.opportunity.assess_breakout),
+            ('Momentum', ma.opportunity.assess_momentum),
+            ('Mean Reversion', ma.opportunity.assess_mean_reversion),
+            ('LEAP', ma.opportunity.assess_leap),
+        ]
+
+        lines = [f"STRATEGY ASSESSMENT: {ticker}", "\u2550" * 80]
+        go_count = 0
+        caution_count = 0
+
+        for label, assess_fn in strategies:
+            try:
+                result = assess_fn(ticker)
+                verdict = getattr(result, 'verdict', None) or '?'
+                verdict_lower = verdict.lower() if isinstance(verdict, str) else '?'
+                conf = getattr(result, 'confidence', None)
+                direction = getattr(result, 'direction', None) or getattr(result, 'trend_direction', None) or ''
+                summary = getattr(result, 'summary', None) or ''
+
+                conf_str = f" {int(conf * 100)}%" if conf is not None else ''
+                dir_str = f" {direction}" if direction else ''
+
+                if verdict_lower == 'go':
+                    v_mark = '\u2713 GO'
+                    go_count += 1
+                elif verdict_lower == 'caution':
+                    v_mark = '~ CAUTION'
+                    caution_count += 1
+                else:
+                    v_mark = '\u2717 NO GO'
+
+                lines.append(f"  {label:<18} {v_mark}{conf_str}{dir_str}")
+                if summary:
+                    lines.append(f"    {summary[:100]}")
+
+                # Show trade spec legs if available
+                spec = getattr(result, 'trade_spec', None)
+                if spec:
+                    leg_codes = getattr(spec, 'leg_codes', None) or (spec.get('leg_codes') if isinstance(spec, dict) else None)
+                    if leg_codes:
+                        lines.append(f"    Legs: {' | '.join(leg_codes[:4])}")
+            except Exception as e:
+                lines.append(f"  {label:<18} ERROR: {e}")
+
+        score = go_count * 2 + caution_count
+        lines.extend([
+            "",
+            f"  Score: {score} ({go_count} GO, {caution_count} CAUTION)",
+        ])
+
+        return SystemResponse(
+            message="\n".join(lines),
+            data={
+                'ticker': ticker,
+                'go_count': go_count,
+                'caution_count': caution_count,
+                'score': score,
             },
         )
 

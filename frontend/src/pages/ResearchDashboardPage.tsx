@@ -218,10 +218,10 @@ export function ResearchDashboardPage() {
       {/* Main content (right) */}
       <div className="flex-1 overflow-auto p-1">
         <div className="space-y-0.5">
-          {/* Row 1: Header + controls (ultra-compact) */}
+          {/* Row 1: Tabs + controls (ultra-compact) */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h1 className="text-xs font-bold text-text-primary uppercase tracking-wider">Market Analysis</h1>
+              <span className="text-xs font-bold uppercase tracking-wider text-accent-blue">Research</span>
               <AgentBadge agent="scout" />
               <span className="text-2xs text-text-muted">
                 {isLoading ? 'Loading...' : `${data.length} tickers`}

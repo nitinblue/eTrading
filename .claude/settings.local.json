@@ -1,7 +1,12 @@
-  {
-    "permissions": {
-      "allow": ["Bash(*)", "Edit(*)", "Write(*)",
-  "NotebookEdit(*)"],
-      "deny": []
-    }
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Edit(*)",
+      "Write(*)",
+      "NotebookEdit(*)",
+      "WebSearch"
+    ],
+    "deny": []
   }
+}

@@ -1,5 +1,7 @@
 import { clsx } from 'clsx'
-import { X } from 'lucide-react'
+import { X, Loader2 } from 'lucide-react'
+import { useTickerStrategies } from '../../hooks/useStrategyScanner'
+import type { StrategyResult } from '../../hooks/useStrategyScanner'
 import type { ResearchEntry } from '../../api/types'
 
 // ---------------------------------------------------------------------------
@@ -82,6 +84,98 @@ function LevelRow({ label, price, sources, strength }: { label: string; price: n
         {sources && <span className="text-2xs text-text-muted ml-1">{sources}</span>}
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Strategy Assessments (live fetch, all 9 strategies)
+// ---------------------------------------------------------------------------
+
+function StrategyRow({ result }: { result: StrategyResult }) {
+  if (result.loading) {
+    return (
+      <div className="flex items-center justify-between py-0.5">
+        <span className="text-2xs text-text-muted">{result.label}</span>
+        <Loader2 size={10} className="animate-spin text-text-muted" />
+      </div>
+    )
+  }
+  if (result.error) {
+    return (
+      <div className="flex items-center justify-between py-0.5">
+        <span className="text-2xs text-text-muted">{result.label}</span>
+        <span className="text-2xs text-red-500">err</span>
+      </div>
+    )
+  }
+  if (!result.verdict) {
+    return (
+      <div className="flex items-center justify-between py-0.5">
+        <span className="text-2xs text-text-muted">{result.label}</span>
+        <span className="text-2xs text-text-muted">--</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="py-0.5">
+      <div className="flex items-center justify-between">
+        <span className="text-2xs text-text-muted">{result.label}</span>
+        <div className="flex items-center gap-1">
+          <VBadge verdict={result.verdict} confidence={result.confidence} />
+          {result.direction && (
+            <span className={clsx('text-2xs',
+              result.direction === 'BULLISH' || result.direction === 'bullish' ? 'text-green-400' : 'text-red-400'
+            )}>
+              {result.direction === 'BULLISH' || result.direction === 'bullish' ? '\u25B2' : '\u25BC'}
+            </span>
+          )}
+        </div>
+      </div>
+      {result.summary && (
+        <div className="text-2xs text-text-secondary ml-4 mt-0.5 leading-tight">{result.summary}</div>
+      )}
+    </div>
+  )
+}
+
+function StrategySection({ ticker }: { ticker: string }) {
+  const { results, completedCount, totalCount, isAllDone } = useTickerStrategies(ticker)
+
+  const goCount = results.filter(r => r.verdict?.toLowerCase() === 'go').length
+  const cautionCount = results.filter(r => r.verdict?.toLowerCase() === 'caution').length
+
+  return (
+    <Section title={`Strategies${!isAllDone ? ` (${completedCount}/${totalCount})` : ''}`}>
+      {!isAllDone && (
+        <div className="flex items-center gap-2 mb-1">
+          <div className="flex-1 h-1 bg-bg-tertiary rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-accent-blue transition-all duration-300"
+              style={{ width: `${totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}%` }}
+            />
+          </div>
+          <Loader2 size={10} className="animate-spin text-accent-blue" />
+        </div>
+      )}
+      {results.map(r => (
+        <StrategyRow key={r.strategy} result={r} />
+      ))}
+      {isAllDone && (goCount > 0 || cautionCount > 0) && (
+        <div className="flex items-center justify-between mt-1 pt-1 border-t border-border-secondary/30">
+          <span className="text-2xs text-text-muted">Score</span>
+          <div className="flex items-center gap-2">
+            <span className={clsx('text-xs font-mono font-bold',
+              goCount * 2 + cautionCount >= 6 ? 'text-green-400' :
+              goCount * 2 + cautionCount >= 3 ? 'text-amber-400' : 'text-text-muted'
+            )}>
+              {goCount * 2 + cautionCount}
+            </span>
+            <span className="text-2xs text-text-muted">{goCount}G {cautionCount}C</span>
+          </div>
+        </div>
+      )}
+    </Section>
   )
 }
 
@@ -234,58 +328,8 @@ export function TickerDetailPanel({ entry: r, onClose }: { entry: ResearchEntry;
           </Section>
         )}
 
-        {/* Opportunities */}
-        {(r.opp_zero_dte_verdict || r.opp_leap_verdict || r.opp_breakout_verdict || r.opp_momentum_verdict) && (
-          <Section title="Opportunities">
-            {r.opp_zero_dte_verdict && (
-              <div className="flex items-center justify-between py-0.5">
-                <span className="text-2xs text-text-muted">0DTE</span>
-                <div className="flex items-center gap-1">
-                  <VBadge verdict={r.opp_zero_dte_verdict} confidence={r.opp_zero_dte_confidence} />
-                </div>
-              </div>
-            )}
-            {r.opp_zero_dte_strategy && <div className="text-2xs text-text-secondary ml-8 -mt-0.5">{r.opp_zero_dte_strategy}</div>}
-
-            {r.opp_leap_verdict && (
-              <div className="flex items-center justify-between py-0.5">
-                <span className="text-2xs text-text-muted">LEAP</span>
-                <VBadge verdict={r.opp_leap_verdict} confidence={r.opp_leap_confidence} />
-              </div>
-            )}
-            {r.opp_leap_strategy && <div className="text-2xs text-text-secondary ml-8 -mt-0.5">{r.opp_leap_strategy}</div>}
-
-            {r.opp_breakout_verdict && (
-              <div className="flex items-center justify-between py-0.5">
-                <span className="text-2xs text-text-muted">Breakout</span>
-                <div className="flex items-center gap-1">
-                  <VBadge verdict={r.opp_breakout_verdict} confidence={r.opp_breakout_confidence} />
-                  {r.opp_breakout_type && (
-                    <span className={clsx('text-2xs', r.opp_breakout_type === 'BULLISH' ? 'text-green-400' : 'text-red-400')}>
-                      {r.opp_breakout_type === 'BULLISH' ? '\u25B2' : '\u25BC'}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-            {r.opp_breakout_strategy && <div className="text-2xs text-text-secondary ml-8 -mt-0.5">{r.opp_breakout_strategy}</div>}
-
-            {r.opp_momentum_verdict && (
-              <div className="flex items-center justify-between py-0.5">
-                <span className="text-2xs text-text-muted">Momentum</span>
-                <div className="flex items-center gap-1">
-                  <VBadge verdict={r.opp_momentum_verdict} confidence={r.opp_momentum_confidence} />
-                  {r.opp_momentum_direction && (
-                    <span className={clsx('text-2xs', r.opp_momentum_direction === 'BULLISH' ? 'text-green-400' : 'text-red-400')}>
-                      {r.opp_momentum_direction === 'BULLISH' ? '\u25B2' : '\u25BC'}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-            {r.opp_momentum_strategy && <div className="text-2xs text-text-secondary ml-8 -mt-0.5">{r.opp_momentum_strategy}</div>}
-          </Section>
-        )}
+        {/* Strategy Assessments (live, all 9 strategies) */}
+        <StrategySection ticker={r.symbol} />
 
         {/* Smart Money */}
         {r.smart_money_score != null && (

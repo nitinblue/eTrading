@@ -1,13 +1,11 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { clsx } from 'clsx'
-import { ChevronDown, ChevronRight, Columns3 } from 'lucide-react'
+import { Columns3 } from 'lucide-react'
 import { AgGridReact } from 'ag-grid-react'
 import type { ColDef, ColGroupDef, GridReadyEvent, GridApi, ValueFormatterParams, ICellRendererParams, RowClassParams } from 'ag-grid-community'
 import { usePortfolios } from '../hooks/usePortfolios'
 import { useTradingDashboard } from '../hooks/useTradingDashboard'
-import { useWatchlist } from '../hooks/useResearch'
 import { Spinner } from '../components/common/Spinner'
-import { PlanPanel } from '../components/research/PlanPanel'
 import { TerminalPanel } from '../components/terminal/TerminalPanel'
 import type {
   TradingDashboardStrategy,
@@ -744,35 +742,11 @@ function CommandReference() {
 // ---------------------------------------------------------------------------
 export function TradingTerminal() {
   const { topPct, onMouseDown, containerRef } = useSplitPane(45)
-  const [showPlan, setShowPlan] = useState(true)
-
-  const { data: watchlistData } = useWatchlist()
-  const tickers = useMemo(
-    () => watchlistData?.watchlist?.map((w) => w.ticker) ?? [],
-    [watchlistData],
-  )
 
   return (
     <div className="flex h-full overflow-hidden -m-3">
-      {/* Left: Plan + Trades + Terminal */}
+      {/* Left: Trades + Terminal */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {/* Top bar */}
-        <div className="flex items-center px-2 py-[3px] bg-bg-secondary border-b border-border-secondary flex-shrink-0">
-          <button
-            onClick={() => setShowPlan((v) => !v)}
-            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted hover:text-text-primary"
-          >
-            {showPlan ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-            Daily Plan
-          </button>
-        </div>
-
-        {showPlan && tickers.length > 0 && (
-          <div className="flex-shrink-0 max-h-[35%] overflow-y-auto border-b border-border-secondary">
-            <PlanPanel tickers={tickers} />
-          </div>
-        )}
-
         <div ref={containerRef} className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <div className="overflow-auto" style={{ height: `${topPct}%` }}>
             <TradesFrame />

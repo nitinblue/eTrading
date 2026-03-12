@@ -1637,9 +1637,7 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         finally:
             _plan_cache['generating'] = False
 
-    # Auto-generate plan on first import (background thread)
-    import threading
-    threading.Thread(target=_generate_plan_background, daemon=True).start()
+    # Plan is generated on-demand via POST /plan (no auto-generation at startup)
 
     @router.post("/plan")
     async def get_plan(body: PlanRequest | None = None):
