@@ -1,5 +1,5 @@
 # Money-Making Machine — Standing Gap Analysis
-# Last Updated: 2026-03-11 (Session 39)
+# Last Updated: 2026-03-11 (Session 40)
 # Review this every session. Cross off what's done. Add what emerges.
 
 ## THE MISSION
@@ -53,6 +53,12 @@ Supporting infrastructure:
 ---
 
 ## 🟡 BUILD NEXT — Product Quality
+
+### Trade Execution Rail Guard
+Prevent accidental trade execution by Claude or automation. Defense in depth:
+1. **Environment variable gate** — `TRADE_EXECUTION_ENABLED=false` in `.env`. Execute endpoint refuses to place orders unless explicitly `true`. Default off.
+2. **Read-only broker mode** — `TastytradeAdapter(read_only=True)` disables all order-placement methods at the adapter level. Even if `execute --confirm` is called, adapter refuses.
+Both layers required. API-level + adapter-level = no single point of failure.
 
 ### Confidence Framework
 Every event gets a confidence level based on data lineage. Over time: report habitual vs merit-based actions. "I would rather take no action than compulsions."

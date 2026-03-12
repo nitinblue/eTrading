@@ -258,4 +258,85 @@ Old formula: `current_price * qty * multiplier - abs(total_cost)`
 
 ---
 
-*This document is the single source of truth for data flow. Update it when the flow changes.*
+---
+
+## 8. Coding Standards
+
+- `Decimal` for ALL money/price values. Never float.
+- Type hints on every function. `dataclass` for domain models.
+- `session_scope()` for DB. No raw sessions.
+- ALL imports at file top (unless circular avoidance).
+- Agent files = NOUNS. Service files = VERBS.
+- **ZERO dead code.** Every file/class/function must be called. No stubs.
+- **ZERO local math.** Greeks/prices from broker only. No Black-Scholes, POP/EV, VaR.
+- **ZERO bogus data.** No mock trades in production flow.
+
+---
+
+## 9. Key Files
+
+```
+runners/run_workflow.py          # THE entry point
+agents/workflow/engine.py        # 12-state orchestrator
+agents/workflow/interaction.py   # CLI command handlers
+agents/domain/maverick.py        # Trader (6 gates, proposals, booking, sizing)
+agents/domain/scout.py           # Quant (screening, ranking)
+agents/domain/steward.py         # Portfolio manager
+agents/domain/sentinel.py        # Risk manager
+adapters/tastytrade_adapter.py   # Broker (40+ methods, SaaS credential pattern)
+services/daily_plan_service.py   # Desk-aware plan generation (shared API + CLI)
+services/trade_booking_service.py # Book trades with legs + Greeks
+services/trade_lifecycle.py      # Close trades, record outcomes
+services/exit_monitor.py         # Profit target, stop loss, DTE exit
+services/mark_to_market.py       # Update P&L from live quotes
+services/trade_learner.py        # ML/RL pattern recognition
+core/models/events.py            # TradeEvent, DecisionContext, MarketContext
+repositories/event.py            # Event persistence + queries
+config/risk_config.yaml          # 15 portfolios, 3 desks
+config/workflow_rules.yaml       # Circuit breakers, limits
+web/api_v2.py                    # Main API router (plan, positions, risk, etc.)
+web/api_terminal.py              # Terminal command API
+```
+
+---
+
+## 10. Agent Pattern
+
+**Agent owns Container → populate() fills from data → save_to_db() → API reads → UI renders**
+
+- **ResearchContainer** (`containers/research_container.py`) — ~155 fields: technicals, regime, phase, opportunities, smart money, levels, fundamentals, macro
+- **PortfolioBundle** (`containers/portfolio_bundle.py`) — per-portfolio: positions, trades, risk, Greeks, P&L
+- **ContainerManager** (`containers/container_manager.py`) — orchestrates all bundles + research
+
+---
+
+## 11. Credential Flow (SaaS Pattern)
+
+eTrading authenticates with TastyTrade → passes pre-authenticated sessions to MarketAnalyzer.
+MarketAnalyzer never touches credentials. Single connection reused everywhere.
+
+```
+TastytradeAdapter.authenticate() → session + data_session
+  → adapter.get_market_providers() → (MarketDataProvider, MarketMetricsProvider)
+  → injected into Scout → MarketAnalyzer(market_data=..., market_metrics=...)
+  → also available to API endpoints via engine._market_data/_market_metrics
+```
+
+---
+
+## 12. UI Pages
+
+| Route | Page | Content |
+|-------|------|---------|
+| `/` | Research Dashboard | Scout data, daily plan, screener |
+| `/trading` | Trading Terminal | Positions, WhatIf blotter, AG Grid, command sidebar |
+| `/portfolio` | Portfolio | Positions, Performance, Capital (tabs) |
+| `/risk` | Risk | Risk dashboard |
+| `/agents` | Agents | Workflow, Active Agents, Quant, Knowledge, ML/RL (tabs) |
+| `/reports` | Reports | Portfolio reports |
+| `/data` | Data Explorer | Query builder |
+| `/settings` | Config | Portfolios, Risk, Workflow, Capital (tabs) |
+
+---
+
+*This document is the single source of truth for architecture and technical reference. Update it when the system changes.*

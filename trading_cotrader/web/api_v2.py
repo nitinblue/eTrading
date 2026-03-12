@@ -7,6 +7,7 @@ Existing /api/* endpoints remain unchanged.
 
 from datetime import date as date_cls, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 import asyncio
 import logging
@@ -1606,154 +1607,79 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             raise HTTPException(500, f"Ranking failed: {e}")
 
     # ------------------------------------------------------------------
-    # Daily Trading Plan — desk-aware (reads desk configs from risk_config.yaml)
+    # Daily Trading Plan — desk-aware (shared logic in daily_plan_service)
     # ------------------------------------------------------------------
-
-    # Map desk active_strategies → market_analyzer StrategyType
-    _DESK_STRATEGY_MAP: dict[str, list[str]] = {
-        'desk_0dte': ['zero_dte'],
-        'desk_medium': ['iron_condor', 'iron_butterfly', 'calendar', 'diagonal',
-                        'breakout', 'momentum', 'mean_reversion'],
-        'desk_leaps': ['leap'],
-    }
-
-    def _load_desk_configs() -> list[dict]:
-        """Load desk portfolio configs from risk_config.yaml."""
-        import yaml as _yaml
-        config_path = Path(__file__).parent.parent / "config" / "risk_config.yaml"
-        if not config_path.exists():
-            return []
-        with open(config_path, 'r') as f:
-            cfg = _yaml.safe_load(f)
-        desks = []
-        for key, pcfg in (cfg.get('portfolios', {}) or {}).items():
-            if key.startswith('desk_'):
-                desks.append({
-                    'key': key,
-                    'display_name': pcfg.get('display_name', key),
-                    'tickers': pcfg.get('preferred_underlyings', []),
-                    'capital': pcfg.get('initial_capital', 10000),
-                })
-        return desks
 
     class PlanRequest(BaseModel):
         tickers: list[str] | None = None
 
+    # ------------------------------------------------------------------
+    # Plan cache — generated in background thread, served instantly
+    # ------------------------------------------------------------------
+    _plan_cache: dict[str, Any] = {'result': None, 'generating': False, 'error': None}
+
+    def _generate_plan_background(tickers: list[str] | None = None):
+        """Run plan generation in a background thread. Updates _plan_cache."""
+        from trading_cotrader.services.daily_plan_service import generate_desk_plan
+        from market_analyzer import MarketAnalyzer as _MA
+        from market_analyzer.data import DataService as _DS
+
+        try:
+            _plan_cache['generating'] = True
+            _plan_cache['error'] = None
+            plan_ma = _MA(data_service=_DS())
+            result = generate_desk_plan(plan_ma, tickers)
+            _plan_cache['result'] = result
+            logger.info(f"Plan generated: {result.get('total_trades', 0)} trades in {result.get('elapsed_s', '?')}s")
+        except Exception as e:
+            logger.error(f"Background plan generation failed: {e}")
+            _plan_cache['error'] = str(e)
+        finally:
+            _plan_cache['generating'] = False
+
+    # Auto-generate plan on first import (background thread)
+    import threading
+    threading.Thread(target=_generate_plan_background, daemon=True).start()
+
     @router.post("/plan")
     async def get_plan(body: PlanRequest | None = None):
-        """Generate desk-aware daily trading plan.
+        """Return cached daily plan, or trigger regeneration.
 
-        Generates one plan per desk using each desk's preferred underlyings
-        and strategy types. Much faster than full watchlist × all strategies.
+        Plan is auto-generated in a background thread at startup.
+        POST /plan returns the cached result instantly.
+        POST /plan with force=true triggers a fresh generation.
         """
-        try:
-            from market_analyzer.models.ranking import StrategyType
+        force = body and body.tickers  # custom tickers = force regenerate
 
-            ma = _get_market_analyzer()
-            desks = _load_desk_configs()
-
-            if not desks:
-                # Fallback: no desks configured, use old behavior with cap
+        if force or _plan_cache['result'] is None:
+            if not _plan_cache['generating']:
                 tickers = body.tickers if body and body.tickers else None
-                if tickers and len(tickers) > 8:
-                    tickers = tickers[:8]
-                result = await asyncio.to_thread(ma.plan.generate, tickers)
-                return result.model_dump(mode='json')
+                import threading
+                threading.Thread(
+                    target=_generate_plan_background,
+                    args=(tickers,),
+                    daemon=True,
+                ).start()
 
-            # Generate plan per desk — each with its own tickers + strategies
-            desk_plans = []
-            combined_trades = []
-            day_verdict = None
-            day_verdict_reasons = []
-            risk_budget = None
-            expiry_events = []
-            upcoming_expiries = []
+            if _plan_cache['result'] is not None:
+                return _plan_cache['result']
 
-            for desk in desks:
-                desk_key = desk['key']
-                desk_tickers = desk['tickers']
-                if not desk_tickers:
-                    continue
+            # No cached result yet — wait briefly
+            import time
+            for _ in range(10):
+                time.sleep(1)
+                if _plan_cache['result'] is not None:
+                    return _plan_cache['result']
 
-                # Map to StrategyType enum values
-                strategy_names = _DESK_STRATEGY_MAP.get(desk_key, [])
-                strategies = []
-                for sn in strategy_names:
-                    try:
-                        strategies.append(StrategyType(sn))
-                    except ValueError:
-                        pass
-                if not strategies:
-                    continue
-
-                try:
-                    result = await asyncio.to_thread(
-                        ma.plan.generate, desk_tickers, strategies=strategies,
-                    )
-                    plan_data = result.model_dump(mode='json')
-
-                    # Tag each trade with the desk
-                    for t in plan_data.get('all_trades', []):
-                        t['desk'] = desk['display_name']
-                        t['desk_key'] = desk_key
-                        combined_trades.append(t)
-
-                    # Take verdict/budget from first desk (they share context)
-                    if day_verdict is None:
-                        day_verdict = plan_data['day_verdict']
-                        day_verdict_reasons = plan_data['day_verdict_reasons']
-                        risk_budget = plan_data['risk_budget']
-                        expiry_events = plan_data['expiry_events']
-                        upcoming_expiries = plan_data['upcoming_expiries']
-
-                    desk_plans.append({
-                        'desk_key': desk_key,
-                        'display_name': desk['display_name'],
-                        'capital': desk['capital'],
-                        'tickers': desk_tickers,
-                        'trades': plan_data.get('all_trades', []),
-                        'trade_count': len(plan_data.get('all_trades', [])),
-                    })
-                except Exception as e:
-                    logger.warning(f"Plan generation failed for desk {desk_key}: {e}")
-                    desk_plans.append({
-                        'desk_key': desk_key,
-                        'display_name': desk['display_name'],
-                        'capital': desk['capital'],
-                        'tickers': desk_tickers,
-                        'trades': [],
-                        'trade_count': 0,
-                        'error': str(e),
-                    })
-
-            # Re-rank combined trades
-            combined_trades.sort(key=lambda t: t.get('composite_score', 0), reverse=True)
-            for i, t in enumerate(combined_trades):
-                t['rank'] = i + 1
-
-            # Bucket by horizon
-            trades_by_horizon: dict[str, list] = {}
-            for t in combined_trades:
-                h = t.get('horizon', 'monthly')
-                trades_by_horizon.setdefault(h, []).append(t)
+            if _plan_cache['error']:
+                raise HTTPException(500, f"Plan generation failed: {_plan_cache['error']}")
 
             return {
-                'as_of_date': str(date_cls.today()),
-                'plan_for_date': str(date_cls.today()),
-                'day_verdict': day_verdict or 'trade',
-                'day_verdict_reasons': day_verdict_reasons,
-                'risk_budget': risk_budget or {'max_new_positions': 3, 'max_daily_risk_dollars': 500, 'position_size_factor': 1.0},
-                'expiry_events': expiry_events,
-                'upcoming_expiries': upcoming_expiries,
-                'trades_by_horizon': trades_by_horizon,
-                'all_trades': combined_trades,
-                'total_trades': len(combined_trades),
-                'desk_plans': desk_plans,
-                'summary': f"{len(combined_trades)} trades across {len(desk_plans)} desks",
+                'status': 'generating',
+                'message': 'Plan is being generated. Refresh in ~60-90 seconds.',
             }
-        except Exception as e:
-            logger.error(f"Plan generation failed: {e}")
-            raise HTTPException(500, f"Plan generation failed: {e}")
+
+        return _plan_cache['result']
 
     # ------------------------------------------------------------------
     # Black Swan / Tail-Risk Alert (via market_analyzer BlackSwanService)

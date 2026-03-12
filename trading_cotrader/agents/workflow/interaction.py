@@ -127,7 +127,8 @@ class InteractionManager:
             # Trade booking
             'book': self._book,
             'templates': self._templates,
-            # Trading workflow: scan → propose → deploy → mark → exits
+            # Trading workflow: plan → scan → propose → deploy → mark → exits
+            'plan': self._plan,
             'scan': self._scan,
             'propose': self._propose,
             'deploy': self._deploy,
@@ -318,7 +319,8 @@ class InteractionManager:
                 "Available commands:\n"
                 "\n"
                 "  Trading Workflow:\n"
-                "    scan                          — Scan watchlist: screen + rank via MarketAnalyzer\n"
+                "    plan                          — Daily plan: desk-aware trade ideas (fast, single call)\n"
+                "    scan                          — Full scan: Scout populate + screen + Maverick gates\n"
                 "    propose                       — Show Maverick's trade proposals (from last scan)\n"
                 "    deploy                        — Book all proposed trades to WhatIf portfolio\n"
                 "    deploy --portfolio <alias>    — Book to specific portfolio\n"
@@ -366,7 +368,7 @@ class InteractionManager:
                 "  help               — Show this help\n"
                 "  quit               — Stop the workflow engine"
             ),
-            available_actions=['scan', 'propose', 'deploy', 'mark', 'exits',
+            available_actions=['plan', 'scan', 'propose', 'deploy', 'mark', 'exits',
                              'close', 'perf', 'performance', 'learn', 'setup-desks',
                              'approve', 'reject', 'defer', 'status', 'list',
                              'halt', 'resume', 'override', 'help', 'quit',
@@ -1624,6 +1626,94 @@ class InteractionManager:
     # ==================================================================
     # Trading workflow: scan → propose → deploy
     # ==================================================================
+
+    def _plan(self, intent: UserIntent = None) -> SystemResponse:
+        """Generate desk-aware daily trading plan via MarketAnalyzer."""
+        from trading_cotrader.services.daily_plan_service import generate_desk_plan
+
+        engine = self.engine
+        lines = ["DAILY TRADING PLAN", "\u2550" * 80]
+
+        # Get MarketAnalyzer from Scout (it has broker-injected providers)
+        try:
+            ma = engine.scout._get_market_analyzer()
+        except Exception as e:
+            return SystemResponse(message=f"Cannot init MarketAnalyzer: {e}")
+
+        lines.append("Generating plan (single call across all desks)...")
+        try:
+            result = generate_desk_plan(ma)
+        except Exception as e:
+            return SystemResponse(message=f"Plan generation failed: {e}")
+
+        # Day verdict
+        verdict = result.get('day_verdict', '?').upper()
+        reasons = result.get('day_verdict_reasons', [])
+        elapsed = result.get('elapsed_s', '?')
+        lines.append(f"  Verdict: {verdict}  ({elapsed}s)")
+        for r in reasons:
+            lines.append(f"    {r}")
+
+        # Risk budget
+        rb = result.get('risk_budget', {})
+        lines.append(
+            f"  Risk budget: max {rb.get('max_new_positions', '?')} positions, "
+            f"${rb.get('max_daily_risk_dollars', '?')} daily risk, "
+            f"size factor {rb.get('position_size_factor', '?')}"
+        )
+
+        # Expiry events
+        for ev in result.get('expiry_events', []):
+            lines.append(f"  EXPIRY: {ev.get('label', '?')} ({', '.join(ev.get('tickers', []))})")
+
+        # Per-desk breakdown
+        desk_plans = result.get('desk_plans', [])
+        for dp in desk_plans:
+            desk_name = dp.get('display_name', dp.get('desk_key', '?'))
+            count = dp.get('trade_count', 0)
+            capital = dp.get('capital', 0)
+            lines.extend(["", f"  {desk_name} (${capital:,}): {count} trades"])
+
+            for t in dp.get('trades', []):
+                ticker = t.get('ticker', '?')
+                strat = t.get('strategy_type', '?')
+                verdict_t = t.get('verdict', '?')
+                score = t.get('composite_score', 0)
+                direction = t.get('direction', '?')
+                v_mark = '\u2713' if verdict_t == 'go' else ('~' if verdict_t == 'caution' else '\u2717')
+
+                lines.append(
+                    f"    {t.get('rank', '?'):>2}. {ticker:<8} {strat:<18} "
+                    f"{v_mark} {verdict_t:<7} {score:>5.2f}  {direction}"
+                )
+
+                # Show trade spec legs if available
+                spec = t.get('trade_spec')
+                if spec and spec.get('leg_codes'):
+                    legs_str = ' | '.join(spec['leg_codes'][:4])
+                    lines.append(f"        {legs_str}")
+
+                rationale = t.get('rationale', '')
+                if rationale:
+                    lines.append(f"        {rationale[:80]}")
+
+        total = result.get('total_trades', 0)
+        summary = result.get('summary', '')
+        lines.extend([
+            "",
+            f"  {summary}",
+            "",
+            "  Next: 'scan' for full pipeline (Scout + Maverick gates) → 'propose' → 'deploy'",
+        ])
+
+        return SystemResponse(
+            message="\n".join(lines),
+            data={
+                'total_trades': total,
+                'desks': len(desk_plans),
+                'verdict': result.get('day_verdict', '?'),
+            },
+        )
 
     def _scan(self, intent: UserIntent = None) -> SystemResponse:
         """Run Scout's screening + ranking pipeline on the watchlist."""

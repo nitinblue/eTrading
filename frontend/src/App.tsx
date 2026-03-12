@@ -8,7 +8,7 @@ import { AgentDetailPage } from './pages/AgentDetailPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { DataExplorerPage } from './pages/DataExplorerPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { TradingDashboardPage } from './pages/TradingDashboardPage'
+import { TradingTerminal } from './pages/TradingTerminal'
 import { ResearchDashboardPage } from './pages/ResearchDashboardPage'
 import { ToastContainer } from './components/common/Toast'
 
@@ -23,7 +23,7 @@ export default function App() {
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/agents/:name" element={<AgentDetailPage />} />
         <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/trading" element={<TradingDashboardPage />} />
+        <Route path="/trading" element={<TradingTerminal />} />
         <Route path="/data" element={<DataExplorerPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
