@@ -69,10 +69,11 @@ class ScoutAgent(BaseAgent):
     runs_during: ClassVar[List[str]] = ["monitoring"]
 
     def __init__(self, container: 'ResearchContainer' = None, config=None,
-                 market_data=None, market_metrics=None):
+                 market_data=None, market_metrics=None, watchlist_provider=None):
         super().__init__(container=container, config=config)
         self._injected_market_data = market_data
         self._injected_market_metrics = market_metrics
+        self._watchlist_provider = watchlist_provider
 
     def safety_check(self, context: dict) -> tuple[bool, str]:
         """Research pipeline is always safe -- no real capital involved."""
@@ -255,6 +256,37 @@ class ScoutAgent(BaseAgent):
 
         return stats
 
+    def _resolve_tickers(self) -> List[str]:
+        """Resolve ticker universe: broker watchlist (G10) → YAML fallback.
+
+        Tries TastyTrade watchlists 'MA-Income' and 'MA-Sectors' first.
+        Falls back to container.symbols from market_watchlist.yaml.
+        """
+        # G10: Try broker watchlists
+        if self._watchlist_provider:
+            try:
+                tickers = self._watchlist_provider.get_watchlist('MA-Income')
+                if tickers:
+                    # Optionally merge sectors
+                    try:
+                        sectors = self._watchlist_provider.get_watchlist('MA-Sectors')
+                        if sectors:
+                            combined = list(dict.fromkeys(tickers + sectors))  # dedup, preserve order
+                            logger.info(f"Watchlist: {len(combined)} tickers from MA-Income + MA-Sectors")
+                            return combined
+                    except Exception:
+                        pass
+                    logger.info(f"Watchlist: {len(tickers)} tickers from MA-Income")
+                    return tickers
+            except Exception as e:
+                logger.debug(f"Watchlist provider failed: {e}")
+
+        # Fallback: YAML config
+        yaml_tickers = self.container.symbols if self.container else []
+        if yaml_tickers:
+            logger.info(f"Watchlist: {len(yaml_tickers)} tickers from YAML config")
+        return yaml_tickers
+
     def _get_market_analyzer(self):
         """Lazy-init MarketAnalyzer facade singleton.
 
@@ -311,7 +343,8 @@ class ScoutAgent(BaseAgent):
                 messages=["No container -- cannot run screening"],
             )
 
-        tickers = self.container.symbols
+        # G10: Pull tickers from TastyTrade watchlist if available, YAML fallback
+        tickers = self._resolve_tickers()
         if not tickers:
             return AgentResult(
                 agent_name=self.name,
@@ -325,26 +358,27 @@ class ScoutAgent(BaseAgent):
         candidates: List[Dict[str, Any]] = []
         ranking: List[Dict[str, Any]] = []
 
-        # 1. Screen watchlist for setups
+        # G11: Two-phase scan — screen first (fast), then rank candidates only
+        # Phase 1: Screen watchlist for setups
         try:
             scan_result = ma.screening.scan(tickers)
             for c in scan_result.candidates:
                 candidates.append(c.model_dump(mode='json'))
-            messages.append(f"Screening: {len(candidates)} candidates from {scan_result.tickers_scanned} tickers")
+            messages.append(f"Phase 1 screen: {len(candidates)} candidates from {scan_result.tickers_scanned} tickers")
         except Exception as e:
             logger.warning(f"Screening failed: {e}")
             messages.append(f"Screening error: {e}")
 
-        # 2. Rank candidates (top tickers that screened)
+        # Phase 2: Rank only screened candidates (not full watchlist)
         ranked_tickers = list({c.get('ticker', '') for c in candidates if c.get('ticker')})
         if not ranked_tickers:
             ranked_tickers = tickers[:10]  # fallback: rank top watchlist
 
         try:
-            rank_result = ma.ranking.rank(ranked_tickers)
+            rank_result = ma.ranking.rank(ranked_tickers, skip_intraday=True)
             for r in rank_result.top_trades:
                 ranking.append(r.model_dump(mode='json'))
-            messages.append(f"Ranking: {len(ranking)} ranked candidates")
+            messages.append(f"Phase 2 rank: {len(ranking)} ranked from {len(ranked_tickers)} candidates")
         except Exception as e:
             logger.warning(f"Ranking failed: {e}")
             messages.append(f"Ranking error: {e}")

@@ -128,7 +128,13 @@ class TastytradeAdapter(BrokerAdapterBase):
                 is_test=self.is_paper
             )
 
-            accounts = Account.get(self.session)
+            result = Account.get(self.session)
+            if asyncio.iscoroutine(result):
+                accounts = asyncio.run(result)
+            else:
+                accounts = result
+            if not isinstance(accounts, list):
+                accounts = [accounts]
             self.accounts = {a.account_number: a for a in accounts}
 
             logger.info(f"Loaded {len(self.accounts)} account(s): {list(self.accounts.keys())}")
@@ -166,7 +172,7 @@ class TastytradeAdapter(BrokerAdapterBase):
             return False
 
     def get_market_providers(self):
-        """Return (MarketDataProvider, MarketMetricsProvider) backed by this adapter's sessions.
+        """Return (MarketDataProvider, MarketMetricsProvider, AccountProvider) from this adapter's sessions.
 
         Allows MarketAnalyzer to reuse the adapter's authenticated connection
         instead of opening a second one.  SaaS pattern: credentials stay in eTrading.
@@ -181,6 +187,8 @@ class TastytradeAdapter(BrokerAdapterBase):
                 raise ValueError("Not authenticated")
 
             balance_data = self.account.get_balances(self.session)
+            if asyncio.iscoroutine(balance_data):
+                balance_data = asyncio.run(balance_data)
 
             return {
                 'cash_balance': Decimal(str(balance_data.cash_balance or 0)),
@@ -299,6 +307,8 @@ class TastytradeAdapter(BrokerAdapterBase):
                 self.session,
                 include_marks=True
             )
+            if asyncio.iscoroutine(positions_data):
+                positions_data = asyncio.run(positions_data)
 
             if not positions_data:
                 logger.info("No positions found")
@@ -563,7 +573,10 @@ class TastytradeAdapter(BrokerAdapterBase):
         from tastytrade import get_option_chain
         if not self.session:
             raise ValueError("Not authenticated")
-        return get_option_chain(self.session, underlying)
+        result = get_option_chain(self.session, underlying)
+        if asyncio.iscoroutine(result):
+            result = asyncio.run(result)
+        return result
 
     def get_quote(self, symbol: str) -> Dict[str, Any]:
         """Get a single quote via DXLink streaming."""
@@ -625,9 +638,14 @@ class TastytradeAdapter(BrokerAdapterBase):
 
         if name is None:
             counts_response = PublicWatchlists.get_public_watchlists(self.session)
+            if asyncio.iscoroutine(counts_response):
+                counts_response = asyncio.run(counts_response)
             return [wl.name for wl in counts_response] if counts_response else []
         else:
-            return PublicWatchlists.get_public_watchlists(self.session, name)
+            result = PublicWatchlists.get_public_watchlists(self.session, name)
+            if asyncio.iscoroutine(result):
+                result = asyncio.run(result)
+            return result
 
     # -----------------------------------------------------------------
     # Order placement & management
@@ -729,6 +747,8 @@ class TastytradeAdapter(BrokerAdapterBase):
 
         # Place via SDK
         response = self.account.place_order(self.session, order, dry_run=dry_run)
+        if asyncio.iscoroutine(response):
+            response = asyncio.run(response)
 
         # Normalize response
         result = {
@@ -821,6 +841,8 @@ class TastytradeAdapter(BrokerAdapterBase):
             raise ValueError("Not authenticated — call authenticate() first")
 
         placed = self.account.get_order(self.session, int(broker_order_id))
+        if asyncio.iscoroutine(placed):
+            placed = asyncio.run(placed)
         return self._placed_order_to_dict(placed)
 
     def get_live_orders(self) -> List[Dict[str, Any]]:
@@ -829,6 +851,8 @@ class TastytradeAdapter(BrokerAdapterBase):
             raise ValueError("Not authenticated — call authenticate() first")
 
         orders = self.account.get_live_orders(self.session)
+        if asyncio.iscoroutine(orders):
+            orders = asyncio.run(orders)
         return [self._placed_order_to_dict(o) for o in orders]
 
     # -----------------------------------------------------------------
@@ -854,6 +878,8 @@ class TastytradeAdapter(BrokerAdapterBase):
             kwargs['underlying_symbol'] = underlying_symbol
 
         transactions = self.account.get_history(self.session, **kwargs)
+        if asyncio.iscoroutine(transactions):
+            transactions = asyncio.run(transactions)
 
         results = []
         for t in transactions:
@@ -901,6 +927,8 @@ class TastytradeAdapter(BrokerAdapterBase):
             kwargs['underlying_symbol'] = underlying_symbol
 
         orders = self.account.get_order_history(self.session, **kwargs)
+        if asyncio.iscoroutine(orders):
+            orders = asyncio.run(orders)
 
         results = []
         for o in orders:
@@ -925,6 +953,8 @@ class TastytradeAdapter(BrokerAdapterBase):
             kwargs['end_date'] = end_date
 
         snapshots = self.account.get_balance_snapshots(self.session, **kwargs)
+        if asyncio.iscoroutine(snapshots):
+            snapshots = asyncio.run(snapshots)
 
         results = []
         for s in snapshots:
@@ -948,6 +978,8 @@ class TastytradeAdapter(BrokerAdapterBase):
         data = self.account.get_net_liquidating_value_history(
             self.session, time_back=time_back
         )
+        if asyncio.iscoroutine(data):
+            data = asyncio.run(data)
 
         results = []
         for d in data:
@@ -970,6 +1002,8 @@ class TastytradeAdapter(BrokerAdapterBase):
         from tastytrade.metrics import get_market_metrics
 
         metrics = get_market_metrics(self.session, symbols)
+        if asyncio.iscoroutine(metrics):
+            metrics = asyncio.run(metrics)
 
         results = {}
         for m in metrics:

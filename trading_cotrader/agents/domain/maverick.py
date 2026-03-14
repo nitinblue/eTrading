@@ -312,6 +312,20 @@ class MaverickAgent(BaseAgent):
                 proposals.append(proposal)
                 continue
 
+            # Gate 3b: Buying power / affordability check (G7)
+            wing_width = trade_spec.get('wing_width_points')
+            if wing_width and wing_width > 0:
+                bp_required = float(wing_width) * 100  # per spread
+                available_bp = self._get_available_buying_power()
+                if available_bp > 0 and bp_required > available_bp:
+                    proposal['status'] = 'rejected'
+                    proposal['gate_result'] = (
+                        f'Insufficient BP: ${bp_required:.0f} required, '
+                        f'${available_bp:.0f} available'
+                    )
+                    proposals.append(proposal)
+                    continue
+
             # Gate 4: Duplicate prevention — already have open trade on this underlying
             underlying_key = f"{ticker}:{strategy_type}"
             if underlying_key in open_underlyings:
@@ -338,11 +352,19 @@ class MaverickAgent(BaseAgent):
                 proposals.append(proposal)
                 continue
 
+            # Gate 7-9: MA analytics gates (G6) — POP, EV, income entry
+            ma_gate_result = self._ma_analytics_gates(trade_spec, proposal)
+            if ma_gate_result:
+                proposal['status'] = 'rejected'
+                proposal['gate_result'] = ma_gate_result
+                proposals.append(proposal)
+                continue
+
             # All gates passed — mark as proposed
             proposal['status'] = 'proposed'
             proposal['gate_result'] = 'PASS'
 
-            # Position sizing: scale quantity based on capital allocation
+            # Position sizing: prefer MA's spec.position_size() (G8)
             quantity = self._compute_position_size(trade_spec)
             proposal['quantity'] = quantity
 
@@ -369,17 +391,194 @@ class MaverickAgent(BaseAgent):
 
         return proposals
 
-    def _compute_position_size(self, trade_spec: Dict[str, Any]) -> int:
-        """
-        Compute number of contracts based on portfolio capital and max risk.
+    def _get_available_buying_power(self) -> float:
+        """Get available buying power from portfolio or broker (G7)."""
+        # Try portfolio capital first
+        try:
+            for bundle in self._container_manager.get_all_bundles():
+                if bundle.config_name == self.DEFAULT_WHATIF_PORTFOLIO:
+                    bp = bundle.portfolio.buying_power or Decimal('0')
+                    if bp > 0:
+                        return float(bp)
+                    equity = bundle.portfolio.total_equity or Decimal('0')
+                    if equity > 0:
+                        return float(equity * Decimal('0.8'))  # 80% of equity
+                    break
+        except Exception:
+            pass
 
-        Logic:
-          1. Get available capital from WhatIf portfolio
-          2. Max risk per trade = capital × MAX_RISK_PER_TRADE_PCT (default 2%)
-          3. Max risk per spread from trade_spec (wing_width × 100 - estimated credit)
-          4. Contracts = floor(max_risk_budget / max_risk_per_spread)
-          5. Minimum 1, maximum 10
+        # Try MA account provider
+        try:
+            ma = getattr(self, '_ma', None)
+            if ma and ma.account_provider:
+                balance = ma.account_provider.get_balance()
+                return balance.derivative_buying_power
+        except Exception:
+            pass
+
+        return 0.0  # Unknown — gate will skip
+
+    # -----------------------------------------------------------------
+    # MA analytics gates (G6: POP/EV, G19: execution quality)
+    # -----------------------------------------------------------------
+
+    MIN_POP: ClassVar[float] = 0.45       # Gate 7: minimum POP
+    MIN_ENTRY_SCORE: ClassVar[float] = 0.60  # Gate 9: income entry check score
+
+    def _ma_analytics_gates(
+        self, trade_spec: Dict[str, Any], proposal: Dict[str, Any],
+    ) -> Optional[str]:
+        """Run MA-powered analytics gates (G6). Returns rejection reason or None.
+
+        Gate 7: POP >= 45%
+        Gate 8: EV > $0
+        Gate 9: Income entry check confirmed
         """
+        try:
+            from market_analyzer import estimate_pop, check_income_entry
+        except ImportError:
+            return None  # MA not available — skip these gates
+
+        # Extract context needed for MA calls
+        entry_price = trade_spec.get('max_entry_price', 0) or 0
+        regime_id = 1  # default; ideally from context
+        atr_pct = 1.0  # default
+        current_price = trade_spec.get('underlying_price', 0) or 0
+
+        # Try to get regime/technicals from context stored on the agent
+        context = getattr(self, '_last_context', {})
+        research = context.get('research', {})
+        ticker = proposal.get('ticker', '')
+        ticker_research = research.get(ticker, {})
+        if ticker_research:
+            regime_id = ticker_research.get('hmm_regime_id', 1) or 1
+            atr_pct = ticker_research.get('atr_pct', 1.0) or 1.0
+            current_price = ticker_research.get('current_price', current_price) or current_price
+
+        # Build a TradeSpec object for POP calculation
+        try:
+            from market_analyzer import from_dxlink_symbols
+            legs = trade_spec.get('legs', [])
+            if not legs or not entry_price or not current_price:
+                return None  # Not enough data to run gates
+
+            # Build DXLink symbols from trade_spec legs
+            symbols = []
+            actions = []
+            for leg in legs:
+                strike = leg.get('strike', 0)
+                exp = leg.get('expiration', '')
+                opt = leg.get('option_type', 'put')
+                action = leg.get('action', 'BTO')
+                if isinstance(exp, str):
+                    from datetime import date as d
+                    try:
+                        exp_date = d.fromisoformat(exp)
+                    except ValueError:
+                        continue
+                else:
+                    exp_date = exp
+                opt_char = 'C' if opt == 'call' else 'P'
+                date_part = exp_date.strftime('%y%m%d')
+                symbols.append(f".{ticker}{date_part}{opt_char}{int(strike)}")
+                actions.append(action)
+
+            if not symbols:
+                return None
+
+            spec_obj = from_dxlink_symbols(
+                symbols=symbols, actions=actions,
+                underlying_price=float(current_price),
+                entry_price=float(entry_price),
+            )
+        except Exception as e:
+            logger.debug(f"Could not build TradeSpec for MA gates: {e}")
+            return None
+
+        # Gate 7: POP >= 45%
+        try:
+            pop_result = estimate_pop(
+                spec_obj, float(entry_price),
+                regime_id=int(regime_id), atr_pct=float(atr_pct),
+                current_price=float(current_price),
+            )
+            proposal['pop_at_entry'] = pop_result.pop_pct
+            proposal['ev_at_entry'] = pop_result.expected_value
+
+            if pop_result.pop_pct < self.MIN_POP:
+                return f'POP {pop_result.pop_pct:.0%} < {self.MIN_POP:.0%}'
+
+            # Gate 8: EV > $0
+            if pop_result.expected_value <= 0:
+                return f'Negative EV: ${pop_result.expected_value:.2f}'
+        except Exception as e:
+            logger.debug(f"POP/EV gate skipped: {e}")
+
+        # Gate 9: Income entry check
+        try:
+            iv_rank = ticker_research.get('iv_rank') or 50.0
+            rsi = ticker_research.get('rsi_14') or 50.0
+            dte = trade_spec.get('target_dte', 45)
+            has_earnings = bool(ticker_research.get('days_to_earnings') and
+                                ticker_research.get('days_to_earnings', 999) <= dte)
+
+            entry_check = check_income_entry(
+                iv_rank=float(iv_rank),
+                iv_percentile=float(iv_rank),  # approximate
+                dte=int(dte),
+                rsi=float(rsi),
+                atr_pct=float(atr_pct),
+                regime_id=int(regime_id),
+                has_earnings_within_dte=has_earnings,
+            )
+            proposal['income_entry_confirmed'] = entry_check.confirmed
+            proposal['income_entry_score'] = entry_check.score
+
+            if not entry_check.confirmed:
+                return f'Income entry not confirmed (score={entry_check.score:.2f})'
+        except Exception as e:
+            logger.debug(f"Income entry gate skipped: {e}")
+
+        # Gate 10: Entry time window — don't enter outside allowed window (G20)
+        entry_start = trade_spec.get('entry_window_start')
+        entry_end = trade_spec.get('entry_window_end')
+        if entry_start or entry_end:
+            from datetime import time as dt_time
+            now_time = datetime.now().time()
+            if entry_start and isinstance(entry_start, str):
+                h, m = map(int, entry_start.split(':'))
+                entry_start = dt_time(h, m)
+            if entry_end and isinstance(entry_end, str):
+                h, m = map(int, entry_end.split(':'))
+                entry_end = dt_time(h, m)
+            if entry_start and now_time < entry_start:
+                return f'Outside entry window: before {entry_start}'
+            if entry_end and now_time > entry_end:
+                return f'Outside entry window: after {entry_end}'
+
+        # Gate 11: Execution quality — reject illiquid trades (G19)
+        try:
+            from market_analyzer import validate_execution_quality
+            ma = getattr(self, '_ma', None)
+            if ma and ma.quotes and ma.quotes.has_broker:
+                leg_quotes = ma.quotes.get_leg_quotes(spec_obj.legs, ticker=ticker)
+                if leg_quotes:
+                    eq = validate_execution_quality(spec_obj, leg_quotes)
+                    proposal['execution_quality'] = eq.overall_verdict
+                    if not eq.tradeable:
+                        return f'Execution quality: {eq.overall_verdict} — {eq.summary}'
+        except Exception as e:
+            logger.debug(f"Execution quality gate skipped: {e}")
+
+        # Store regime for G18
+        proposal.setdefault('exit_rules', {})['regime_at_entry'] = f'R{regime_id}'
+        proposal['exit_rules']['pop_at_entry'] = proposal.get('pop_at_entry')
+        proposal['exit_rules']['ev_at_entry'] = proposal.get('ev_at_entry')
+
+        return None  # All gates passed
+
+    def _compute_position_size(self, trade_spec: Dict[str, Any]) -> int:
+        """Compute contracts. Prefers MA's spec.position_size() (G8), falls back to local."""
         # Get portfolio capital
         capital = self.DEFAULT_CAPITAL
         try:
@@ -392,16 +591,50 @@ class MaverickAgent(BaseAgent):
         except Exception:
             pass
 
-        # Risk budget per trade
-        risk_budget = capital * self.MAX_RISK_PER_TRADE_PCT
+        # Try MA's position_size (G8)
+        try:
+            from market_analyzer import from_dxlink_symbols
+            legs = trade_spec.get('legs', [])
+            ticker = trade_spec.get('ticker', '')
+            price = trade_spec.get('underlying_price', 0) or 0
+            if legs and ticker and price:
+                symbols = []
+                actions = []
+                for leg in legs:
+                    strike = leg.get('strike', 0)
+                    exp = leg.get('expiration', '')
+                    opt = leg.get('option_type', 'put')
+                    action = leg.get('action', 'BTO')
+                    if isinstance(exp, str):
+                        from datetime import date as d
+                        try:
+                            exp_date = d.fromisoformat(exp)
+                        except ValueError:
+                            continue
+                    else:
+                        exp_date = exp
+                    opt_char = 'C' if opt == 'call' else 'P'
+                    date_part = exp_date.strftime('%y%m%d')
+                    symbols.append(f".{ticker}{date_part}{opt_char}{int(strike)}")
+                    actions.append(action)
 
-        # Max risk per spread (from trade_spec)
+                if symbols:
+                    spec_obj = from_dxlink_symbols(symbols, actions, float(price))
+                    contracts = spec_obj.position_size(
+                        capital=float(capital),
+                        risk_pct=float(self.MAX_RISK_PER_TRADE_PCT),
+                        max_contracts=10,
+                    )
+                    return max(1, contracts)
+        except Exception as e:
+            logger.debug(f"MA position_size fallback: {e}")
+
+        # Local fallback
+        risk_budget = capital * self.MAX_RISK_PER_TRADE_PCT
         wing_width = trade_spec.get('wing_width_points')
         if wing_width and wing_width > 0:
-            # Defined risk: max_loss = wing_width × 100 (per spread)
             max_risk_per_spread = Decimal(str(wing_width)) * 100
         else:
-            # Single leg or undefined risk — use estimated price × 100
             legs = trade_spec.get('legs', [])
             total_premium = sum(abs(float(l.get('strike', 0))) * 0.01 for l in legs)
             max_risk_per_spread = Decimal(str(max(total_premium * 100, 500)))
@@ -592,9 +825,13 @@ class MaverickAgent(BaseAgent):
                 result_dict['error'] = booking_result.error
                 logger.warning(f"Failed to book {ticker} {strategy_type}: {booking_result.error}")
 
-            # Store exit rules on the trade in DB
+            # Store exit rules + decision lineage on the trade in DB
             if booking_result.success and exit_rules:
                 self._store_exit_rules(booking_result.trade_id, exit_rules, trade_spec)
+
+            # G14: Store decision lineage at entry
+            if booking_result.success:
+                self._store_decision_lineage(booking_result.trade_id, proposal, context)
 
             results.append(result_dict)
 
@@ -606,7 +843,13 @@ class MaverickAgent(BaseAgent):
         exit_rules: Dict[str, Any],
         trade_spec: Dict[str, Any],
     ) -> None:
-        """Store exit rules on the TradeORM for exit monitoring."""
+        """Store exit rules and MA analytics on TradeORM.
+
+        G5:  Serialize full ExitPlan to exit_plan_json
+        G16: Store breakevens (low, high)
+        G18: Store regime_at_entry
+        Also stores wing_width, income_yield_roc, pop_at_entry, ev_at_entry.
+        """
         from trading_cotrader.core.database.session import session_scope
         from trading_cotrader.core.database.schema import TradeORM
 
@@ -619,26 +862,67 @@ class MaverickAgent(BaseAgent):
                 entry = abs(float(trade_orm.entry_price or 0))
                 order_side = exit_rules.get('order_side', trade_spec.get('order_side', 'credit'))
 
-                # Profit target as dollar amount
+                # Profit target as dollar amount (backward compat)
                 tp_pct = exit_rules.get('profit_target_pct')
                 if tp_pct and entry:
-                    if order_side == 'credit':
-                        trade_orm.profit_target = Decimal(str(round(entry * tp_pct, 2)))
-                    else:
-                        trade_orm.profit_target = Decimal(str(round(entry * tp_pct, 2)))
+                    trade_orm.profit_target = Decimal(str(round(entry * tp_pct, 2)))
 
-                # Stop loss as dollar amount
+                # Stop loss as dollar amount (backward compat)
                 sl_pct = exit_rules.get('stop_loss_pct')
                 if sl_pct and entry:
-                    if order_side == 'credit':
-                        trade_orm.stop_loss = Decimal(str(round(entry * sl_pct, 2)))
-                    else:
-                        trade_orm.stop_loss = Decimal(str(round(entry * sl_pct, 2)))
+                    trade_orm.stop_loss = Decimal(str(round(entry * sl_pct, 2)))
 
                 # Max risk from trade_spec
                 wing_width = trade_spec.get('wing_width_points')
                 if wing_width:
                     trade_orm.max_risk = Decimal(str(round(wing_width * 100 - entry, 2)))
+                    trade_orm.wing_width = Decimal(str(wing_width))
+
+                # G5: Serialize full ExitPlan
+                exit_plan = trade_spec.get('exit_plan')
+                if exit_plan:
+                    # exit_plan may be a dict (from model_dump) or Pydantic model
+                    if hasattr(exit_plan, 'model_dump'):
+                        trade_orm.exit_plan_json = exit_plan.model_dump(mode='json')
+                    elif isinstance(exit_plan, dict):
+                        trade_orm.exit_plan_json = exit_plan
+
+                # G16: Compute and store breakevens
+                try:
+                    from market_analyzer import compute_breakevens
+                    from market_analyzer import from_dxlink_symbols
+                    # Reconstruct TradeSpec from the trade_spec dict
+                    spec_obj = None
+                    legs = trade_spec.get('legs', [])
+                    if legs and trade_spec.get('ticker'):
+                        from trading_cotrader.services.tradespec_bridge import trade_to_tradespec
+                        spec_obj = trade_to_tradespec(trade_orm)
+                    if spec_obj and entry:
+                        be = compute_breakevens(spec_obj, entry)
+                        if be.low is not None:
+                            trade_orm.breakeven_low = Decimal(str(round(be.low, 4)))
+                        if be.high is not None:
+                            trade_orm.breakeven_high = Decimal(str(round(be.high, 4)))
+                except Exception as e:
+                    logger.debug(f"Could not compute breakevens for {trade_id}: {e}")
+
+                # G16: Store POP and EV if available in exit_rules
+                pop = exit_rules.get('pop_at_entry')
+                if pop is not None:
+                    trade_orm.pop_at_entry = Decimal(str(round(pop, 4)))
+                ev = exit_rules.get('ev_at_entry')
+                if ev is not None:
+                    trade_orm.ev_at_entry = Decimal(str(round(ev, 2)))
+
+                # Income yield ROC
+                roc = exit_rules.get('income_yield_roc')
+                if roc is not None:
+                    trade_orm.income_yield_roc = Decimal(str(round(roc, 4)))
+
+                # G18: Store regime at entry
+                regime = exit_rules.get('regime_at_entry')
+                if regime:
+                    trade_orm.regime_at_entry = str(regime)
 
                 session.commit()
         except Exception as e:
@@ -647,6 +931,26 @@ class MaverickAgent(BaseAgent):
     # -----------------------------------------------------------------
     # Phase 3: Exit monitoring
     # -----------------------------------------------------------------
+
+    def _store_decision_lineage(
+        self, trade_id: str, proposal: Dict[str, Any], context: Dict[str, Any],
+    ) -> None:
+        """Store decision lineage on TradeORM at booking time (G14)."""
+        from trading_cotrader.core.database.session import session_scope
+        from trading_cotrader.core.database.schema import TradeORM
+
+        try:
+            from trading_cotrader.services.decision_lineage import DecisionLineageService
+            lineage_service = DecisionLineageService()
+            lineage = lineage_service.build_lineage_at_entry(proposal, context)
+
+            with session_scope() as session:
+                trade_orm = session.query(TradeORM).get(trade_id)
+                if trade_orm:
+                    trade_orm.decision_lineage = lineage
+                    session.commit()
+        except Exception as e:
+            logger.debug(f"Could not store decision lineage for {trade_id}: {e}")
 
     def _check_exits(self) -> List:
         """Check open trades for exit conditions. Returns list of ExitSignal."""
@@ -669,5 +973,6 @@ class MaverickAgent(BaseAgent):
         service = MarkToMarketService(
             broker=self._broker,
             container_manager=self._container_manager,
+            ma=getattr(self, '_ma', None),  # G4: pass MA for health checks
         )
         return service.mark_all_open_trades()

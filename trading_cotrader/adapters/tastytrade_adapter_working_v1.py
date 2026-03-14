@@ -126,7 +126,13 @@ class TastytradeAdapter(BrokerAdapter):
                 is_test=self.is_paper
             )
             
-            accounts = Account.get(self.session)
+            result = Account.get(self.session)
+            if asyncio.iscoroutine(result):
+                accounts = asyncio.run(result)
+            else:
+                accounts = result
+            if not isinstance(accounts, list):
+                accounts = [accounts]
             self.accounts = {a.account_number: a for a in accounts}
             
             logger.info(f"Loaded {len(self.accounts)} account(s): {list(self.accounts.keys())}")
@@ -156,7 +162,9 @@ class TastytradeAdapter(BrokerAdapter):
                 raise ValueError("Not authenticated")
             
             balance_data = self.account.get_balances(self.session)
-            
+            if asyncio.iscoroutine(balance_data):
+                balance_data = asyncio.run(balance_data)
+
             return {
                 'cash_balance': Decimal(str(balance_data.cash_balance or 0)),
                 'buying_power': Decimal(str(balance_data.derivative_buying_power or 0)),
@@ -286,7 +294,9 @@ class TastytradeAdapter(BrokerAdapter):
                 raise ValueError("Not authenticated")
             
             positions_data = self.account.get_positions(self.session)
-            
+            if asyncio.iscoroutine(positions_data):
+                positions_data = await positions_data
+
             # First pass: collect all option streamer symbols
             option_symbols_map = {}  # streamer_symbol -> position_data
             equity_positions = []

@@ -838,6 +838,14 @@ export interface TradingDashboardStrategy {
   status: string
   opened_at: string | null
   is_open: boolean
+  // MA integration (P8)
+  health_status?: string | null
+  pop_at_entry?: number | null
+  ev_at_entry?: number | null
+  breakeven_low?: number | null
+  breakeven_high?: number | null
+  regime_at_entry?: string | null
+  exit_plan?: Record<string, unknown> | null
 }
 
 export interface TradingDashboardPosition {

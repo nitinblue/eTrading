@@ -4,6 +4,7 @@ Workflow Scheduler — APScheduler setup for the workflow engine.
 Schedules:
     - Morning boot (5 min before market open)
     - Monitoring cycle (every 30 min during market hours)
+    - Intraday fast cycle (every 2 min for 0DTE desk) (G13)
     - EOD evaluation (3:30 PM ET)
     - Daily report (4:15 PM ET)
 """
@@ -73,6 +74,19 @@ class WorkflowScheduler:
             replace_existing=True,
         )
         logger.info(f"Scheduled monitoring cycle: every {self.config.cycle_frequency_minutes} min")
+
+        # 2b. Intraday fast cycle — 0DTE desk (G13)
+        self.scheduler.add_job(
+            self.engine.run_intraday_cycle,
+            IntervalTrigger(
+                minutes=2,
+                timezone=tz,
+            ),
+            id='intraday_fast_cycle',
+            name='0DTE Fast Cycle',
+            replace_existing=True,
+        )
+        logger.info("Scheduled 0DTE fast cycle: every 2 min")
 
         # 3. EOD evaluation
         eod_hour, eod_min = map(int, self.config.eod_eval_time.split(':'))

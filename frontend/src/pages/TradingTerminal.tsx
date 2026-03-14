@@ -150,6 +150,31 @@ function RiskPctBpCell({ value }: ICellRendererParams) {
   return <span style={{ color }}>{v.toFixed(1)}%</span>
 }
 
+function HealthCell({ value }: ICellRendererParams) {
+  if (!value || value === 'unknown') return <span className="text-zinc-600">--</span>
+  const colors: Record<string, { bg: string; text: string; label: string }> = {
+    healthy: { bg: 'bg-green-900/30', text: 'text-green-400', label: 'OK' },
+    tested: { bg: 'bg-yellow-900/30', text: 'text-yellow-400', label: 'TST' },
+    breached: { bg: 'bg-red-900/30', text: 'text-red-400', label: 'BRK' },
+    exit_triggered: { bg: 'bg-red-900/50', text: 'text-red-300', label: 'EXIT' },
+  }
+  const c = colors[value] || { bg: 'bg-zinc-800', text: 'text-zinc-400', label: value }
+  return <span className={clsx('text-[9px] px-1.5 py-[1px] rounded font-semibold', c.bg, c.text)}>{c.label}</span>
+}
+
+function PopCell({ value }: ICellRendererParams) {
+  if (value == null) return <span className="text-zinc-600">--</span>
+  const v = Number(value) * 100
+  const color = v >= 60 ? '#22c55e' : v >= 45 ? '#eab308' : '#ef4444'
+  return <span style={{ color, fontSize: '10px' }}>{v.toFixed(0)}%</span>
+}
+
+function RegimeCell({ value }: ICellRendererParams) {
+  if (!value) return <span className="text-zinc-600">--</span>
+  const colors: Record<string, string> = { R1: '#22c55e', R2: '#60a5fa', R3: '#f97316', R4: '#ef4444' }
+  return <span style={{ color: colors[value] || '#71717a', fontSize: '10px', fontWeight: 600 }}>{value}</span>
+}
+
 // ---------------------------------------------------------------------------
 // Column presets for Strategies grid
 // ---------------------------------------------------------------------------
@@ -200,6 +225,20 @@ function getStrategyColumnDefs(preset: StrategyPreset): (ColDef | ColGroupDef)[]
   const colRiskPctBP: ColDef = { field: 'max_risk_pct_total_bp', headerName: 'Risk%BP', width: 60, cellRenderer: RiskPctBpCell, ...CELL_R }
   const colRiskPctMargin: ColDef = { field: 'max_risk_pct_margin', headerName: 'Risk%M', width: 60, cellRenderer: RiskPctBpCell, ...CELL_R }
 
+  // MA Integration (P8)
+  const colHealth: ColDef = { field: 'health_status', headerName: 'Health', width: 50, cellRenderer: HealthCell, ...CELL_L }
+  const colPop: ColDef = { field: 'pop_at_entry', headerName: 'POP', width: 45, cellRenderer: PopCell, ...CELL_R }
+  const colRegime: ColDef = { field: 'regime_at_entry', headerName: 'Rgm', width: 35, cellRenderer: RegimeCell, ...CELL_L }
+  const colBE: ColDef = {
+    field: 'breakeven_low', headerName: 'BE', width: 80, ...CELL_R,
+    valueFormatter: (p: ValueFormatterParams) => {
+      const lo = p.data?.breakeven_low, hi = p.data?.breakeven_high
+      if (!lo && !hi) return '--'
+      return `${lo ? n(lo, 0) : '?'}-${hi ? n(hi, 0) : '?'}`
+    },
+    cellStyle: { ...GRID_STYLE, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontSize: '10px', color: '#a1a1aa' },
+  }
+
   // Meta
   const colSource: ColDef = { field: 'trade_source', headerName: 'Src', width: 50, ...CELL_L, cellStyle: { ...GRID_STYLE, display: 'flex', alignItems: 'center', fontSize: '10px', color: '#71717a' } }
   const colOpened: ColDef = {
@@ -226,13 +265,13 @@ function getStrategyColumnDefs(preset: StrategyPreset): (ColDef | ColGroupDef)[]
         { headerName: 'P&L', children: [colEntry, colPnl, colPnlPct] },
         colMaxRisk, colDelta, colTheta]
     case 'full':
-      return [colUnderlying, colWI, colType, colLegs, colDte, colQty,
+      return [colUnderlying, colWI, colHealth, colType, colLegs, colDte, colQty,
         colEntry, colMargin, colMarginPct, colMaxRisk, colRiskPctBP,
         { headerName: 'Greeks', children: [colDelta, colGamma, colTheta, colVega] },
-        colPnl, colPnlPct, colSource, colOpened]
+        colPnl, colPnlPct, colPop, colRegime, colBE, colSource, colOpened]
     case 'default':
     default:
-      return [colUnderlying, colWI, colType, colLegs, colDte, colQty,
+      return [colUnderlying, colWI, colHealth, colType, colLegs, colDte, colQty,
         colMargin, colMaxRisk, colDelta, colTheta, colPnl, colPnlPct]
   }
 }

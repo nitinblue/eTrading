@@ -12,6 +12,7 @@ from collections import defaultdict
 
 from tastytrade import Session, Account
 from tastytrade.instruments import Equity, Option
+import asyncio
 import os
 import re
 #from adapters.base import BrokerAdapter
@@ -170,7 +171,13 @@ class TastytradeAdapter(BrokerAdapter):
             )
             
             # Get accounts
-            accounts = Account.get(self.session)
+            result = Account.get(self.session)
+            if asyncio.iscoroutine(result):
+                accounts = asyncio.run(result)
+            else:
+                accounts = result
+            if not isinstance(accounts, list):
+                accounts = [accounts]
             self.accounts = {a.account_number: a for a in accounts}
             
             logger.info(f"Loaded {len(self.accounts)} account(s): {list(self.accounts.keys())}")
@@ -202,7 +209,9 @@ class TastytradeAdapter(BrokerAdapter):
                 raise ValueError("Not authenticated")
             
             balance_data = self.account.get_balances(self.session)
-            
+            if asyncio.iscoroutine(balance_data):
+                balance_data = asyncio.run(balance_data)
+
             return {
                 'cash_balance': Decimal(str(balance_data.cash_balance or 0)),
                 'buying_power': Decimal(str(balance_data.derivative_buying_power or 0)),
@@ -234,7 +243,9 @@ class TastytradeAdapter(BrokerAdapter):
                 self.session,
                 include_marks=True  # ← CORRECT FLAG (for underlying price)
             )
-            
+            if asyncio.iscoroutine(positions_data):
+                positions_data = asyncio.run(positions_data)
+
             if not positions_data:
                 logger.info("No positions found")
                 return []
@@ -344,6 +355,8 @@ class TastytradeAdapter(BrokerAdapter):
                     self.session,
                     underlying
                 )
+                if asyncio.iscoroutine(chain):
+                    chain = asyncio.run(chain)
                 
                 if not chain:
                     logger.warning(f"No option chain data for {underlying}")
@@ -410,8 +423,9 @@ class TastytradeAdapter(BrokerAdapter):
         This is slower but more reliable for individual options
         """
         
-        from tastytrade import DXLinkStreamer
-        import asyncio
+        from tastytrade.streamer import DXLinkStreamer
+        # NOTE: This method uses old v11 streaming API (subscribe_greeks, listen)
+        # and may not work with v12. Use the DXLink pattern in the main adapter instead.
         
         async def fetch_greeks():
             # Build symbol list
@@ -477,6 +491,8 @@ class TastytradeAdapter(BrokerAdapter):
                 raise ValueError("Not authenticated")
             
             orders_data = self.account.get_live_orders(self.session)
+            if asyncio.iscoroutine(orders_data):
+                orders_data = asyncio.run(orders_data)
             orders = []
             
             for order_data in orders_data:

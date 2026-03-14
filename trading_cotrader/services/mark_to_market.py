@@ -6,7 +6,8 @@ Updates open WhatIf (and real) trades with current market data:
   2. Fetch current Greeks for option legs
   3. Update LegORM and TradeORM current_price + current Greeks
   4. Compute trade-level P&L
-  5. Refresh containers for UI
+  5. Run health check via MA's check_trade_health() (G4)
+  6. Refresh containers for UI
 
 Called by:
   - Engine monitoring cycle (every 30 min)
@@ -22,6 +23,7 @@ import re
 
 from trading_cotrader.core.database.session import session_scope
 from trading_cotrader.core.database.schema import TradeORM, LegORM, SymbolORM
+from trading_cotrader.services.tradespec_bridge import trade_to_tradespec
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +87,10 @@ class MarkToMarketService:
         print(f"Marked {result.trades_marked} trades, total P&L: ${result.total_pnl:.2f}")
     """
 
-    def __init__(self, broker, container_manager=None):
+    def __init__(self, broker, container_manager=None, ma=None):
         self.broker = broker
         self.container_manager = container_manager
+        self.ma = ma  # MarketAnalyzer instance for health checks (G4)
 
     def mark_all_open_trades(self, trade_type: str = None) -> MarkToMarketResult:
         """
@@ -174,6 +177,9 @@ class MarkToMarketService:
                     result.trades_failed += 1
                     result.errors.append(f"{trade.underlying_symbol}: {e}")
                     logger.error(f"Error marking trade {trade.id}: {e}")
+
+            # Run health checks via MA (G4)
+            self._run_health_checks(open_trades)
 
             # Commit all updates
             session.commit()
@@ -289,3 +295,89 @@ class MarkToMarketService:
         except Exception as e:
             logger.error(f"Failed to fetch Greeks: {e}")
             return {}
+
+    def _run_health_checks(self, trades: List[TradeORM]) -> None:
+        """Run MA health checks on all marked trades (G4).
+
+        Updates trade.health_status and trade.health_checked_at.
+        Requires MA instance with regime and technicals services.
+        Silently skips if MA is unavailable.
+        """
+        if not self.ma:
+            return
+
+        try:
+            from market_analyzer import check_trade_health
+        except ImportError:
+            return
+
+        now = datetime.utcnow()
+        checked = 0
+
+        for trade in trades:
+            if not trade.is_open or not trade.current_price:
+                continue
+
+            spec = trade_to_tradespec(trade)
+            if not spec:
+                continue
+
+            # Get current regime + technicals from MA
+            try:
+                regime = self.ma.regime.detect(trade.underlying_symbol)
+                technicals = self.ma.technicals.snapshot(trade.underlying_symbol)
+            except Exception as e:
+                logger.debug(f"Skipping health check for {trade.underlying_symbol}: {e}")
+                continue
+
+            # Compute DTE
+            dte = None
+            for leg in trade.legs:
+                if leg.symbol and leg.symbol.expiration:
+                    exp = leg.symbol.expiration
+                    if isinstance(exp, datetime):
+                        exp = exp.date()
+                    from datetime import date as date_type
+                    dte = (exp - date_type.today()).days
+                    break
+
+            if dte is None:
+                continue
+
+            # Get entry regime
+            entry_regime_id = None
+            if trade.regime_at_entry:
+                try:
+                    entry_regime_id = int(trade.regime_at_entry.replace('R', ''))
+                except (ValueError, AttributeError):
+                    pass
+
+            contracts = max(abs(leg.quantity) for leg in trade.legs if leg.quantity) if trade.legs else 1
+
+            try:
+                health = check_trade_health(
+                    trade_id=trade.id,
+                    trade_spec=spec,
+                    entry_price=float(trade.entry_price or 0),
+                    contracts=contracts,
+                    current_mid_price=float(trade.current_price or 0),
+                    dte_remaining=dte,
+                    regime=regime,
+                    technicals=technicals,
+                    entry_regime_id=entry_regime_id,
+                )
+
+                trade.health_status = health.status
+                trade.health_checked_at = now
+                checked += 1
+
+                if health.status != 'healthy':
+                    logger.info(
+                        f"Health: {trade.underlying_symbol} = {health.status} "
+                        f"(action: {health.overall_action})"
+                    )
+            except Exception as e:
+                logger.debug(f"Health check failed for {trade.id}: {e}")
+
+        if checked:
+            logger.info(f"Health checks completed for {checked} trades")

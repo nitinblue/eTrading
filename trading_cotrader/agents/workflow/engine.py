@@ -117,11 +117,30 @@ class WorkflowEngine:
         # eTrading owns credentials, passes pre-authenticated sessions to MarketAnalyzer).
         self._market_data = None
         self._market_metrics = None
+        self._account_provider = None
+        self._watchlist_provider = None
+        self._ma = None  # MarketAnalyzer instance for health checks + adjustments
         tt_adapter = adapters.get('tastytrade')
         if tt_adapter and hasattr(tt_adapter, 'get_market_providers'):
             try:
-                self._market_data, self._market_metrics = tt_adapter.get_market_providers()
+                providers = tt_adapter.get_market_providers()
+                # connect_from_sessions returns 4-tuple: (market_data, metrics, account, watchlist)
+                if len(providers) >= 4:
+                    self._market_data, self._market_metrics, self._account_provider, self._watchlist_provider = providers
+                else:
+                    self._market_data, self._market_metrics, self._account_provider = providers[:3]
                 logger.info("Market providers extracted from broker adapter — single connection")
+
+                # Build MA instance for downstream services (G4, G9, G22, G23)
+                from market_analyzer import MarketAnalyzer
+                from market_analyzer.data import DataService
+                self._ma = MarketAnalyzer(
+                    data_service=DataService(),
+                    market_data=self._market_data,
+                    market_metrics=self._market_metrics,
+                    account_provider=self._account_provider,
+                    watchlist_provider=self._watchlist_provider,
+                )
             except Exception as e:
                 logger.warning(f"Could not extract market providers from broker: {e}")
 
@@ -140,9 +159,12 @@ class WorkflowEngine:
         self.scout = ScoutAgent(
             container=research_container, config=self.config,
             market_data=self._market_data, market_metrics=self._market_metrics,
+            watchlist_provider=self._watchlist_provider,
         )
         self.steward = StewardAgent(container_manager=self.container_manager, config=self.config)
         self.maverick = MaverickAgent(container_manager=self.container_manager, config=self.config, broker=broker)
+        # Pass MA instance to Maverick for health checks + analytics gates
+        self.maverick._ma = self._ma
         self.atlas = AtlasAgent(config=self.config)
 
         # Interaction manager (command router, not an agent)
@@ -378,6 +400,35 @@ class WorkflowEngine:
             except Exception as e:
                 logger.warning(f"Auto-close failed: {e}")
 
+        # 8b. Adjustment pipeline for TESTED/BREACHED positions (G9, G23)
+        if hasattr(self, '_ma') and self._ma:
+            try:
+                from trading_cotrader.services.trade_health_service import TradeHealthService
+                health_service = TradeHealthService(ma=self._ma, broker=self.broker)
+                health_result = health_service.check_all_positions()
+                for action in health_result.actions:
+                    if action.action == 'CLOSE' and action.urgency == 'immediate':
+                        # Auto-close via lifecycle
+                        try:
+                            from trading_cotrader.services.trade_lifecycle import TradeLifecycleService
+                            lifecycle = TradeLifecycleService(container_manager=self.container_manager)
+                            lifecycle.close_trade(action.trade_id, reason=f'adjustment:{action.adjustment_type}')
+                            logger.info(f"Auto-closed {action.ticker} ({action.rationale})")
+                        except Exception as e:
+                            logger.warning(f"Auto-close adjustment failed for {action.ticker}: {e}")
+                    elif action.action in ('ADJUST', 'ROLL'):
+                        # Flag for human execution (adjustments = new orders)
+                        self.context.setdefault('pending_adjustments', []).append({
+                            'trade_id': action.trade_id,
+                            'ticker': action.ticker,
+                            'type': action.adjustment_type,
+                            'urgency': action.urgency,
+                            'rationale': action.rationale,
+                        })
+                        logger.info(f"Adjustment queued: {action.ticker} {action.adjustment_type} ({action.urgency})")
+            except Exception as e:
+                logger.debug(f"Adjustment pipeline skipped: {e}")
+
         # 9. Run ML learning after closes (periodic — every 10th cycle)
         cycle = self.context.get('cycle_count', 0)
         if cycle % 10 == 0 and cycle > 0:
@@ -462,6 +513,41 @@ class WorkflowEngine:
         self._sync_broker_positions()
         self._refresh_containers()
         self._run_agent_pipeline()
+
+    def run_intraday_cycle(self):
+        """Fast cycle for 0DTE positions (G13). Called every 2 min during market hours.
+
+        Only processes desk_0dte trades. IMMEDIATE signals auto-close.
+        """
+        if self.state != WorkflowStates.MONITORING.value:
+            return
+
+        if not self._ma:
+            return
+
+        try:
+            from trading_cotrader.services.intraday_monitor import IntradayMonitorService
+            service = IntradayMonitorService(ma=self._ma)
+            result = service.run_fast_cycle()
+
+            if not result.signals:
+                return
+
+            # Auto-close IMMEDIATE signals
+            for signal in result.signals:
+                if signal.action == 'CLOSE' and signal.trade_id:
+                    try:
+                        from trading_cotrader.services.trade_lifecycle import TradeLifecycleService
+                        lifecycle = TradeLifecycleService(container_manager=self.container_manager)
+                        lifecycle.close_trade(signal.trade_id, reason=f'intraday:{signal.signal_type}')
+                        logger.info(f"0DTE auto-close: {signal.ticker} ({signal.message})")
+                        self._refresh_containers()
+                    except Exception as e:
+                        logger.warning(f"0DTE auto-close failed for {signal.ticker}: {e}")
+                elif signal.action == 'ALERT':
+                    logger.info(f"0DTE alert: {signal.ticker} — {signal.message}")
+        except Exception as e:
+            logger.debug(f"Intraday cycle skipped: {e}")
 
     def run_once(self):
         """Run a single complete cycle for testing."""

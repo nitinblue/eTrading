@@ -393,7 +393,26 @@ class TradeORM(Base):
     
     # === BROKER MAPPING ===
     broker_trade_id = Column(String(100))
-    
+
+    # === MA INTEGRATION (G2: Analytics Fields) ===
+    # Exit plan — full ExitPlan model from MA, serialized
+    exit_plan_json = Column(JSON)
+    # Health status — updated by mark-to-market + health check
+    health_status = Column(String(20), default='unknown')  # unknown, healthy, tested, breached, exit_triggered
+    health_checked_at = Column(DateTime)
+    # Entry analytics — computed by MA at booking, immutable
+    pop_at_entry = Column(Numeric(5, 4))      # Probability of profit (0.0-1.0)
+    ev_at_entry = Column(Numeric(10, 2))       # Expected value in dollars
+    breakeven_low = Column(Numeric(10, 4))     # Lower breakeven price
+    breakeven_high = Column(Numeric(10, 4))    # Upper breakeven price
+    wing_width = Column(Numeric(10, 2))        # Wing width in points (e.g. 5.0)
+    income_yield_roc = Column(Numeric(5, 4))   # Return on capital at entry (e.g. 0.168)
+    regime_at_entry = Column(String(20))       # Regime ID when booked (e.g. "R1")
+    # History — appended over trade lifetime
+    adjustment_history = Column(JSON)          # List of adjustment actions taken
+    # Decision lineage — gate-by-gate reasoning at entry
+    decision_lineage = Column(JSON)            # {gates: [...], market_context: {...}, rationale: "..."}
+
     # Relationships
     portfolio = relationship("PortfolioORM", back_populates="trades")
     strategy = relationship("StrategyORM")

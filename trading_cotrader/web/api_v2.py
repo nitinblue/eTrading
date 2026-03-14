@@ -141,6 +141,18 @@ def _serialize_trade(trade: TradeORM) -> dict:
         'notes': trade.notes,
         'tags': trade.tags,
         'legs': [_serialize_leg(leg) for leg in (trade.legs or [])],
+        # G2/P8: MA integration fields
+        'health_status': trade.health_status,
+        'health_checked_at': _iso(trade.health_checked_at),
+        'pop_at_entry': _dec(trade.pop_at_entry),
+        'ev_at_entry': _dec(trade.ev_at_entry),
+        'breakeven_low': _dec(trade.breakeven_low),
+        'breakeven_high': _dec(trade.breakeven_high),
+        'wing_width': _dec(trade.wing_width),
+        'income_yield_roc': _dec(trade.income_yield_roc),
+        'regime_at_entry': trade.regime_at_entry,
+        'exit_plan': trade.exit_plan_json,
+        'adjustment_history': trade.adjustment_history,
     }
 
 
@@ -391,6 +403,43 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             if not trade:
                 raise HTTPException(404, f"Trade '{trade_id}' not found")
             return _serialize_trade(trade)
+
+    # ------------------------------------------------------------------
+    # Trade Explain + Health (G14, G15)
+    # ------------------------------------------------------------------
+
+    @router.get("/trades/{trade_id}/explain")
+    async def explain_trade(trade_id: str):
+        """Full decision lineage for a trade (G14)."""
+        from trading_cotrader.services.decision_lineage import DecisionLineageService
+        import asyncio
+        service = DecisionLineageService()
+        explanation = await asyncio.to_thread(service.explain_trade, trade_id)
+        if not explanation:
+            raise HTTPException(404, f"Trade '{trade_id}' not found")
+        return {
+            'trade_id': explanation.trade_id,
+            'ticker': explanation.ticker,
+            'strategy_type': explanation.strategy_type,
+            'status': explanation.status,
+            'gates': [{'name': g.name, 'passed': g.passed, 'value': g.value,
+                        'threshold': g.threshold, 'detail': g.detail} for g in explanation.gates],
+            'market_context': explanation.market_context,
+            'commentary': explanation.commentary,
+            'data_gaps': explanation.data_gaps,
+            'pop_at_entry': explanation.pop_at_entry,
+            'ev_at_entry': explanation.ev_at_entry,
+            'breakeven_low': explanation.breakeven_low,
+            'breakeven_high': explanation.breakeven_high,
+            'regime_at_entry': explanation.regime_at_entry,
+            'income_yield_roc': explanation.income_yield_roc,
+            'exit_reason': explanation.exit_reason,
+            'exit_price': explanation.exit_price,
+            'total_pnl': explanation.total_pnl,
+            'days_held': explanation.days_held,
+            'health_status_at_exit': explanation.health_status_at_exit,
+            'adjustment_history': explanation.adjustment_history,
+        }
 
     # ------------------------------------------------------------------
     # Trades (all, paginated)

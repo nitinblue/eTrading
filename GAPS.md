@@ -1,110 +1,181 @@
 # Money-Making Machine — Standing Gap Analysis
-# Last Updated: 2026-03-11 (Session 40)
-# Review this every session. Cross off what's done. Add what emerges.
+# Last Updated: 2026-03-14 (Session 41)
+# SINGLE SOURCE OF TRUTH: Review every session. Update after changes.
 
 ## THE MISSION
 Deploy $250K systematically. Generate cash flow through options trading.
+Zero human decisions during the trading day. MA is the brain, eTrading is the hands.
 Agents own their desk WhatIf P&L — fully, no excuses.
-Humans promote WhatIf → real when the track record proves out.
 
 ---
 
-## ✅ FULL PIPELINE — BUILT AND WORKING
+## MASTER GAP TABLE (MA Integration + Platform)
 
-The end-to-end trading lifecycle is implemented:
-
-| Step | Command | What | Service/File |
-|------|---------|------|-------------|
-| Screen + rank | `scan` | Scout screens watchlist, Maverick applies 6 gates | scout.py, maverick.py |
-| Review proposals | `propose` | Show scored trade specs with rationale | interaction.py |
-| Book to WhatIf | `deploy` | Book trades to WhatIf portfolio | trade_booking_service.py |
-| Go live preview | `execute <id>` | Dry-run preflight: buying power, fees, risk | tastytrade_adapter.py |
-| Place real order | `execute <id> --confirm` | Place order on TastyTrade | adapter.place_order() |
-| Check fills | `orders` | Auto-update trade status on fill | interaction.py |
-| Mark to market | `mark` | Live quotes + Greeks via DXLink | mark_to_market.py |
-| Exit signals | `exits` | Profit target, stop loss, DTE, expired | exit_monitor.py |
-| Close trades | `close auto` | Auto-close URGENT + profit target signals | trade_lifecycle.py |
-| Close specific | `close <id>` | Manual close with reason | trade_lifecycle.py |
-| ML learning | `learn` | Q-learning from closed trade outcomes | trade_learner.py |
-| Performance | `perf [desk]` | Win rate, Sharpe, P&L by desk | performance_metrics.py |
-
-Supporting infrastructure:
-- 3 trading desks (0DTE $10K, medium $10K, LEAPs $20K)
-- Position sizing (2% capital / max risk per spread)
-- Duplicate prevention (underlying:strategy key)
-- Exit profiles by strategy type (0DTE: no stop/90% TP, credit: 50% TP/2× SL, etc.)
-- Event system with full audit trail (market + decision context)
-- SaaS credential pattern (broker sessions passed to MarketAnalyzer)
-- Expired options handled gracefully (keep last price, exit monitor catches DTE ≤ 0)
-
----
-
-## 🔴 MUST VALIDATE — Prove the Machine Works
-
-### V1: End-to-End with Live Broker
-**What:** Run full `scan → propose → deploy → mark → exits` with real broker connection and real market data.
-**Why:** Ranking bug (.ranked → .top_trades) was preventing proposals from flowing. Fixed s38b. Need to validate the fix produces real proposals.
-**How:** Connect broker, run `scan`, verify proposals flow, `deploy` to WhatIf, `mark` to get live prices, `exits` to check.
-
-### V2: Track WhatIf Performance Over 5+ Trading Days
-**What:** Book trades via the pipeline, let mark-to-market and exit monitor run daily, close when signals fire.
-**Why:** This IS the product. Agent desk P&L is what proves the system works. No excuses on cloud.
+| # | Gap | Phase | Priority | Status | Implementation |
+|---|-----|-------|----------|--------|----------------|
+| **G1** | TradeSpec Bridge | P1 | CRITICAL | **DONE** | `services/tradespec_bridge.py` — trade_to_tradespec(), trade_to_dxlink_symbols(), trade_to_monitor_params(). 17 tests. |
+| **G2** | Schema: Analytics Fields | P1 | CRITICAL | **DONE** | 13 columns on TradeORM: exit_plan_json, health_status, health_checked_at, pop_at_entry, ev_at_entry, breakeven_low/high, wing_width, income_yield_roc, regime_at_entry, adjustment_history, decision_lineage |
+| **G3** | Exit Monitor → MA | P2 | CRITICAL | **DONE** | exit_monitor.py rewritten: _check_trade_via_ma() calls MA monitor_exit_conditions(), maps signals. Local fallback. time_of_day passed (G21). |
+| **G4** | Health Status Tracking | P2 | CRITICAL | **DONE** | _run_health_checks() in mark_to_market.py. Calls check_trade_health() per trade. Stores health_status + health_checked_at. |
+| **G5** | ExitPlan Storage | P2 | HIGH | **DONE** | maverick._store_exit_rules() serializes full ExitPlan to exit_plan_json. Flat fields kept for backward compat. |
+| **G6** | POP/EV Gates | P3 | HIGH | **DONE** | _ma_analytics_gates(): Gate 7 POP>=45%, Gate 8 EV>$0, Gate 9 income_entry confirmed. POP/EV stored at entry. |
+| **G7** | Account Filtering | P3 | HIGH | **DONE** | Gate 3b: per-trade BP check. _get_available_buying_power() reads portfolio or MA account_provider. |
+| **G8** | Position Sizing → MA | P3 | MEDIUM | **DONE** | _compute_position_size() tries MA spec.position_size() first, falls back to local. |
+| **G9** | Adjustment Pipeline | P4 | HIGH | **DONE** | `services/trade_health_service.py`. check_all_positions() → recommend_action(). Engine step 8b: IMMEDIATE→auto-close, ADJUST→queued. |
+| **G10** | Watchlist-Driven Scanning | P5 | MEDIUM | **DONE** | Engine 4-tuple providers. Scout._resolve_tickers() tries MA-Income+MA-Sectors, YAML fallback. |
+| **G11** | Two-Phase Scan | P5 | MEDIUM | **DONE** | Scout: screen→rank screened candidates only. skip_intraday=True. |
+| **G12** | Auto-Book (No Human Review) | P5 | HIGH | **DONE** | Engine step 7b auto-books. 11 gates are the filter. run_once() auto-advances past RECOMMENDATION_REVIEW. |
+| **G13** | Intraday Fast Cycle (0DTE) | P6 | MEDIUM | **DONE** | `services/intraday_monitor.py`. Engine.run_intraday_cycle() every 2min. IMMEDIATE→auto-close. Scheduler wired. |
+| **G14** | Decision Lineage / Learning Mode | P7 | MEDIUM | **DONE** | `services/decision_lineage.py`. explain_trade() + build_lineage_at_entry(). Maverick stores at booking. |
+| **G15** | Frontend: Health/Adjustments | P8 | LOW | **DONE** | API: health/POP/BE/regime/exit_plan in trade serialization. GET /trades/{id}/explain. HealthCell/PopCell/RegimeCell in grid. |
+| **G16** | Breakeven Tracking | P2 | MEDIUM | **DONE** | compute_breakevens() at entry. Stored in breakeven_low/high. POP, EV, income_yield_roc also stored. |
+| **G17** | Greeks from MA | P8 | LOW | DEFERRED | Broker Greeks work fine. aggregate_greeks() can validate later. Not blocking. |
+| **G18** | Regime Change Detection | P2 | HIGH | **DONE** | regime_at_entry stored at booking. entry_regime_id passed to monitor_exit_conditions(). |
+| **G19** | Execution Quality Gate | P3 | HIGH | **DONE** | Gate 11: validate_execution_quality() with broker leg quotes. Rejects WIDE_SPREAD/ILLIQUID. |
+| **G20** | Entry Time Window | P5 | MEDIUM | **DONE** | Gate 10: checks entry_window_start/end from TradeSpec vs current time. |
+| **G21** | Time-of-Day Exit Urgency | P2 | HIGH | **DONE** | time_of_day passed in exit monitor _check_trade_via_ma(). Wired in G3. |
+| **G22** | Overnight Risk Assessment | P4 | HIGH | **DONE** | trade_health_service.assess_overnight_risk(). CLOSE_BEFORE_CLOSE flagged. |
+| **G23** | Deterministic Adjustment | P4 | CRITICAL | **DONE** | recommend_action() exclusively. BREACHED+R4→CLOSE, TESTED+R3→ROLL, SAFE→HOLD. Zero decisions. |
+| **G24** | Performance Feedback Loop | P7 | MEDIUM | **DONE** | build_trade_outcomes() exports closed trades for MA calibrate_weights(). |
+| **G25** | Commentary / Debug Mode | P7 | HIGH | **DONE** | decision_lineage stores commentary. explain_trade() returns it. debug=True wiring ready. |
+| **G26** | Data Gap Self-ID | P7 | MEDIUM | **DONE** | decision_lineage stores data_gaps. explain_trade() returns them. |
+| **G27** | Market Data → MA Only | — | MEDIUM | DEFERRED | Refactoring: route all market data through MA, not direct DXLink. Multi-broker enabler. Not blocking systematic flow. |
 
 ---
 
-## 🟡 BUILD NEXT — Product Quality
+## PHASE SUMMARY
 
-### Trade Execution Rail Guard
-Prevent accidental trade execution by Claude or automation. Defense in depth:
-1. **Environment variable gate** — `TRADE_EXECUTION_ENABLED=false` in `.env`. Execute endpoint refuses to place orders unless explicitly `true`. Default off.
-2. **Read-only broker mode** — `TastytradeAdapter(read_only=True)` disables all order-placement methods at the adapter level. Even if `execute --confirm` is called, adapter refuses.
-Both layers required. API-level + adapter-level = no single point of failure.
+| Phase | Name | Gaps | Status |
+|-------|------|------|--------|
+| **P1** | Foundation | G1, G2 | **DONE** |
+| **P2** | Exit Intelligence | G3, G4, G5, G16, G18, G21 | **DONE** |
+| **P3** | Entry Intelligence | G6, G7, G8, G19 | **DONE** |
+| **P4** | Adjustment Pipeline | G9, G22, G23 | **DONE** |
+| **P5** | Autonomous Entry | G10, G11, G12, G20 | **DONE** |
+| **P6** | 0DTE Fast Cycle | G13 | **DONE** |
+| **P7** | Learning Mode | G14, G24, G25, G26 | **DONE** |
+| **P8** | Frontend & Polish | G15 | **DONE** |
 
-### Confidence Framework
-Every event gets a confidence level based on data lineage. Over time: report habitual vs merit-based actions. "I would rather take no action than compulsions."
-- Data freshness (how old is the quote/regime/ranking?)
-- Data completeness (how many fields populated vs empty?)
-- Decision lineage (which data points informed each gate?)
-
-### Daily P&L Report
-Morning report: overnight changes, theta decay earned, exit signals, positions approaching expiration, cash flow this week/month.
-
-### Real-Time Streaming for 0DTE
-30-min polling too slow for day trades. IntradayService (REQ-5) built in market_analyzer —
-needs to be wired into engine's monitoring cycle with shorter interval for 0DTE desk.
-
-### Trade Journal / Decision Analysis
-Events exist but nothing aggregates learnings. After closing: was entry timing good? Did exit rules fire correctly?
-
-### Notifications
-Slack/email on: exit signal, trade booked, black swan, P&L threshold.
+**25 of 27 gaps closed. G17 + G27 deferred (not blocking).**
 
 ---
 
-## 🟢 SAAS — Multi-User Platform
+## SYSTEM BOUNDARY
 
-| Item | What | Status |
-|------|------|--------|
-| User model + auth | OAuth/SSO, user table, login | Not started |
-| Multi-tenancy | Tenant-scoped DB queries | Not started |
-| Desk onboarding UI | Wizard for new users (create desks, allocate capital) | CLI only (`setup-desks`) |
-| Broker account linking | Each user connects their own broker | Single-user only |
-| PostgreSQL | Replace SQLite | Not started |
-| Cloud deployment | Docker, K8s, async task queue | Not started |
-| API rate limiting | Quotas per user | Not started |
-| Multi-broker routing | Route orders by portfolio/broker | BrokerRouter exists, single broker |
+```
+MA  = pure functions. Takes inputs, returns decisions. NEVER fetches, polls, or schedules.
+eT  = orchestrator. Fetches data from broker, decides WHEN to call MA, executes results.
+```
+
+| Responsibility | Owner |
+|---|---|
+| Market data (quotes, Greeks, chains, metrics) | MA (via providers from eTrading) |
+| Analysis (regime, technicals, ranking, POP, exits) | MA |
+| Portfolio state (positions, orders, fills) | eTrading |
+| Order execution (place, cancel, retry) | eTrading |
+| Risk limits (concentration, slots, margin) | eTrading |
+| Polling/scheduling (when to call MA) | eTrading |
 
 ---
 
-## MARKET ANALYZER REQUIREMENTS
+## MAVERICK GATES (11 total, s41)
 
-| Req | What | Status |
-|-----|------|--------|
-| ~~REQ-1~~ | `dxlink_symbols` on TradeSpec → `.SPY260327P580` format | ✅ DONE (s38b) |
-| ~~REQ-2~~ | `position_size(capital, risk_pct)` on TradeSpec | ✅ DONE (s38b) |
-| ~~REQ-3~~ | `exit_plan: ExitPlan` field on TradeSpec | ✅ DONE (s38b) |
-| ~~REQ-5~~ | IntradayService for 0DTE signals (`ma.intraday.monitor()`) | ✅ DONE (s38b) |
-| REQ-6 | Backtest harness | Deferred (not needed now) |
+| # | Gate | Source | Threshold |
+|---|------|--------|-----------|
+| 1 | Verdict | Existing | not no_go |
+| 2 | Score | Existing | >= 0.35 |
+| 3 | Trade spec has legs | Existing | legs exist |
+| 3b | Buying power | G7 | wing_width×100 <= available BP |
+| 4 | Duplicate prevention | Existing | unique ticker:strategy |
+| 5 | Position limit | Existing | under max_positions |
+| 6 | ML score | Existing | > -0.5 |
+| 7 | POP | G6 | >= 45% |
+| 8 | EV | G6 | > $0 |
+| 9 | Income entry | G6 | confirmed (score >= 0.60) |
+| 10 | Entry time window | G20 | within start-end |
+| 11 | Execution quality | G19 | GO (not WIDE_SPREAD/ILLIQUID) |
+
+---
+
+## FULLY SYSTEMATIC TRADING DAY
+
+### Morning — ZERO decisions
+1. Engine boots → pulls tickers from TastyTrade watchlists (G10)
+2. Two-phase scan: screen → rank → account filter (G11, G7)
+3. Per-candidate: POP, EV, income_entry, breakevens from MA (G6)
+4. 11 gates filter — only high-confidence pass (G12)
+5. Auto-book to WhatIf desks (G12)
+6. Decision lineage logged (G14)
+
+### Market Hours — ZERO decisions
+7. Every 30 min: mark-to-market + health check (G4)
+8. MA decides: HOLD / CLOSE / ADJUST (G3)
+9. Auto-close on exit signals (G3, G18)
+10. Adjustments: IMMEDIATE→auto-close, ADJUST→queued (G9)
+11. 0DTE desk: 2-min fast cycle (G13)
+12. Overnight risk before close (G22)
+
+### End of Day — ZERO decisions
+13. P&L report
+14. ML learning on closed trades
+15. Full decision lineage logged (G14)
+
+### Human touches ONLY
+- Place broker orders (WhatIf → real promotion)
+- Execute queued adjustments (new multi-leg orders)
+- Periodic desk P&L review (weekly)
+
+---
+
+## VALIDATION NEEDED
+
+| # | What | Why | How |
+|---|------|-----|-----|
+| V1 | End-to-end with live broker | Prove full pipeline works with real market data | Connect broker, `scan`, verify proposals, `deploy`, `mark`, `exits` |
+| V2 | Track WhatIf 5+ trading days | Agent desk P&L is the product | Book trades, run daily, measure win rate + Sharpe |
+| V3 | 0DTE fast cycle test | Verify 2-min signals fire correctly | Open 0DTE position, watch intraday signals |
+
+---
+
+## PRODUCT QUALITY (not blocking systematic flow)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Trade execution rail guard | TODO | Env var gate + read-only adapter mode. Defense in depth. |
+| Daily P&L report | TODO | Morning: overnight changes, theta earned, exits, cash flow |
+| Notifications | TODO | Slack/email: exit signal, trade booked, black swan, P&L |
+| Trade journal / decision analysis | **DONE** (G14) | Decision lineage + explain endpoint |
+| Confidence framework | **DONE** (G25, G26) | Commentary + data_gaps from MA |
+
+---
+
+## SAAS (future)
+
+| Item | Status |
+|------|--------|
+| User model + auth (OAuth/SSO) | Not started |
+| Multi-tenancy (scoped queries) | Not started |
+| Desk onboarding UI | CLI only |
+| Broker account linking | Single-user |
+| PostgreSQL | Not started |
+| Cloud deployment (Docker/K8s) | Not started |
+| Multi-broker routing | G27 deferred |
+
+---
+
+## MA DEPENDENCY STATUS (all DONE)
+
+| MA Gap | What | Status |
+|--------|------|--------|
+| MA-G01 | recommend_action() — deterministic adjustment | **DONE** |
+| MA-G02 | validate_execution_quality() — liquidity check | **DONE** |
+| MA-G03 | entry_window on TradeSpec | **DONE** |
+| MA-G04 | time_of_day on monitor | **DONE** |
+| MA-G05 | assess_overnight_risk() | **DONE** |
+| MA-G06 | auto_select on scan() | OPEN (nice-to-have) |
+| MA-G07 | TradeOutcome + calibrate_weights() | **DONE** |
+| MA-G08 | commentary + debug=True | **DONE** |
+| MA-G09 | data_gaps on outputs | **DONE** |
 
 ---
 
@@ -112,10 +183,23 @@ Slack/email on: exit signal, trade booked, black swan, P&L threshold.
 
 | Metric | Target | Current |
 |--------|--------|---------|
-| Trades proposed per week | 5-10 | TBD (validate with live scan) |
+| Trades proposed / week | 5-10 | TBD (validate V1) |
 | WhatIf P&L this week | Track | TBD |
 | Exit signals acted on | 100% | TBD |
-| Win rate (closed trades) | >60% | TBD |
-| Average days held | 15-30 | TBD |
+| Win rate (closed) | >60% | TBD |
+| Avg days held | 15-30 | TBD |
 | Capital utilization | 50-80% | TBD |
-| Theta decay earned/day | >0 | TBD |
+| Theta earned / day | >0 | TBD |
+
+---
+
+## SESSION LOG
+
+| Session | Date | Key Outcome |
+|---------|------|-------------|
+| **s41** | Mar 14 | **MA Integration complete.** 25/27 gaps closed (G17, G27 deferred). P1-P8 all done. 4 new services created. 11 Maverick gates. Fully systematic trading day. 185 tests. |
+| s40 | Mar 11 | Fixed plan timeout. CLAUDE.md refocused. Rail guard added to GAPS. |
+| s39 | Mar 11 | Fixed ranking bug. CLAUDE.md rewritten. MA REQ-1→5. 168 tests. |
+| s38 | Mar 10 | Stallion deletion. UI consolidation. SaaS credentials. Daily plan. |
+| s37b | Mar 9 | Trading desks. Full lifecycle. 3 desks. 170 tests. |
+| s37 | Mar 9 | Full trading workflow. Maverick 6 gates. 163 tests. |
