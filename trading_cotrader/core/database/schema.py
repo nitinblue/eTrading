@@ -1143,6 +1143,26 @@ class ResearchSnapshotORM(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class MLStateORM(Base):
+    """ML learning state — bandits, thresholds, drift alerts.
+
+    One row per state_type: 'bandits', 'thresholds', 'drift_alerts', 'pop_factors'.
+    JSON column holds the serialized state.
+    """
+    __tablename__ = 'ml_state'
+
+    __table_args__ = (
+        UniqueConstraint('state_type', name='uix_ml_state_type'),
+    )
+
+    id = Column(String(36), primary_key=True)
+    state_type = Column(String(50), nullable=False)  # bandits, thresholds, drift_alerts, pop_factors
+    state_json = Column(JSON, nullable=False)
+    trades_analyzed = Column(Integer, default=0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class MacroSnapshotORM(Base):
     """
     Persisted MacroContext — one row per snapshot_date.

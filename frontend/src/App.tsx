@@ -10,13 +10,16 @@ import { DataExplorerPage } from './pages/DataExplorerPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TradingTerminal } from './pages/TradingTerminal'
 import { ResearchDashboardPage } from './pages/ResearchDashboardPage'
+import SystemOverviewPage from './pages/SystemOverviewPage'
+import DeskPerformancePage from './pages/DeskPerformancePage'
 import { ToastContainer } from './components/common/Toast'
 
 export default function App() {
   return (
     <AppShell>
       <Routes>
-        <Route path="/" element={<ResearchDashboardPage />} />
+        <Route path="/" element={<SystemOverviewPage />} />
+        <Route path="/research" element={<ResearchDashboardPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/position/:id" element={<PositionDetailPage />} />
         <Route path="/risk" element={<RiskPage />} />
@@ -24,6 +27,7 @@ export default function App() {
         <Route path="/agents/:name" element={<AgentDetailPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/trading" element={<TradingTerminal />} />
+        <Route path="/desks" element={<DeskPerformancePage />} />
         <Route path="/data" element={<DataExplorerPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>

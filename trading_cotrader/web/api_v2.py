@@ -405,6 +405,113 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
             return _serialize_trade(trade)
 
     # ------------------------------------------------------------------
+    # Desks — Maverick's trading desks
+    # ------------------------------------------------------------------
+
+    @router.get("/desks")
+    async def get_desks():
+        """Return desk configs from risk_config.yaml + live metrics from DB."""
+        import yaml
+        config_path = Path(__file__).parent.parent / "config" / "risk_config.yaml"
+        try:
+            with open(config_path, 'r') as f:
+                cfg = yaml.safe_load(f)
+        except Exception:
+            return []
+
+        desk_names = ['desk_0dte', 'desk_medium', 'desk_leaps']
+        desks = []
+
+        with session_scope() as session:
+            for name in desk_names:
+                desk_cfg = cfg.get('portfolios', {}).get(name, {})
+                if not desk_cfg:
+                    continue
+
+                # Get live portfolio from DB
+                portfolio = session.query(PortfolioORM).filter(
+                    PortfolioORM.name == name
+                ).first()
+
+                # Count open trades + aggregate P&L
+                open_trades = []
+                closed_trades = []
+                if portfolio:
+                    all_trades = session.query(TradeORM).filter(
+                        TradeORM.portfolio_id == portfolio.id
+                    ).all()
+                    open_trades = [t for t in all_trades if t.is_open]
+                    closed_trades = [t for t in all_trades if not t.is_open]
+
+                total_pnl = sum(_dec(t.total_pnl) for t in open_trades + closed_trades)
+                realized_pnl = sum(_dec(t.total_pnl) for t in closed_trades)
+                unrealized_pnl = sum(_dec(t.total_pnl) for t in open_trades)
+                wins = sum(1 for t in closed_trades if _dec(t.total_pnl) > 0)
+                losses = sum(1 for t in closed_trades if _dec(t.total_pnl) <= 0)
+                win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
+                daily_theta = sum(_dec(t.current_theta) for t in open_trades)
+
+                # Health distribution
+                health_counts = {}
+                for t in open_trades:
+                    h = t.health_status or 'unknown'
+                    health_counts[h] = health_counts.get(h, 0) + 1
+
+                capital = desk_cfg.get('initial_capital', 0)
+                deployed = sum(_dec(t.max_risk) or 0 for t in open_trades)
+                deployed_pct = (deployed / capital * 100) if capital else 0
+
+                desks.append({
+                    'name': name,
+                    'display_name': desk_cfg.get('display_name', name),
+                    'description': desk_cfg.get('description', ''),
+                    'capital': capital,
+                    'currency': desk_cfg.get('currency', 'USD'),
+                    'target_return_pct': desk_cfg.get('target_annual_return_pct', 0),
+                    'allowed_strategies': desk_cfg.get('active_strategies', []),
+                    'tags': desk_cfg.get('tags', []),
+                    # Live metrics
+                    'open_positions': len(open_trades),
+                    'closed_trades': len(closed_trades),
+                    'total_pnl': round(total_pnl, 2),
+                    'realized_pnl': round(realized_pnl, 2),
+                    'unrealized_pnl': round(unrealized_pnl, 2),
+                    'win_rate': round(win_rate, 1),
+                    'wins': wins,
+                    'losses': losses,
+                    'daily_theta': round(daily_theta, 2),
+                    'deployed_pct': round(deployed_pct, 1),
+                    'health': health_counts,
+                    'portfolio_exists': portfolio is not None,
+                })
+
+        return desks
+
+    @router.get("/desks/{desk_name}/trades")
+    async def get_desk_trades(
+        desk_name: str,
+        status: Optional[str] = Query(None, description="open, closed, all"),
+    ):
+        """Trades for a specific desk (WhatIf portfolio)."""
+        with session_scope() as session:
+            portfolio = session.query(PortfolioORM).filter(
+                PortfolioORM.name == desk_name
+            ).first()
+            if not portfolio:
+                raise HTTPException(404, f"Desk '{desk_name}' not found")
+
+            q = session.query(TradeORM).filter(
+                TradeORM.portfolio_id == portfolio.id
+            ).order_by(TradeORM.created_at.desc())
+
+            if status == 'open':
+                q = q.filter(TradeORM.is_open == True)
+            elif status == 'closed':
+                q = q.filter(TradeORM.is_open == False)
+
+            return [_serialize_trade(t) for t in q.all()]
+
+    # ------------------------------------------------------------------
     # Trade Explain + Health (G14, G15)
     # ------------------------------------------------------------------
 

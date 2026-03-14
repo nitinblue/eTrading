@@ -78,8 +78,56 @@ def parse_cli_intent(raw: str):
     )
 
 
+def _build_frontend():
+    """Build frontend if source is newer than dist."""
+    import subprocess
+    from pathlib import Path
+
+    frontend_dir = Path(__file__).parent.parent.parent / "frontend"
+    dist_dir = frontend_dir / "dist"
+    src_dir = frontend_dir / "src"
+
+    if not (frontend_dir / "package.json").exists():
+        return  # No frontend
+
+    # Check if build needed: dist missing or src newer
+    needs_build = not dist_dir.exists()
+    if not needs_build and dist_dir.exists():
+        dist_mtime = max(f.stat().st_mtime for f in dist_dir.rglob("*") if f.is_file()) if any(dist_dir.rglob("*")) else 0
+        src_mtime = max(f.stat().st_mtime for f in src_dir.rglob("*") if f.is_file()) if src_dir.exists() else 0
+        needs_build = src_mtime > dist_mtime
+
+    if needs_build:
+        print("Building frontend...")
+        try:
+            result = subprocess.run(
+                ["pnpm", "build"],
+                cwd=str(frontend_dir),
+                capture_output=True, text=True, timeout=60,
+            )
+            if result.returncode == 0:
+                print("Frontend built successfully.")
+            else:
+                print(f"Frontend build failed: {result.stderr[:200]}")
+        except FileNotFoundError:
+            # pnpm not found, try npm
+            try:
+                subprocess.run(
+                    ["npm", "run", "build"],
+                    cwd=str(frontend_dir),
+                    capture_output=True, text=True, timeout=60,
+                )
+                print("Frontend built successfully (npm).")
+            except Exception:
+                print("Frontend build skipped (pnpm/npm not found).")
+        except Exception as e:
+            print(f"Frontend build skipped: {e}")
+
+
 def _start_web_server(engine, port: int):
-    """Start the web approval dashboard in a daemon thread."""
+    """Build frontend if needed, then start the web dashboard in a daemon thread."""
+    _build_frontend()
+
     from trading_cotrader.web.approval_api import create_approval_app
     import uvicorn
 
@@ -97,7 +145,7 @@ def _start_web_server(engine, port: int):
     )
     thread.start()
 
-    print(f"Web approval dashboard: http://localhost:{port}")
+    print(f"Web dashboard: http://localhost:{port}")
     print(f"  Remote access: expose port {port} via ngrok, Tailscale, or Cloudflare Tunnel")
     print()
 

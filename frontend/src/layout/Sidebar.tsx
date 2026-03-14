@@ -11,6 +11,8 @@ import {
   Terminal,
   ChevronLeft,
   ChevronRight,
+  LayoutDashboard,
+  Target,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -21,8 +23,10 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { to: '/', icon: TrendingUp, label: 'Research' },
+  { to: '/', icon: LayoutDashboard, label: 'Overview' },
+  { to: '/research', icon: TrendingUp, label: 'Research' },
   { to: '/trading', icon: Terminal, label: 'Trading' },
+  { to: '/desks', icon: Target, label: 'Desks' },
   { to: '/portfolio', icon: Briefcase, label: 'Portfolio' },
   { to: '/risk', icon: ShieldAlert, label: 'Risk' },
   { to: '/agents', icon: Bot, label: 'Agents' },

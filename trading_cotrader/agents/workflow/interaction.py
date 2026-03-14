@@ -136,6 +136,10 @@ class InteractionManager:
             'mark': self._mark,
             'exits': self._exits,
             'golive': self._execute,  # Alias: go live = execute on broker
+            # MA integration: explain, health, ml
+            'explain': self._explain,
+            'health': self._health,
+            'ml': self._ml_status,
             # New: close, performance, learn, setup-desks
             'close': self._close,
             'perf': self._performance,
@@ -1931,6 +1935,22 @@ class InteractionManager:
                         f"        {action} {leg.get('quantity', 1)}x "
                         f"{p['ticker']} {ot}{strike:.0f} {exp}  ({label})"
                     )
+                # MA analytics (G6)
+                analytics = []
+                pop = p.get('pop_at_entry')
+                if pop is not None:
+                    analytics.append(f"POP={pop:.0%}")
+                ev = p.get('ev_at_entry')
+                if ev is not None:
+                    analytics.append(f"EV=${ev:.2f}")
+                regime = p.get('exit_rules', {}).get('regime_at_entry')
+                if regime:
+                    analytics.append(f"Regime={regime}")
+                eq = p.get('execution_quality')
+                if eq:
+                    analytics.append(f"Liq={eq}")
+                if analytics:
+                    lines.append(f"      Analytics: {' | '.join(analytics)}")
                 # Exit rules
                 exit_rules = p.get('exit_rules', {})
                 if exit_rules.get('exit_summary'):
@@ -2041,17 +2061,29 @@ class InteractionManager:
 
             lines.append(
                 f"  {'Underlying':<10} {'Strategy':<18} {'Entry':>10} "
-                f"{'Current':>10} {'P&L':>10} {'P&L%':>7} {'Legs'}"
+                f"{'Current':>10} {'P&L':>10} {'P&L%':>7} {'Health':<8} {'Legs'}"
             )
-            lines.append("  " + "\u2500" * 75)
+            lines.append("  " + "\u2500" * 85)
+
+            # Fetch health statuses
+            health_map = {}
+            try:
+                from trading_cotrader.core.database.session import session_scope
+                from trading_cotrader.core.database.schema import TradeORM
+                with session_scope() as session:
+                    for t in session.query(TradeORM).filter(TradeORM.is_open == True).all():
+                        health_map[t.id] = t.health_status or '--'
+            except Exception:
+                pass
 
             for r in result.results:
                 pnl_sign = '+' if r.pnl >= 0 else ''
+                health = health_map.get(r.trade_id, '--')
                 lines.append(
                     f"  {r.underlying:<10} {r.strategy_type:<18} "
                     f"${r.entry_price:>9.2f} ${r.current_price:>9.2f} "
                     f"{pnl_sign}${r.pnl:>8.2f} {r.pnl_pct:>+6.1f}% "
-                    f"{r.legs_marked}/{r.legs_total}"
+                    f"{health:<8} {r.legs_marked}/{r.legs_total}"
                 )
 
             lines.extend([
@@ -2081,7 +2113,14 @@ class InteractionManager:
 
         try:
             from trading_cotrader.services.exit_monitor import ExitMonitorService
-            monitor = ExitMonitorService()
+            # Pass current regime from context (not hardcoded R1)
+            regime_id = 1
+            research = self.engine.context.get('research', {})
+            for ticker_data in research.values():
+                if isinstance(ticker_data, dict) and ticker_data.get('hmm_regime_id'):
+                    regime_id = ticker_data['hmm_regime_id']
+                    break  # Use first available regime as market-wide proxy
+            monitor = ExitMonitorService(current_regime_id=regime_id)
             result = monitor.check_all_exits()
 
             if not result.signals:
@@ -2452,5 +2491,178 @@ class InteractionManager:
             self.engine._refresh_containers()
         except Exception:
             pass
+
+        return SystemResponse(message="\n".join(lines))
+
+    # ------------------------------------------------------------------
+    # MA Integration CLI commands (G14, G9)
+    # ------------------------------------------------------------------
+
+    def _explain(self, intent: UserIntent) -> SystemResponse:
+        """Explain a trade's decision lineage (G14). Usage: explain <trade_id>"""
+        if not intent.target:
+            return SystemResponse(message="Usage: explain <trade_id>")
+
+        from trading_cotrader.services.decision_lineage import DecisionLineageService
+        service = DecisionLineageService()
+        exp = service.explain_trade(intent.target)
+
+        if not exp:
+            return SystemResponse(message=f"Trade '{intent.target}' not found.")
+
+        lines = [f"TRADE EXPLANATION: {exp.ticker} {exp.strategy_type}", "\u2550" * 80]
+        lines.append(f"  Status: {exp.status}")
+
+        # Entry analytics
+        analytics = []
+        if exp.pop_at_entry is not None:
+            analytics.append(f"POP={exp.pop_at_entry:.0%}")
+        if exp.ev_at_entry is not None:
+            analytics.append(f"EV=${exp.ev_at_entry:.2f}")
+        if exp.regime_at_entry:
+            analytics.append(f"Regime={exp.regime_at_entry}")
+        if exp.income_yield_roc is not None:
+            analytics.append(f"ROC={exp.income_yield_roc:.1%}")
+        if exp.breakeven_low or exp.breakeven_high:
+            analytics.append(f"BE={exp.breakeven_low or '?'}-{exp.breakeven_high or '?'}")
+        if analytics:
+            lines.append(f"  Entry: {' | '.join(analytics)}")
+
+        # Gates
+        if exp.gates:
+            lines.extend(["", "  GATES:"])
+            for g in exp.gates:
+                status = "\u2713" if g.passed else "\u2717"
+                lines.append(f"    {status} {g.name}: {g.value} (threshold: {g.threshold})")
+
+        # Commentary (G25)
+        if exp.commentary:
+            lines.extend(["", "  COMMENTARY:"])
+            for source, comments in exp.commentary.items():
+                lines.append(f"    [{source}]")
+                for c in (comments if isinstance(comments, list) else [comments]):
+                    lines.append(f"      {c}")
+
+        # Data gaps (G26)
+        if exp.data_gaps:
+            lines.extend(["", "  DATA GAPS:"])
+            for gap in exp.data_gaps:
+                lines.append(f"    \u26a0 {gap.get('field', '?')}: {gap.get('reason', '?')} (impact: {gap.get('impact', '?')})")
+
+        # Exit info
+        if exp.status != 'open':
+            lines.extend(["", f"  EXIT: {exp.exit_reason or '?'}, P&L=${exp.total_pnl or 0:+.2f}, held {exp.days_held or '?'}d"])
+
+        # Adjustments
+        if exp.adjustment_history:
+            lines.extend(["", "  ADJUSTMENT HISTORY:"])
+            for adj in exp.adjustment_history:
+                lines.append(f"    {adj.get('timestamp', '?')}: {adj.get('type', '?')} \u2014 {adj.get('rationale', '?')}")
+
+        return SystemResponse(message="\n".join(lines))
+
+    def _health(self, intent: UserIntent = None) -> SystemResponse:
+        """Check health + adjustment recommendations for all positions (G9)."""
+        engine = self.engine
+        lines = ["POSITION HEALTH CHECK", "\u2550" * 80]
+
+        if not hasattr(engine, '_ma') or not engine._ma:
+            lines.append("  No MarketAnalyzer instance \u2014 cannot run health checks.")
+            lines.append("  Start with broker: --paper --web")
+            return SystemResponse(message="\n".join(lines))
+
+        try:
+            from trading_cotrader.services.trade_health_service import TradeHealthService
+            service = TradeHealthService(ma=engine._ma, broker=engine.broker)
+            result = service.check_all_positions()
+
+            lines.append(f"  Checked: {result.trades_checked} | Healthy: {result.trades_healthy} | Need action: {result.trades_needing_action}")
+
+            if not result.actions:
+                lines.append("  All positions healthy.")
+            else:
+                lines.extend(["", f"  {'Ticker':<8} {'Action':<8} {'Type':<15} {'Urgency':<10} Rationale"])
+                lines.append("  " + "\u2500" * 70)
+                for a in result.actions:
+                    lines.append(
+                        f"  {a.ticker:<8} {a.action:<8} {(a.adjustment_type or '--'):<15} "
+                        f"{a.urgency:<10} {a.rationale[:40]}"
+                    )
+
+            # Overnight risk
+            overnight = service.assess_overnight_risk()
+            if overnight:
+                lines.extend(["", "  OVERNIGHT RISK:"])
+                for o in overnight:
+                    lines.append(f"    {o.ticker}: {o.risk_level} \u2014 {o.summary}")
+
+        except Exception as e:
+            lines.append(f"  Error: {e}")
+
+        return SystemResponse(message="\n".join(lines))
+
+    def _ml_status(self, intent: UserIntent = None) -> SystemResponse:
+        """ML learning status — drift, bandits, thresholds. 'ml run' triggers full cycle."""
+        engine = self.engine
+        lines = ["ML LEARNING STATUS", "\u2550" * 80]
+
+        if not hasattr(engine, '_ma') or not engine._ma:
+            lines.append("  No MarketAnalyzer instance.")
+            return SystemResponse(message="\n".join(lines))
+
+        try:
+            from trading_cotrader.services.ml_learning_service import MLLearningService
+            ml = MLLearningService(ma=engine._ma)
+
+            if intent and intent.target == 'run':
+                lines.append("  Running full ML learning cycle...")
+                result = ml.run_full_learning_cycle()
+                lines.append(f"  Drift: {result.get('drift', {}).get('alerts', 0)} alerts "
+                             f"({result.get('drift', {}).get('critical', 0)} critical)")
+                lines.append(f"  Bandits: {result.get('bandits', {}).get('cells', 0)} cells updated")
+                lines.append(f"  Thresholds: {'optimized' if result.get('thresholds', {}).get('optimized') else 'unchanged'}")
+                lines.append(f"  POP factors: {result.get('pop_factors', {}).get('regimes', 0)} regimes calibrated")
+                lines.append("")
+
+            # Drift
+            drift = ml.get_drift_alerts()
+            if drift:
+                alerts = [a for a in drift if a.get('severity') in ('warning', 'critical')]
+                if alerts:
+                    lines.append("  DRIFT ALERTS:")
+                    for a in alerts:
+                        lines.append(f"    {a.get('severity', '').upper()}: {a.get('strategy_type', '?')} R{a.get('regime_id', '?')} "
+                                     f"\u2014 win rate {a.get('historical_win_rate', 0):.0%} \u2192 {a.get('recent_win_rate', 0):.0%}")
+                else:
+                    lines.append("  Drift: All strategies stable.")
+            else:
+                lines.append("  Drift: No data. Run 'ml run' after trades close.")
+
+            # Thresholds
+            thresholds = ml.get_thresholds()
+            lines.extend(["", "  GATE THRESHOLDS:"])
+            for key in ['pop_min', 'score_min', 'ic_iv_rank_min', 'credit_width_min', 'adx_trend_max']:
+                if key in thresholds:
+                    lines.append(f"    {key}: {thresholds[key]}")
+
+            # Bandits
+            lines.extend(["", "  STRATEGY RANKINGS (Thompson Sampling):"])
+            for regime_id in [1, 2, 3, 4]:
+                selected = ml.select_strategies_for_regime(regime_id, n=3)
+                if selected:
+                    strats = ", ".join(f"{s}({score:.0%})" for s, score in selected)
+                    lines.append(f"    R{regime_id}: {strats}")
+                else:
+                    lines.append(f"    R{regime_id}: no data")
+
+            # POP
+            pop_factors = ml.get_pop_factors()
+            if pop_factors:
+                lines.extend(["", "  POP CALIBRATION:"])
+                for r, f in sorted(pop_factors.items()):
+                    lines.append(f"    R{r}: factor={f:.2f}")
+
+        except Exception as e:
+            lines.append(f"  Error: {e}")
 
         return SystemResponse(message="\n".join(lines))

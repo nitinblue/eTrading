@@ -163,7 +163,7 @@ eT  = orchestrator. Fetches data from broker, decides WHEN to call MA, executes 
 
 ---
 
-## MA DEPENDENCY STATUS (all DONE)
+## MA DEPENDENCY STATUS
 
 | MA Gap | What | Status |
 |--------|------|--------|
@@ -172,10 +172,37 @@ eT  = orchestrator. Fetches data from broker, decides WHEN to call MA, executes 
 | MA-G03 | entry_window on TradeSpec | **DONE** |
 | MA-G04 | time_of_day on monitor | **DONE** |
 | MA-G05 | assess_overnight_risk() | **DONE** |
-| MA-G06 | auto_select on scan() | OPEN (nice-to-have) |
+| MA-G06 | auto_select on scan() | **DONE** |
 | MA-G07 | TradeOutcome + calibrate_weights() | **DONE** |
 | MA-G08 | commentary + debug=True | **DONE** |
 | MA-G09 | data_gaps on outputs | **DONE** |
+| MA-SQ1-SQ10 | IV rank integration, HMM staleness, POP calibration, assessor overhauls | **DONE** |
+| MA-TA1-TA6 | Fibonacci, ADX, Donchian, Keltner, Pivots, VWAP | **DONE** |
+| MA-ML1 | Drift detection — flags degrading strategies | **DONE** |
+| MA-ML2 | Thompson Sampling — learns strategy selection per regime | **DONE** |
+| MA-ML3 | Threshold optimization — self-tunes gate cutoffs | **DONE** |
+
+### ML Integration (eTrading side)
+
+| # | What | MA API | eTrading Action | Status |
+|---|------|--------|-----------------|--------|
+| ML-E1 | Drift detection | `detect_drift(outcomes)` → `list[DriftAlert]` | `ml_learning_service.run_drift_detection()`. CRITICAL → Gate 6b rejects. Engine step 9b runs every 10 cycles. | **DONE** |
+| ML-E2 | Strategy bandits | `build_bandits()`, `update_bandit()`, `select_strategies()` | `ml_learning_service.update_bandits()` + `select_strategies_for_regime()`. Stored in MLStateORM. | **DONE** |
+| ML-E3 | Threshold optimization | `optimize_thresholds(outcomes)` → `ThresholdConfig` | `ml_learning_service.optimize_gate_thresholds()`. Stored in MLStateORM. | **DONE** |
+| ML-E4 | POP calibration | `calibrate_pop_factors(outcomes)` → regime factor map | `ml_learning_service.calibrate_pop()`. Stored in MLStateORM. | **DONE** |
+| ML-E5 | IV rank threading | `rank(tickers, iv_rank_map=...)` | `ml_learning_service.build_iv_rank_map()`. Ready for Scout integration. | **DONE** |
+
+**All ML + signal quality items wired. Additional wiring completed:**
+- Scout passes `min_score=0.4, top_n=20` to `scan()` (G06)
+- Scout passes `debug=True` to `context.assess()` and `regime.detect()` (G08)
+- Scout builds `iv_rank_map` from broker, passes to `rank(iv_rank_map=...)` (SQ9/ML-E5)
+- Scout passes bandit-selected strategies to `rank(strategies=...)` (ML-E2/E6)
+- Scout checks `regime.model_age_days` for staleness (SQ2)
+- Maverick passes `iv_rank` to `estimate_pop()` (SQ3)
+- Maverick stores `iv_rank_at_entry`, `dte_at_entry`, `composite_score` at booking (Fix 7)
+- Commentary from `debug=True` stored in context for decision lineage (G25)
+
+**MA total: 1241 tests passing. 43 gaps closed. eTrading: 185 tests. All wiring complete.**
 
 ---
 

@@ -359,12 +359,22 @@ class ScoutAgent(BaseAgent):
         ranking: List[Dict[str, Any]] = []
 
         # G11: Two-phase scan — screen first (fast), then rank candidates only
-        # Phase 1: Screen watchlist for setups
+        # Phase 1: Screen watchlist (with auto-select filtering)
         try:
-            scan_result = ma.screening.scan(tickers)
+            scan_result = ma.screening.scan(tickers, min_score=0.4, top_n=20)
             for c in scan_result.candidates:
                 candidates.append(c.model_dump(mode='json'))
             messages.append(f"Phase 1 screen: {len(candidates)} candidates from {scan_result.tickers_scanned} tickers")
+        except TypeError:
+            # Fallback if scan() doesn't accept min_score/top_n yet
+            try:
+                scan_result = ma.screening.scan(tickers)
+                for c in scan_result.candidates:
+                    candidates.append(c.model_dump(mode='json'))
+                messages.append(f"Phase 1 screen: {len(candidates)} candidates")
+            except Exception as e:
+                logger.warning(f"Screening failed: {e}")
+                messages.append(f"Screening error: {e}")
         except Exception as e:
             logger.warning(f"Screening failed: {e}")
             messages.append(f"Screening error: {e}")
@@ -374,11 +384,56 @@ class ScoutAgent(BaseAgent):
         if not ranked_tickers:
             ranked_tickers = tickers[:10]  # fallback: rank top watchlist
 
+        # ML-E5: Build IV rank map from broker metrics
+        iv_rank_map = {}
         try:
-            rank_result = ma.ranking.rank(ranked_tickers, skip_intraday=True)
+            if ma.quotes:
+                for t in ranked_tickers:
+                    metrics = ma.quotes.get_metrics(t)
+                    if metrics and metrics.iv_rank is not None:
+                        iv_rank_map[t] = metrics.iv_rank
+                if iv_rank_map:
+                    messages.append(f"IV rank: {len(iv_rank_map)} tickers")
+        except Exception as e:
+            logger.debug(f"IV rank map failed: {e}")
+
+        # ML-E2/E6: Get bandit-selected strategies for current regime
+        rank_kwargs: Dict[str, Any] = {'skip_intraday': True, 'debug': True}
+        if iv_rank_map:
+            rank_kwargs['iv_rank_map'] = iv_rank_map
+        try:
+            from trading_cotrader.services.ml_learning_service import MLLearningService
+            ml_svc = MLLearningService()
+            # Get current regime for strategy selection
+            regime_id = 1
+            try:
+                regime = ma.regime.detect(ranked_tickers[0] if ranked_tickers else 'SPY')
+                regime_id = regime.regime if hasattr(regime, 'regime') else 1
+            except Exception:
+                pass
+            bandit_strategies = ml_svc.select_strategies_for_regime(regime_id, n=5)
+            if bandit_strategies:
+                # Pass as strategy filter hint (not all ranking services support this)
+                rank_kwargs['strategies'] = [s for s, _ in bandit_strategies]
+                messages.append(f"Bandits: R{regime_id} → {', '.join(s for s, _ in bandit_strategies[:3])}")
+        except Exception as e:
+            logger.debug(f"Bandit strategy selection skipped: {e}")
+
+        try:
+            rank_result = ma.ranking.rank(ranked_tickers, **rank_kwargs)
             for r in rank_result.top_trades:
                 ranking.append(r.model_dump(mode='json'))
             messages.append(f"Phase 2 rank: {len(ranking)} ranked from {len(ranked_tickers)} candidates")
+        except TypeError:
+            # Fallback if rank() doesn't accept all kwargs
+            try:
+                rank_result = ma.ranking.rank(ranked_tickers, skip_intraday=True)
+                for r in rank_result.top_trades:
+                    ranking.append(r.model_dump(mode='json'))
+                messages.append(f"Phase 2 rank: {len(ranking)} ranked (basic)")
+            except Exception as e:
+                logger.warning(f"Ranking failed: {e}")
+                messages.append(f"Ranking error: {e}")
         except Exception as e:
             logger.warning(f"Ranking failed: {e}")
             messages.append(f"Ranking error: {e}")
@@ -393,20 +448,42 @@ class ScoutAgent(BaseAgent):
         except Exception as e:
             logger.debug(f"Black swan check failed: {e}")
 
-        # 4. Market context
+        # 4. Market context (with debug=True for commentary)
         try:
-            ctx = ma.context.assess()
+            ctx = ma.context.assess(debug=True)
             messages.append(f"Context: {ctx.environment_label}, trading={'ON' if ctx.trading_allowed else 'HALTED'}")
             context['market_environment'] = ctx.environment_label
             context['trading_allowed'] = ctx.trading_allowed
             context['position_size_factor'] = ctx.position_size_factor
+            # Store commentary for decision lineage (G25)
+            if hasattr(ctx, 'commentary') and ctx.commentary:
+                context.setdefault('commentary', {})['context'] = ctx.commentary
+        except TypeError:
+            try:
+                ctx = ma.context.assess()
+                context['market_environment'] = ctx.environment_label
+                context['trading_allowed'] = ctx.trading_allowed
+                context['position_size_factor'] = ctx.position_size_factor
+            except Exception as e:
+                logger.debug(f"Context check failed: {e}")
         except Exception as e:
             logger.debug(f"Context check failed: {e}")
+
+        # 5. Regime staleness check (SQ2)
+        try:
+            for t in ranked_tickers[:3]:
+                regime = ma.regime.detect(t, debug=True)
+                if hasattr(regime, 'model_age_days') and regime.model_age_days and regime.model_age_days > 60:
+                    logger.info(f"Regime model stale for {t}: {regime.model_age_days} days old. Consider retrain.")
+                    messages.append(f"Regime stale: {t} ({regime.model_age_days}d old)")
+        except Exception:
+            pass
 
         # Store results in context for Maverick
         context['screening_candidates'] = candidates
         context['ranking'] = ranking
         context['black_swan_level'] = black_swan_level
+        context['iv_rank_map'] = iv_rank_map
 
         return AgentResult(
             agent_name=self.name,

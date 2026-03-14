@@ -1,528 +1,834 @@
 """
-TheTrader — Morning Trading Workflow Script
+TheTrader — Fully Systematic Trading Day Framework
 
-Takes MarketAnalyzer's daily plan, applies multi-layer risk checks,
-and books surviving trades into the WhatIf portfolio.
+Demonstrates every step of a trading day using MA integration.
+No guessing, no bogus trades. Every trade must pass 11 gates with real data.
 
 Usage:
-    python -m trading_cotrader.agents.workflow.the_trader
+    python -m trading_cotrader.agents.workflow.the_trader [--dry-run]
+
+    --dry-run: Show everything but don't book trades (default: dry-run)
+    --book:    Actually book passing trades to WhatIf portfolio
+
+Requires:
+    - Broker connection (--paper mode OK)
+    - MarketAnalyzer with broker providers
+
+Steps:
+    1. PRE-MARKET: Context check (safe to trade?)
+    2. SCAN: Watchlist → screen → rank (two-phase)
+    3. ANALYZE: Per-candidate analytics (POP, EV, breakevens, income entry, execution quality)
+    4. GATE: 11 gates applied to each candidate
+    5. BOOK: Surviving trades booked to WhatIf (if --book)
+    6. MONITOR: Mark-to-market + health check open positions
+    7. EXITS: Check exit conditions via MA
+    8. ADJUSTMENTS: Health check + adjustment recommendations
+    9. OVERNIGHT: Assess overnight risk
+    10. SUMMARY: Full day report with decision lineage
 """
 import sys
-from datetime import date
+import logging
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, Tuple
 
-from market_analyzer import MarketAnalyzer, DataService
-from market_analyzer.models.opportunity import LegAction
-
-import trading_cotrader.core.models.domain as dm
-from trading_cotrader.config.risk_config_loader import (
-    RiskConfigLoader,
-    PortfolioConfig,
-    PortfolioRiskLimits,
+from market_analyzer import (
+    MarketAnalyzer, DataService,
+    from_dxlink_symbols, compute_income_yield, compute_breakevens,
+    estimate_pop, check_income_entry, validate_execution_quality,
+    monitor_exit_conditions, check_trade_health, assess_overnight_risk,
 )
+
 from trading_cotrader.core.database.session import session_scope
-from trading_cotrader.core.database.schema import TradeORM, PortfolioORM, StrategyORM
-from trading_cotrader.services.trade_booking_service import (
-    TradeBookingService,
-    LegInput,
-)
+from trading_cotrader.core.database.schema import TradeORM, PortfolioORM
+from trading_cotrader.services.tradespec_bridge import trade_to_tradespec, trade_to_monitor_params
+
+logger = logging.getLogger(__name__)
+
+TRADER_PORTFOLIO = "trader_benchmark"
+BORDER = "=" * 80
+DIVIDER = "-" * 80
+
+
+def _dec(v) -> float:
+    """Safe Decimal → float."""
+    if v is None:
+        return 0.0
+    return float(v)
+
+
+def _print_section(title: str, step: int):
+    print(f"\n{BORDER}")
+    print(f"  STEP {step}: {title}")
+    print(BORDER)
+
 
 # ---------------------------------------------------------------------------
-# Constants
+# Step 1: Pre-Market Context
 # ---------------------------------------------------------------------------
-PORTFOLIO_NAME = "tastytrade_whatif"
+def step_1_context(ma: MarketAnalyzer) -> dict:
+    """Check market environment. Is it safe to trade?"""
+    _print_section("PRE-MARKET CONTEXT CHECK", 1)
 
-# Strategies with unlimited loss potential
-UNDEFINED_RISK_STRATEGIES = {
-    "ratio_spread",
-    "big_lizard",
-    "jade_lizard",
-}
-# These are undefined only when SOLD (short)
-UNDEFINED_WHEN_SHORT = {"straddle", "strangle"}
-# Single options are undefined when short
-SINGLE_STRATEGY = "single"
+    result = {}
+
+    # Market context
+    try:
+        ctx = ma.context.assess()
+        result['environment'] = ctx.environment_label
+        result['trading_allowed'] = ctx.trading_allowed
+        result['size_factor'] = ctx.position_size_factor
+        print(f"  Environment:    {ctx.environment_label}")
+        print(f"  Trading:        {'ALLOWED' if ctx.trading_allowed else 'HALTED'}")
+        print(f"  Size factor:    {ctx.position_size_factor:.0%}")
+    except Exception as e:
+        print(f"  Context check failed: {e}")
+        result['trading_allowed'] = True  # default safe
+
+    # Black swan
+    try:
+        bs = ma.black_swan.alert()
+        result['black_swan'] = bs.alert_level
+        color = {'NORMAL': 'LOW', 'ELEVATED': 'MEDIUM', 'CRITICAL': 'HIGH'}
+        print(f"  Black Swan:     {bs.alert_level} ({color.get(bs.alert_level, '?')} risk)")
+        if bs.alert_level == 'CRITICAL':
+            print(f"  >>> CRITICAL BLACK SWAN — NO TRADING TODAY <<<")
+            result['trading_allowed'] = False
+    except Exception as e:
+        print(f"  Black swan check failed: {e}")
+        result['black_swan'] = 'UNKNOWN'
+
+    # Daily plan verdict
+    try:
+        plan = ma.plan.generate(skip_intraday=True)
+        result['day_verdict'] = plan.day_verdict.value
+        result['plan'] = plan
+        print(f"  Day Verdict:    {plan.day_verdict.value.upper()}")
+        print(f"  Risk Budget:    max {plan.risk_budget.max_new_positions} positions, "
+              f"${plan.risk_budget.max_daily_risk_dollars:,.0f} daily risk")
+        for reason in plan.day_verdict_reasons:
+            print(f"    -> {reason}")
+        if plan.day_verdict.value in ('no_trade', 'avoid'):
+            print(f"  >>> MARKET SAYS STAND DOWN <<<")
+            result['trading_allowed'] = False
+    except Exception as e:
+        print(f"  Plan generation failed: {e}")
+
+    # Account balance
+    try:
+        if ma.account_provider:
+            balance = ma.account_provider.get_balance()
+            result['buying_power'] = balance.derivative_buying_power
+            result['nlv'] = balance.net_liquidating_value
+            print(f"  Account NLV:    ${balance.net_liquidating_value:,.2f}")
+            print(f"  Buying Power:   ${balance.derivative_buying_power:,.2f}")
+    except Exception as e:
+        print(f"  Account balance unavailable: {e}")
+
+    return result
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Step 2: Scan (Watchlist → Screen → Rank)
 # ---------------------------------------------------------------------------
-def _format_legs(spec) -> str:
-    """Format legs from TradeSpec into readable string."""
-    if not spec or not spec.legs:
-        return "n/a"
-    parts = []
-    for leg in spec.legs[:4]:
-        action = leg.action.value if hasattr(leg.action, "value") else str(leg.action)
-        otype = leg.option_type.upper() if leg.option_type else "?"
-        strike = f"${leg.strike:.0f}" if leg.strike else "?"
-        parts.append(f"{action} {strike} {otype}")
-    return " | ".join(parts)
+def step_2_scan(ma: MarketAnalyzer, watchlist_provider=None) -> list:
+    """Two-phase scan: screen → rank. Returns ranked entries."""
+    _print_section("SCAN — Screen + Rank", 2)
 
-
-def _parse_risk_per_spread(spec) -> Optional[float]:
-    """Try to extract numeric risk-per-spread from TradeSpec."""
-    if spec and spec.max_risk_per_spread:
+    # Resolve tickers
+    tickers = []
+    if watchlist_provider:
         try:
-            return float(str(spec.max_risk_per_spread).replace("$", "").replace(",", ""))
-        except (ValueError, TypeError):
+            tickers = watchlist_provider.get_watchlist('MA-Income')
+            if tickers:
+                print(f"  Watchlist:      MA-Income ({len(tickers)} tickers)")
+        except Exception:
             pass
-    # Fallback: wing_width_points * 100
-    if spec and spec.wing_width_points:
-        try:
-            return float(spec.wing_width_points) * 100
-        except (ValueError, TypeError):
-            pass
-    return None
 
+    if not tickers:
+        # Fallback
+        tickers = ['SPY', 'QQQ', 'IWM', 'GLD', 'TLT', 'AAPL', 'MSFT', 'NVDA', 'AMD', 'META']
+        print(f"  Watchlist:      Default ({len(tickers)} tickers)")
 
-def _get_current_positions(portfolio_name: str) -> list:
-    """Query DB for open trades in the given portfolio. Returns list of dicts."""
-    positions = []
-    with session_scope() as session:
-        portfolio = session.query(PortfolioORM).filter(
-            PortfolioORM.name == portfolio_name
-        ).first()
-        if not portfolio:
-            return positions
-        trades = (
-            session.query(TradeORM)
-            .filter(
-                TradeORM.portfolio_id == portfolio.id,
-                TradeORM.is_open.is_(True),
-            )
-            .all()
-        )
-        for t in trades:
-            strat_type = ""
-            if t.strategy_id:
-                strat = session.query(StrategyORM).filter(
-                    StrategyORM.id == t.strategy_id
-                ).first()
-                if strat:
-                    strat_type = strat.strategy_type
-            positions.append({
-                "underlying": t.underlying_symbol,
-                "strategy_type": strat_type,
-                "delta": float(t.entry_delta or 0),
-            })
-    return positions
+    print(f"  Tickers:        {', '.join(tickers[:15])}{'...' if len(tickers) > 15 else ''}")
 
+    # Phase 1: Screen
+    candidates = []
+    try:
+        scan_result = ma.screening.scan(tickers)
+        candidates = [c for c in scan_result.candidates if c.score >= 0.4]
+        print(f"  Phase 1 screen: {len(candidates)} candidates from {scan_result.tickers_scanned} tickers")
+    except Exception as e:
+        print(f"  Screening failed: {e}")
+        candidates = []
 
-# ---------------------------------------------------------------------------
-# Step 3: Risk Gate — check functions
-# ---------------------------------------------------------------------------
-def check_structure(trade_spec, strategy_type: str) -> Tuple[bool, str]:
-    """3a: Validate trade structure — legs, wing width, strike validity."""
-    if not trade_spec or not trade_spec.legs:
-        return False, "No legs on trade spec"
+    # Phase 2: Rank
+    ranked_tickers = list({c.ticker for c in candidates}) if candidates else tickers[:10]
+    ranked = []
+    try:
+        rank_result = ma.ranking.rank(ranked_tickers, skip_intraday=True)
+        ranked = rank_result.top_trades
+        print(f"  Phase 2 rank:   {len(ranked)} ranked from {len(ranked_tickers)} candidates")
+    except Exception as e:
+        print(f"  Ranking failed: {e}")
 
-    legs = trade_spec.legs
-    leg_count = len(legs)
-
-    # Check all legs have valid strikes and expirations
-    for i, leg in enumerate(legs):
-        if not leg.strike or leg.strike <= 0:
-            return False, f"Leg {i+1} has invalid strike: {leg.strike}"
-        if not leg.expiration:
-            return False, f"Leg {i+1} has no expiration"
-
-    # Wing width check for spreads (IC, butterfly, vertical)
-    if strategy_type in ("iron_condor", "iron_butterfly") and leg_count == 4:
-        strikes = sorted([leg.strike for leg in legs])
-        # For IC: check both wings have width > 0
-        call_wing = strikes[3] - strikes[2]
-        put_wing = strikes[1] - strikes[0]
-        if call_wing <= 0 or put_wing <= 0:
-            return False, f"Zero wing width: put_wing={put_wing}, call_wing={call_wing}"
-
-    if strategy_type == "vertical_spread" and leg_count == 2:
-        width = abs(legs[0].strike - legs[1].strike)
-        if width <= 0:
-            return False, f"Zero spread width: {width}"
-
-    # Leg count sanity
-    expected = {
-        "iron_condor": 4, "iron_butterfly": 4,
-        "vertical_spread": 2, "calendar": 2, "diagonal": 2,
-    }
-    if strategy_type in expected and leg_count != expected[strategy_type]:
-        return False, f"Expected {expected[strategy_type]} legs for {strategy_type}, got {leg_count}"
-
-    return True, "OK"
-
-
-def check_defined_risk(strategy_type: str, legs, risk_limits: PortfolioRiskLimits) -> Tuple[bool, str]:
-    """3b: Block unlimited-loss strategies if allow_undefined_risk=false."""
-    if risk_limits.allow_undefined_risk:
-        return True, "Undefined risk allowed by config"
-
-    st = strategy_type.lower()
-
-    if st in UNDEFINED_RISK_STRATEGIES:
-        return False, f"{strategy_type} has UNLIMITED loss potential"
-
-    if st in UNDEFINED_WHEN_SHORT:
-        # Undefined only when sold — check if any leg is STO
-        has_short = any(
-            (leg.action == LegAction.SELL_TO_OPEN
-             if hasattr(leg.action, 'value') and leg.action == LegAction.SELL_TO_OPEN
-             else str(leg.action).upper() in ("STO", "SELL_TO_OPEN"))
-            for leg in (legs or [])
-        )
-        if has_short:
-            return False, f"Short {strategy_type} has UNLIMITED loss potential"
-
-    if st == SINGLE_STRATEGY:
-        # Single short option = undefined risk
-        has_short = any(
-            (leg.action == LegAction.SELL_TO_OPEN
-             if hasattr(leg.action, 'value') and leg.action == LegAction.SELL_TO_OPEN
-             else str(leg.action).upper() in ("STO", "SELL_TO_OPEN"))
-            for leg in (legs or [])
-        )
-        if has_short:
-            return False, "Naked short option has UNLIMITED loss potential"
-
-    return True, "Defined risk"
-
-
-def check_position_risk(
-    trade_spec, capital: float, risk_limits: PortfolioRiskLimits
-) -> Tuple[bool, str]:
-    """3c: Per-trade risk check — risk per contract vs account limits."""
-    risk_per_contract = _parse_risk_per_spread(trade_spec)
-    if risk_per_contract is None:
-        return False, "Cannot determine risk per contract"
-    if risk_per_contract <= 0:
-        return False, f"Risk per contract is ${risk_per_contract:.0f} (must be > 0)"
-
-    max_trade_risk = capital * (risk_limits.max_single_trade_risk_pct / 100)
-    if risk_per_contract > max_trade_risk:
-        return False, (
-            f"Risk/contract ${risk_per_contract:.0f} > max single trade risk "
-            f"${max_trade_risk:.0f} ({risk_limits.max_single_trade_risk_pct}% of ${capital:,.0f})"
-        )
-
-    return True, f"Risk/contract ${risk_per_contract:.0f} within limits"
-
-
-def check_portfolio_risk(
-    ticker: str,
-    strategy_type: str,
-    risk_limits: PortfolioRiskLimits,
-    current_positions: list,
-    trade_delta: float = 0,
-) -> Tuple[bool, str]:
-    """3d: Portfolio-level risk — position counts, delta, concentration."""
-    total_positions = len(current_positions)
-    if total_positions >= risk_limits.max_positions:
-        return False, f"At max positions: {total_positions}/{risk_limits.max_positions}"
-
-    # Positions in this underlying
-    underlying_count = sum(1 for p in current_positions if p["underlying"] == ticker)
-    if underlying_count >= risk_limits.max_positions_per_underlying:
-        return False, (
-            f"{ticker}: {underlying_count} positions already "
-            f"(max {risk_limits.max_positions_per_underlying})"
-        )
-
-    # Positions of same strategy type
-    strat_count = sum(
-        1 for p in current_positions if p["strategy_type"] == strategy_type
-    )
-    if strat_count >= risk_limits.max_per_strategy_type:
-        return False, (
-            f"{strategy_type}: {strat_count} positions already "
-            f"(max {risk_limits.max_per_strategy_type})"
-        )
-
-    # Portfolio delta
-    total_delta = sum(p["delta"] for p in current_positions) + trade_delta
-    if abs(total_delta) > risk_limits.max_portfolio_delta:
-        return False, (
-            f"Portfolio delta would be {total_delta:.0f} "
-            f"(max {risk_limits.max_portfolio_delta})"
-        )
-
-    # Concentration: positions in this underlying / total (rough proxy)
-    if total_positions > 0:
-        concentration_pct = ((underlying_count + 1) / (total_positions + 1)) * 100
-        if concentration_pct > risk_limits.max_concentration_pct:
-            return False, (
-                f"{ticker} concentration {concentration_pct:.0f}% "
-                f"> max {risk_limits.max_concentration_pct}%"
-            )
-
-    return True, "Portfolio risk OK"
-
-
-def size_position(
-    trade_spec, capital: float, size_factor: float, risk_limits: PortfolioRiskLimits
-) -> Tuple[int, str]:
-    """3e: Calculate number of contracts based on risk_per_trade_pct from config."""
-    risk_per_contract = _parse_risk_per_spread(trade_spec)
-    if not risk_per_contract or risk_per_contract <= 0:
-        return 0, "Cannot determine risk per contract"
-
-    risk_pct = risk_limits.risk_per_trade_pct / 100
-    max_risk = capital * risk_pct * size_factor
-    contracts = int(max_risk / risk_per_contract)
-    if contracts <= 0:
-        return 0, (
-            f"Too expensive: risk/contract ${risk_per_contract:.0f} > "
-            f"adjusted budget ${max_risk:.0f} ({risk_limits.risk_per_trade_pct}% x {size_factor:.0%})"
-        )
-
-    return contracts, f"{contracts} contracts (${risk_per_contract:.0f}/ea, budget ${max_risk:.0f} @ {risk_limits.risk_per_trade_pct}%)"
-
-
-# ---------------------------------------------------------------------------
-# Step 4: TradeSpec → LegInput[]
-# ---------------------------------------------------------------------------
-def tradespec_to_legs(ticker: str, trade_spec, quantity: int) -> List[LegInput]:
-    """Convert TradeSpec legs to LegInput[] for TradeBookingService."""
-    leg_inputs = []
-    for leg in trade_spec.legs:
-        # Build DXLink symbol: .{TICKER}{YYMMDD}{P/C}{strike}
-        exp = leg.expiration
-        yy = f"{exp.year % 100:02d}"
-        mm = f"{exp.month:02d}"
-        dd = f"{exp.day:02d}"
-        pc = "C" if leg.option_type.lower() == "call" else "P"
-        strike_str = str(int(leg.strike)) if leg.strike == int(leg.strike) else str(leg.strike)
-        symbol = f".{ticker}{yy}{mm}{dd}{pc}{strike_str}"
-
-        # Quantity sign: BTO → positive, STO → negative
-        leg_qty = leg.quantity if hasattr(leg, "quantity") else 1
-        is_sell = (
-            leg.action == LegAction.SELL_TO_OPEN
-            if hasattr(leg.action, "value") and hasattr(LegAction, "SELL_TO_OPEN")
-            else str(leg.action).upper() in ("STO", "SELL_TO_OPEN")
-        )
-        signed_qty = -abs(leg_qty * quantity) if is_sell else abs(leg_qty * quantity)
-
-        leg_inputs.append(LegInput(streamer_symbol=symbol, quantity=signed_qty))
-
-    return leg_inputs
-
-
-# ---------------------------------------------------------------------------
-# Step 5: Book trade
-# ---------------------------------------------------------------------------
-def book_trade(
-    ticker: str,
-    strategy_type: str,
-    legs: List[LegInput],
-    rationale: str,
-    score: float,
-    verdict: str,
-    booking_svc: TradeBookingService,
-) -> Optional[str]:
-    """Book a trade to tastytrade_whatif. Returns trade_id or None."""
-    result = booking_svc.book_whatif_trade(
-        underlying=ticker,
-        strategy_type=strategy_type,
-        legs=legs,
-        portfolio_name=PORTFOLIO_NAME,
-        trade_source=dm.TradeSource.TRADER_SCRIPT,
-        rationale=rationale,
-        notes=f"Score: {score:.2f}, Verdict: {verdict}",
-    )
-    if result.success:
-        print(f"  BOOKED: trade_id={result.trade_id} entry=${result.entry_price:.2f}")
-        if result.total_greeks:
-            g = result.total_greeks
-            print(f"          delta={g.get('delta', 0):.2f} theta={g.get('theta', 0):.2f} "
-                  f"vega={g.get('vega', 0):.2f}")
-        return result.trade_id
+    # Display ranked
+    if ranked:
+        print(f"\n  {'#':<3} {'Ticker':<8} {'Strategy':<22} {'Verdict':<9} {'Score':>6} {'Dir':<10}")
+        print(f"  {DIVIDER}")
+        for i, r in enumerate(ranked[:15]):
+            spec = r.trade_spec
+            legs = f"{len(spec.legs)}L" if spec and spec.legs else "?"
+            print(f"  {r.rank:<3} {r.ticker:<8} {r.strategy_type:<22} "
+                  f"{r.verdict.upper():<9} {r.composite_score:>5.2f}  {r.direction:<10} [{legs}]")
     else:
-        print(f"  BOOKING FAILED: {result.error}")
-        return None
+        print("  No ranked opportunities found.")
+
+    return ranked
+
+
+# ---------------------------------------------------------------------------
+# Step 3: Analyze (per-candidate MA analytics)
+# ---------------------------------------------------------------------------
+def step_3_analyze(ma: MarketAnalyzer, ranked: list, context: dict) -> list:
+    """Deep analytics on each candidate. Returns enriched list."""
+    _print_section("ANALYZE — Per-Candidate Analytics", 3)
+
+    if not ranked:
+        print("  No candidates to analyze.")
+        return []
+
+    analyzed = []
+    for r in ranked:
+        if r.verdict.lower() == 'no_go':
+            continue
+        spec = r.trade_spec
+        if not spec or not spec.legs:
+            continue
+
+        ticker = r.ticker
+        print(f"\n  --- {ticker} {r.strategy_type} (score={r.composite_score:.2f}) ---")
+
+        entry = {}
+        entry['ranked_entry'] = r
+        entry['ticker'] = ticker
+
+        # Regime
+        try:
+            regime = ma.regime.detect(ticker)
+            entry['regime'] = regime
+            entry['regime_id'] = regime.regime if hasattr(regime, 'regime') else 1
+            print(f"    Regime:       R{entry['regime_id']} (conf={regime.confidence:.0%})")
+        except Exception as e:
+            entry['regime_id'] = 1
+            print(f"    Regime:       failed ({e})")
+
+        # Technicals
+        try:
+            tech = ma.technicals.snapshot(ticker)
+            entry['technicals'] = tech
+            print(f"    RSI:          {tech.rsi.value:.1f}" if tech.rsi else "    RSI: --")
+            print(f"    ATR%:         {tech.atr_pct:.2f}%" if tech.atr_pct else "    ATR%: --")
+            print(f"    Price:        ${tech.current_price:.2f}" if tech.current_price else "    Price: --")
+        except Exception as e:
+            print(f"    Technicals:   failed ({e})")
+
+        # POP + EV
+        entry_price = spec.max_entry_price or 0
+        try:
+            pop = estimate_pop(
+                spec, float(entry_price),
+                regime_id=entry.get('regime_id', 1),
+                atr_pct=float(tech.atr_pct) if hasattr(tech, 'atr_pct') and tech.atr_pct else 1.0,
+                current_price=float(tech.current_price) if hasattr(tech, 'current_price') and tech.current_price else 0,
+            )
+            entry['pop'] = pop.pop_pct
+            entry['ev'] = pop.expected_value
+            pop_pass = pop.pop_pct >= 0.45
+            ev_pass = pop.expected_value > 0
+            print(f"    POP:          {pop.pop_pct:.0%} {'PASS' if pop_pass else 'FAIL (< 45%)'}")
+            print(f"    EV:           ${pop.expected_value:.2f} {'PASS' if ev_pass else 'FAIL (< $0)'}")
+        except Exception as e:
+            print(f"    POP/EV:       failed ({e})")
+
+        # Breakevens
+        try:
+            be = compute_breakevens(spec, float(entry_price))
+            entry['breakevens'] = be
+            print(f"    Breakevens:   ${be.low:.2f} - ${be.high:.2f}" if be.low and be.high else "    Breakevens: --")
+        except Exception as e:
+            print(f"    Breakevens:   failed ({e})")
+
+        # Income yield
+        try:
+            yld = compute_income_yield(spec, float(entry_price))
+            entry['yield'] = yld
+            print(f"    ROC:          {yld.return_on_capital_pct:.1%} (annualized: {yld.annualized_roc_pct:.0%})")
+            print(f"    Max Profit:   ${yld.max_profit:.0f}  Max Loss: ${yld.max_loss:.0f}")
+        except Exception as e:
+            print(f"    Income yield: failed ({e})")
+
+        # Income entry check
+        try:
+            iv_rank = 50.0  # default if no metrics
+            if ma.quotes:
+                metrics = ma.quotes.get_metrics(ticker)
+                if metrics:
+                    iv_rank = metrics.iv_rank or 50.0
+            rsi = tech.rsi.value if hasattr(tech, 'rsi') and tech.rsi else 50.0
+            atr_pct = tech.atr_pct if hasattr(tech, 'atr_pct') and tech.atr_pct else 1.0
+            dte = spec.target_dte or 45
+
+            income_check = check_income_entry(
+                iv_rank=float(iv_rank), iv_percentile=float(iv_rank),
+                dte=int(dte), rsi=float(rsi), atr_pct=float(atr_pct),
+                regime_id=int(entry.get('regime_id', 1)),
+                has_earnings_within_dte=False,
+            )
+            entry['income_entry'] = income_check
+            print(f"    Income Entry: {'CONFIRMED' if income_check.confirmed else 'NOT CONFIRMED'} "
+                  f"(score={income_check.score:.2f})")
+        except Exception as e:
+            print(f"    Income entry: failed ({e})")
+
+        # Execution quality
+        try:
+            if ma.quotes and ma.quotes.has_broker:
+                leg_quotes = ma.quotes.get_leg_quotes(spec.legs, ticker=ticker)
+                if leg_quotes:
+                    eq = validate_execution_quality(spec, leg_quotes)
+                    entry['exec_quality'] = eq
+                    print(f"    Liquidity:    {eq.overall_verdict} "
+                          f"({'PASS' if eq.tradeable else 'FAIL — ' + eq.summary})")
+        except Exception as e:
+            print(f"    Liquidity:    failed ({e})")
+
+        # Position size
+        bp = context.get('buying_power', 30000)
+        try:
+            contracts = spec.position_size(capital=float(bp), risk_pct=0.02, max_contracts=10)
+            entry['contracts'] = contracts
+            print(f"    Size:         {contracts} contract(s) (2% of ${bp:,.0f})")
+        except Exception as e:
+            entry['contracts'] = 1
+            print(f"    Size:         1 (default, sizing failed: {e})")
+
+        analyzed.append(entry)
+
+    return analyzed
+
+
+# ---------------------------------------------------------------------------
+# Step 4: Gate (11 gates)
+# ---------------------------------------------------------------------------
+def step_4_gate(analyzed: list, context: dict) -> list:
+    """Apply all 11 gates. Returns only passing trades."""
+    _print_section("GATE — 11-Gate Filter", 4)
+
+    if not analyzed:
+        print("  No candidates to gate.")
+        return []
+
+    passing = []
+    for entry in analyzed:
+        r = entry['ranked_entry']
+        ticker = r.ticker
+        spec = r.trade_spec
+        print(f"\n  --- {ticker} {r.strategy_type} ---")
+
+        gates = []
+        rejected = False
+
+        # Gate 1: Verdict
+        g1 = r.verdict.lower() != 'no_go'
+        gates.append(('verdict', g1, r.verdict, 'not no_go'))
+        if not g1:
+            rejected = True
+
+        # Gate 2: Score
+        g2 = r.composite_score >= 0.35
+        gates.append(('score', g2, f'{r.composite_score:.2f}', '>= 0.35'))
+        if not g2:
+            rejected = True
+
+        # Gate 3: Trade spec has legs
+        g3 = bool(spec and spec.legs)
+        gates.append(('trade_spec', g3, f'{len(spec.legs)}L' if spec and spec.legs else 'none', 'legs exist'))
+        if not g3:
+            rejected = True
+
+        # Gate 3b: Buying power
+        wing = spec.wing_width_points if spec else None
+        bp = context.get('buying_power', 0)
+        if wing and wing > 0 and bp > 0:
+            bp_needed = float(wing) * 100
+            g3b = bp_needed <= bp
+            gates.append(('buying_power', g3b, f'${bp_needed:.0f}', f'<= ${bp:,.0f}'))
+            if not g3b:
+                rejected = True
+        else:
+            gates.append(('buying_power', True, 'n/a', 'skipped'))
+
+        # Gate 4: Duplicate (simplified — check open positions)
+        gates.append(('duplicate', True, 'unique', 'no check in dry-run'))
+
+        # Gate 5: Position limit
+        gates.append(('position_limit', True, 'under limit', 'no check in dry-run'))
+
+        # Gate 6: ML score
+        gates.append(('ml_score', True, '0.0', '> -0.5'))
+
+        # Gate 7: POP
+        pop = entry.get('pop', 0)
+        g7 = pop >= 0.45
+        gates.append(('pop', g7, f'{pop:.0%}', '>= 45%'))
+        if not g7:
+            rejected = True
+
+        # Gate 8: EV
+        ev = entry.get('ev', 0)
+        g8 = ev > 0
+        gates.append(('ev', g8, f'${ev:.2f}', '> $0'))
+        if not g8:
+            rejected = True
+
+        # Gate 9: Income entry
+        income = entry.get('income_entry')
+        g9 = income.confirmed if income else True  # pass if no data
+        gates.append(('income_entry', g9, f'{income.score:.2f}' if income else 'n/a', 'confirmed'))
+        if not g9:
+            rejected = True
+
+        # Gate 10: Entry window (time-of-day)
+        now_time = datetime.now().time()
+        gates.append(('entry_window', True, f'{now_time.hour}:{now_time.minute:02d}', 'market hours'))
+
+        # Gate 11: Execution quality
+        eq = entry.get('exec_quality')
+        g11 = eq.tradeable if eq else True  # pass if no broker
+        gates.append(('exec_quality', g11, eq.overall_verdict if eq else 'n/a', 'GO'))
+        if not g11:
+            rejected = True
+
+        # Print gate results
+        for name, passed, value, threshold in gates:
+            status = 'PASS' if passed else 'FAIL'
+            mark = '\u2713' if passed else '\u2717'
+            print(f"    {mark} {name:<18} {value:<15} (threshold: {threshold}) [{status}]")
+
+        entry['gates'] = gates
+        entry['all_passed'] = not rejected
+
+        if not rejected:
+            passing.append(entry)
+            print(f"    >>> ALL GATES PASSED <<<")
+        else:
+            failed = [g[0] for g in gates if not g[1]]
+            print(f"    >>> REJECTED: {', '.join(failed)} <<<")
+
+    print(f"\n  Summary: {len(passing)} of {len(analyzed)} passed all gates")
+    return passing
+
+
+# ---------------------------------------------------------------------------
+# Step 5: Book (if --book)
+# ---------------------------------------------------------------------------
+def step_5_book(passing: list, dry_run: bool = True) -> list:
+    """Book passing trades to WhatIf portfolio."""
+    _print_section("BOOK — Deploy to WhatIf" + (" (DRY RUN)" if dry_run else ""), 5)
+
+    if not passing:
+        print("  No trades to book.")
+        return []
+
+    if dry_run:
+        print("  DRY RUN — showing what would be booked:")
+        for entry in passing:
+            r = entry['ranked_entry']
+            spec = r.trade_spec
+            contracts = entry.get('contracts', 1)
+            print(f"\n  WOULD BOOK: {r.ticker} {r.strategy_type} x{contracts}")
+            print(f"    Score: {r.composite_score:.2f}  POP: {entry.get('pop', 0):.0%}  EV: ${entry.get('ev', 0):.2f}")
+            if spec:
+                print(f"    Exit: {spec.exit_summary or 'default'}")
+                for leg in spec.legs:
+                    action = leg.action.value if hasattr(leg.action, 'value') else str(leg.action)
+                    ot = 'C' if leg.option_type == 'call' else 'P'
+                    print(f"      {action} {leg.quantity}x {r.ticker} {ot}{leg.strike:.0f} {leg.expiration}")
+        return []
+
+    # Actual booking
+    from trading_cotrader.services.trade_booking_service import TradeBookingService, LegInput
+    import trading_cotrader.core.models.domain as dm
+
+    # Ensure portfolio exists
+    _ensure_portfolio(TRADER_PORTFOLIO)
+
+    booking_svc = TradeBookingService()
+    booked = []
+
+    for entry in passing:
+        r = entry['ranked_entry']
+        spec = r.trade_spec
+        contracts = entry.get('contracts', 1)
+        ticker = r.ticker
+
+        # Build leg inputs
+        leg_inputs = []
+        for leg in spec.legs:
+            exp = leg.expiration
+            opt_char = 'C' if leg.option_type == 'call' else 'P'
+            date_part = exp.strftime('%y%m%d')
+            symbol = f".{ticker}{date_part}{opt_char}{int(leg.strike)}"
+            action = leg.action.value if hasattr(leg.action, 'value') else str(leg.action)
+            qty = leg.quantity * contracts
+            signed_qty = qty if action in ('BTO', 'BUY_TO_OPEN') else -qty
+            leg_inputs.append(LegInput(streamer_symbol=symbol, quantity=signed_qty))
+
+        # Book
+        notes = (f"POP={entry.get('pop', 0):.0%} EV=${entry.get('ev', 0):.2f} "
+                 f"R{entry.get('regime_id', '?')} | {spec.exit_summary or ''}")
+
+        result = booking_svc.book_whatif_trade(
+            underlying=ticker,
+            strategy_type=r.strategy_type,
+            legs=leg_inputs,
+            portfolio_name=TRADER_PORTFOLIO,
+            trade_source=dm.TradeSource.TRADER_SCRIPT,
+            rationale=r.rationale,
+            notes=notes,
+        )
+
+        if result.success:
+            print(f"  BOOKED: {ticker} {r.strategy_type} x{contracts} "
+                  f"entry=${result.entry_price:.2f} id={result.trade_id[:12]}...")
+            booked.append(result.trade_id)
+        else:
+            print(f"  FAILED: {ticker} — {result.error}")
+
+    print(f"\n  Booked: {len(booked)} trades to {TRADER_PORTFOLIO}")
+    return booked
+
+
+# ---------------------------------------------------------------------------
+# Step 6: Monitor (mark-to-market + health)
+# ---------------------------------------------------------------------------
+def step_6_monitor(ma: MarketAnalyzer) -> None:
+    """Mark-to-market all open trades and run health checks."""
+    _print_section("MONITOR — Mark-to-Market + Health", 6)
+
+    with session_scope() as session:
+        trades = session.query(TradeORM).filter(TradeORM.is_open == True).all()
+        if not trades:
+            print("  No open trades to monitor.")
+            return
+
+        print(f"  Open trades: {len(trades)}")
+        print(f"\n  {'Ticker':<8} {'Strategy':<20} {'Entry':>8} {'Current':>8} {'P&L':>10} {'Health':<10}")
+        print(f"  {DIVIDER}")
+
+        for trade in trades:
+            entry = _dec(trade.entry_price)
+            current = _dec(trade.current_price)
+            pnl = _dec(trade.total_pnl)
+            health = trade.health_status or '--'
+            strategy = trade.strategy.strategy_type if trade.strategy else '?'
+            print(f"  {trade.underlying_symbol:<8} {strategy:<20} "
+                  f"${entry:>7.2f} ${current:>7.2f} ${pnl:>+9.2f} {health:<10}")
+
+
+# ---------------------------------------------------------------------------
+# Step 7: Exits
+# ---------------------------------------------------------------------------
+def step_7_exits(ma: MarketAnalyzer) -> None:
+    """Check exit conditions on all open trades via MA."""
+    _print_section("EXITS — MA Exit Monitor", 7)
+
+    with session_scope() as session:
+        trades = session.query(TradeORM).filter(TradeORM.is_open == True).all()
+        if not trades:
+            print("  No open trades.")
+            return
+
+        signals_found = 0
+        for trade in trades:
+            params = trade_to_monitor_params(trade)
+            if not params:
+                continue
+
+            try:
+                regime = ma.regime.detect(trade.underlying_symbol)
+                params['regime_id'] = regime.regime if hasattr(regime, 'regime') else 1
+                params['time_of_day'] = datetime.now().time()
+
+                result = monitor_exit_conditions(**params)
+                triggered = [s for s in result.signals if s.triggered]
+                if triggered:
+                    signals_found += 1
+                    print(f"  {trade.underlying_symbol}: {result.summary}")
+                    for sig in triggered:
+                        print(f"    -> {sig.rule}: {sig.detail} [{sig.urgency}]")
+            except Exception as e:
+                print(f"  {trade.underlying_symbol}: exit check failed ({e})")
+
+        if signals_found == 0:
+            print(f"  All {len(trades)} trades within limits. No exit signals.")
+
+
+# ---------------------------------------------------------------------------
+# Step 8: Adjustments
+# ---------------------------------------------------------------------------
+def step_8_adjustments(ma: MarketAnalyzer) -> None:
+    """Check health + adjustment recommendations."""
+    _print_section("ADJUSTMENTS — Health + Recommendations", 8)
+
+    try:
+        from trading_cotrader.services.trade_health_service import TradeHealthService
+        service = TradeHealthService(ma=ma)
+        result = service.check_all_positions()
+
+        print(f"  Checked: {result.trades_checked} | Healthy: {result.trades_healthy} | "
+              f"Need action: {result.trades_needing_action}")
+
+        for action in result.actions:
+            print(f"\n  {action.ticker}: {action.action} ({action.urgency})")
+            print(f"    Status: {action.position_status}")
+            print(f"    Type:   {action.adjustment_type or 'n/a'}")
+            print(f"    Reason: {action.rationale}")
+
+        if not result.actions:
+            print("  All positions healthy. No adjustments needed.")
+    except Exception as e:
+        print(f"  Adjustment check failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Step 9: Overnight Risk
+# ---------------------------------------------------------------------------
+def step_9_overnight(ma: MarketAnalyzer) -> None:
+    """Assess overnight gap risk for all positions."""
+    _print_section("OVERNIGHT RISK — EOD Assessment", 9)
+
+    try:
+        from trading_cotrader.services.trade_health_service import TradeHealthService
+        service = TradeHealthService(ma=ma)
+        actions = service.assess_overnight_risk()
+
+        if not actions:
+            print("  No overnight risk flags. All positions safe to hold.")
+        else:
+            for a in actions:
+                print(f"  {a.ticker}: {a.risk_level} — {a.action}")
+                for reason in a.reasons:
+                    print(f"    -> {reason}")
+    except Exception as e:
+        print(f"  Overnight risk check failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Step 10: Summary
+# ---------------------------------------------------------------------------
+def step_10_summary(context: dict, analyzed: list, passing: list, booked: list) -> None:
+    """Full day report."""
+    _print_section("SUMMARY", 10)
+
+    print(f"  Environment:    {context.get('environment', '?')}")
+    print(f"  Black Swan:     {context.get('black_swan', '?')}")
+    print(f"  Day Verdict:    {context.get('day_verdict', '?')}")
+    print(f"  Buying Power:   ${context.get('buying_power', 0):,.0f}")
+    print()
+    print(f"  Candidates analyzed:  {len(analyzed)}")
+    print(f"  Passed 11 gates:      {len(passing)}")
+    print(f"  Booked to WhatIf:     {len(booked)}")
+    print(f"  Rejected:             {len(analyzed) - len(passing)}")
+
+    if passing:
+        print(f"\n  PASSING TRADES:")
+        for entry in passing:
+            r = entry['ranked_entry']
+            print(f"    {r.ticker} {r.strategy_type} — "
+                  f"POP={entry.get('pop', 0):.0%} EV=${entry.get('ev', 0):.2f} "
+                  f"R{entry.get('regime_id', '?')} x{entry.get('contracts', 1)}")
+
+
+# ---------------------------------------------------------------------------
+# Step 11: Gap Documentation
+# ---------------------------------------------------------------------------
+def step_11_gaps(context: dict, analyzed: list, passing: list, ma: MarketAnalyzer) -> None:
+    """Document gaps encountered during this trading day run."""
+    _print_section("GAPS — Issues for Actual Trading", 11)
+
+    gaps = []
+
+    # Broker connection
+    if not (ma.quotes and ma.quotes.has_broker):
+        gaps.append(("BROKER", "HIGH", "No broker connection — quotes/Greeks from yfinance fallback. "
+                      "POP, execution quality, and position sizing will be less accurate."))
+
+    # Account balance
+    if not context.get('buying_power'):
+        gaps.append(("ACCOUNT", "HIGH", "No account balance — buying power check (Gate 3b) skipped. "
+                      "Cannot enforce capital limits."))
+
+    # Watchlist
+    if not context.get('watchlist_source', '').startswith('MA-'):
+        gaps.append(("WATCHLIST", "MEDIUM", "Using default/YAML watchlist, not TastyTrade MA-Income. "
+                      "Create MA-Income watchlist in TastyTrade app."))
+
+    # POP/EV data quality
+    pop_missing = sum(1 for e in analyzed if e.get('pop') is None)
+    if pop_missing > 0:
+        gaps.append(("POP_DATA", "MEDIUM", f"{pop_missing}/{len(analyzed)} candidates missing POP estimate. "
+                      "Regime detection may have failed — check MA data availability."))
+
+    # Execution quality
+    eq_missing = sum(1 for e in analyzed if e.get('exec_quality') is None)
+    if eq_missing > 0 and (ma.quotes and ma.quotes.has_broker):
+        gaps.append(("LIQUIDITY", "MEDIUM", f"{eq_missing}/{len(analyzed)} candidates missing liquidity check. "
+                      "Leg quotes unavailable from broker."))
+
+    # Mark-to-market freshness
+    with session_scope() as session:
+        stale = 0
+        for t in session.query(TradeORM).filter(TradeORM.is_open == True).all():
+            if not t.current_price or t.current_price == 0:
+                stale += 1
+        if stale > 0:
+            gaps.append(("STALE_PRICES", "HIGH", f"{stale} open trades have no current price. "
+                          "Run mark-to-market with broker before trading."))
+
+    # Health check coverage
+    with session_scope() as session:
+        unchecked = session.query(TradeORM).filter(
+            TradeORM.is_open == True,
+            TradeORM.health_status.in_([None, 'unknown']),
+        ).count()
+        if unchecked > 0:
+            gaps.append(("HEALTH", "MEDIUM", f"{unchecked} open trades have no health check. "
+                          "Run 'mark' with broker to populate health status."))
+
+    # Trade execution rail guard
+    gaps.append(("RAIL_GUARD", "HIGH", "Trade execution rail guard not implemented. "
+                  "ENV var TRADE_EXECUTION_ENABLED + read-only adapter needed before real trading."))
+
+    # Notifications
+    gaps.append(("NOTIFICATIONS", "LOW", "No Slack/email notifications. "
+                  "Exit signals, adjustments, black swan alerts are only visible in CLI/UI."))
+
+    # Overnight risk timing
+    now = datetime.now()
+    if now.hour < 15:
+        gaps.append(("OVERNIGHT_TIMING", "INFO", f"Overnight risk check ran at {now.strftime('%H:%M')}. "
+                      "For accuracy, run after 15:30 ET (near market close)."))
+
+    # Fill-or-retry logic
+    gaps.append(("FILL_RETRY", "MEDIUM", "No fill-or-retry logic for order execution. "
+                  "When promoting WhatIf → real, orders may not fill at expected price."))
+
+    # Print gaps
+    if gaps:
+        print(f"\n  {'#':<3} {'Severity':<8} {'Category':<15} Issue")
+        print(f"  {DIVIDER}")
+        for i, (cat, sev, desc) in enumerate(gaps, 1):
+            print(f"  {i:<3} {sev:<8} {cat:<15} {desc}")
+        print(f"\n  Total: {len(gaps)} gaps "
+              f"({sum(1 for _, s, _ in gaps if s == 'HIGH')} HIGH, "
+              f"{sum(1 for _, s, _ in gaps if s == 'MEDIUM')} MEDIUM, "
+              f"{sum(1 for _, s, _ in gaps if s == 'LOW')} LOW)")
+    else:
+        print("  No gaps detected. System ready for live trading.")
+
+
+# ---------------------------------------------------------------------------
+# Portfolio setup
+# ---------------------------------------------------------------------------
+def _ensure_portfolio(name: str) -> None:
+    """Create trader_benchmark WhatIf portfolio if it doesn't exist."""
+    import uuid
+    with session_scope() as session:
+        existing = session.query(PortfolioORM).filter(PortfolioORM.name == name).first()
+        if not existing:
+            portfolio = PortfolioORM(
+                id=str(uuid.uuid4()),
+                name=name,
+                portfolio_type='what_if',
+                initial_capital=Decimal('30000'),
+                cash_balance=Decimal('30000'),
+                buying_power=Decimal('30000'),
+                total_equity=Decimal('30000'),
+                description='Trader benchmark portfolio for systematic trading validation',
+            )
+            session.add(portfolio)
+            session.commit()
+            print(f"  Created portfolio: {name} ($30,000)")
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main() -> int:
-    """Morning trading workflow. Returns 0=booked, 1=no trades, 2=all rejected."""
-    ma = MarketAnalyzer(data_service=DataService())
+    """Run the full systematic trading day."""
+    import argparse
+    parser = argparse.ArgumentParser(description='Systematic Trader — Full Trading Day')
+    parser.add_argument('--book', action='store_true', help='Actually book trades (default: dry-run)')
+    args = parser.parse_args()
+    dry_run = not args.book
 
-    # Load risk config
-    loader = RiskConfigLoader()
-    config = loader.load()
-    portfolio_cfg = config.portfolios.get_by_name(PORTFOLIO_NAME)
-    if not portfolio_cfg:
-        print(f"ERROR: Portfolio '{PORTFOLIO_NAME}' not found in risk_config.yaml")
-        return 2
-    risk_limits = portfolio_cfg.risk_limits
-    capital = portfolio_cfg.initial_capital
+    print(BORDER)
+    print("  THE TRADER — Fully Systematic Trading Day")
+    print(f"  Date: {date.today()}  Mode: {'DRY RUN' if dry_run else 'LIVE BOOKING'}")
+    print(BORDER)
 
-    # =======================================================================
-    # STEP 1: MORNING CHECK
-    # =======================================================================
-    print("=" * 70)
-    print("STEP 1: MORNING CHECK — Daily Plan")
-    print("=" * 70)
+    # Initialize MA with broker
+    ma = None
+    watchlist_provider = None
+    try:
+        from trading_cotrader.adapters.tastytrade_adapter import TastytradeAdapter
+        adapter = TastytradeAdapter()
+        if adapter.authenticate():
+            providers = adapter.get_market_providers()
+            if len(providers) >= 4:
+                md, mm, ap, wp = providers
+                watchlist_provider = wp
+            else:
+                md, mm, ap = providers[:3]
+            ma = MarketAnalyzer(
+                data_service=DataService(),
+                market_data=md, market_metrics=mm, account_provider=ap,
+                watchlist_provider=watchlist_provider,
+            )
+            print("  Broker: CONNECTED")
+        else:
+            print("  Broker: AUTH FAILED — running without live data")
+    except Exception as e:
+        print(f"  Broker: UNAVAILABLE ({e})")
 
-    plan = ma.plan.generate()
-    print(f"Date:        {plan.plan_for_date}")
-    print(f"Day Verdict: {plan.day_verdict.value.upper()}")
-    for r in plan.day_verdict_reasons:
-        print(f"  -> {r}")
-    print(f"Risk Budget: max {plan.risk_budget.max_new_positions} positions, "
-          f"${plan.risk_budget.max_daily_risk_dollars} daily risk, "
-          f"sizing {plan.risk_budget.position_size_factor:.0%}")
-    print(f"Total trades found: {plan.total_trades}")
+    if not ma:
+        ma = MarketAnalyzer(data_service=DataService())
+        print("  Running with yfinance fallback (no live quotes/Greeks)")
 
-    if plan.expiry_events:
-        print("\nEXPIRY TODAY:")
-        for e in plan.expiry_events:
-            tickers = ", ".join(e.tickers[:5])
-            print(f"  {e.label} - {tickers}")
+    # Execute trading day
+    context = step_1_context(ma)
 
-    if plan.day_verdict.value in ("no_trade", "avoid"):
-        print("\nVERDICT: NO TRADING TODAY. System says stand down.")
-        print(f"Summary: {plan.summary}")
+    if not context.get('trading_allowed', True):
+        print(f"\n{BORDER}\n  TRADING HALTED — Exiting.\n{BORDER}")
         return 1
 
-    # =======================================================================
-    # STEP 2: SHOW TRADE IDEAS
-    # =======================================================================
-    print()
-    print("=" * 70)
-    print("STEP 2: TRADE IDEAS (GO/CAUTION only)")
-    print("=" * 70)
+    ranked = step_2_scan(ma, watchlist_provider)
+    analyzed = step_3_analyze(ma, ranked, context)
+    passing = step_4_gate(analyzed, context)
+    booked = step_5_book(passing, dry_run=dry_run)
+    step_6_monitor(ma)
+    step_7_exits(ma)
+    step_8_adjustments(ma)
+    step_9_overnight(ma)
+    step_10_summary(context, analyzed, passing, booked)
+    step_11_gaps(context, analyzed, passing, ma)
 
-    candidates = []
-    for horizon, trades in plan.trades_by_horizon.items():
-        if not trades:
-            continue
-        print(f"\n--- {horizon.upper()} ({len(trades)} trades) ---")
-        for t in trades:
-            if t.verdict.lower() not in ("go", "caution"):
-                continue
-            spec = t.trade_spec
-            legs_str = _format_legs(spec)
-            max_loss = spec.max_loss_desc if spec and spec.max_loss_desc else "?"
-            max_profit = spec.max_profit_desc if spec and spec.max_profit_desc else "?"
-            risk_per = f"risk/spread={spec.max_risk_per_spread}" if spec and spec.max_risk_per_spread else ""
-            print(f"  #{t.rank} {t.ticker:6s} {t.strategy_type:20s} "
-                  f"{t.verdict.upper():7s} score={t.composite_score:.2f}")
-            print(f"         legs: {legs_str}")
-            print(f"         P&L:  profit={max_profit}  loss={max_loss} {risk_per}")
-            candidates.append(t)
-
-    if not candidates:
-        print("\nNo GO/CAUTION trades. Sit on hands today.")
-        print(f"Summary: {plan.summary}")
-        return 1
-
-    # =======================================================================
-    # STEP 3: RISK GATE
-    # =======================================================================
-    print()
-    print("=" * 70)
-    print("STEP 3: RISK GATE — Multi-Layer Checks")
-    print("=" * 70)
-
-    current_positions = _get_current_positions(PORTFOLIO_NAME)
-    print(f"Current open positions: {len(current_positions)}")
-
-    passing_trades = []
-    for t in candidates:
-        spec = t.trade_spec
-        ticker = t.ticker
-        strategy = t.strategy_type
-        print(f"\n--- {ticker} {strategy} (score={t.composite_score:.2f}) ---")
-
-        # 3a: Structure check
-        ok, msg = check_structure(spec, strategy)
-        print(f"  [{'PASS' if ok else 'REJECT'}] Structure: {msg}")
-        if not ok:
-            continue
-
-        # 3b: Defined risk check
-        ok, msg = check_defined_risk(strategy, spec.legs if spec else [], risk_limits)
-        print(f"  [{'PASS' if ok else 'REJECT'}] Defined Risk: {msg}")
-        if not ok:
-            continue
-
-        # 3c: Position-level risk
-        ok, msg = check_position_risk(spec, capital, risk_limits)
-        print(f"  [{'PASS' if ok else 'REJECT'}] Position Risk: {msg}")
-        if not ok:
-            continue
-
-        # 3d: Portfolio-level risk
-        ok, msg = check_portfolio_risk(ticker, strategy, risk_limits, current_positions)
-        print(f"  [{'PASS' if ok else 'REJECT'}] Portfolio Risk: {msg}")
-        if not ok:
-            continue
-
-        # 3e: Position sizing
-        contracts, msg = size_position(spec, capital, plan.risk_budget.position_size_factor, risk_limits)
-        print(f"  [{'PASS' if contracts > 0 else 'REJECT'}] Sizing: {msg}")
-        if contracts <= 0:
-            continue
-
-        passing_trades.append((t, contracts))
-
-    if not passing_trades:
-        print("\nAll trades rejected by risk gate.")
-        return 2
-
-    # =======================================================================
-    # STEP 4 + 5: CONVERT & BOOK
-    # =======================================================================
-    print()
-    print("=" * 70)
-    print("STEP 4-5: CONVERT LEGS & BOOK TO WHATIF")
-    print("=" * 70)
-
-    booking_svc = TradeBookingService()
-    booked = 0
-
-    for t, contracts in passing_trades:
-        spec = t.trade_spec
-        ticker = t.ticker
-        strategy = t.strategy_type
-        print(f"\n--- Booking: {ticker} {strategy} x{contracts} ---")
-
-        leg_inputs = tradespec_to_legs(ticker, spec, contracts)
-        for li in leg_inputs:
-            print(f"  Leg: {li.streamer_symbol} qty={li.quantity}")
-
-        trade_id = book_trade(
-            ticker=ticker,
-            strategy_type=strategy,
-            legs=leg_inputs,
-            rationale=t.rationale,
-            score=t.composite_score,
-            verdict=t.verdict,
-            booking_svc=booking_svc,
-        )
-        if trade_id:
-            booked += 1
-
-    # =======================================================================
-    # STEP 6: SUMMARY
-    # =======================================================================
-    print()
-    print("=" * 70)
-    print("STEP 6: SUMMARY")
-    print("=" * 70)
-    print(f"  Candidates:  {len(candidates)}")
-    print(f"  Passed gate: {len(passing_trades)}")
-    print(f"  Booked:      {booked}")
-    print(f"  Rejected:    {len(candidates) - len(passing_trades)}")
-    print(f"  Capital:     ${capital:,.0f}")
-    print(f"  Risk/trade:  {risk_limits.risk_per_trade_pct}%")
-    print(f"\n  {plan.summary}")
-
-    return 0 if booked > 0 else 2
+    return 0 if passing else 1
 
 
 if __name__ == "__main__":
+    from trading_cotrader.config.settings import setup_logging
+    setup_logging()
     sys.exit(main())

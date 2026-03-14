@@ -352,6 +352,24 @@ class MaverickAgent(BaseAgent):
                 proposals.append(proposal)
                 continue
 
+            # Gate 6b: Drift detection — reject strategies with CRITICAL drift (ML-E1)
+            drift_alerts = context.get('drift_alerts', [])
+            for alert in drift_alerts:
+                alert_strategy = alert.get('strategy_type', '')
+                alert_regime = alert.get('regime_id', 0)
+                alert_severity = alert.get('severity', 'ok')
+                if (alert_strategy == strategy_type and
+                    alert_severity == 'critical'):
+                    proposal['status'] = 'rejected'
+                    proposal['gate_result'] = (
+                        f'DRIFT CRITICAL: {strategy_type} in R{alert_regime} — '
+                        f'win rate dropped to {alert.get("recent_win_rate", 0):.0%}'
+                    )
+                    break
+            if proposal.get('status') == 'rejected':
+                proposals.append(proposal)
+                continue
+
             # Gate 7-9: MA analytics gates (G6) — POP, EV, income entry
             ma_gate_result = self._ma_analytics_gates(trade_spec, proposal)
             if ma_gate_result:
@@ -383,6 +401,10 @@ class MaverickAgent(BaseAgent):
                 'exit_dte': trade_spec.get('exit_dte'),
                 'exit_summary': trade_spec.get('exit_summary', ''),
                 'order_side': trade_spec.get('order_side', 'credit'),
+                # Extra fields for TradeOutcome construction (Fix 7)
+                'iv_rank_at_entry': proposal.get('iv_rank_at_entry'),
+                'dte_at_entry': trade_spec.get('target_dte'),
+                'composite_score': score,
             }
 
             proposals.append(proposal)
@@ -495,12 +517,24 @@ class MaverickAgent(BaseAgent):
             logger.debug(f"Could not build TradeSpec for MA gates: {e}")
             return None
 
-        # Gate 7: POP >= 45%
+        # Gate 7: POP >= 45% (SQ3: pass iv_rank for calibrated POP)
+        iv_rank = ticker_research.get('iv_rank') or ticker_research.get('iv_rank_from_map')
+        # Also try context iv_rank_map
+        iv_rank_map = context.get('iv_rank_map', {})
+        if not iv_rank and ticker in iv_rank_map:
+            iv_rank = iv_rank_map[ticker]
+
         try:
+            pop_kwargs = {
+                'regime_id': int(regime_id),
+                'atr_pct': float(atr_pct),
+                'current_price': float(current_price),
+            }
+            if iv_rank is not None:
+                pop_kwargs['iv_rank'] = float(iv_rank)
+                proposal['iv_rank_at_entry'] = float(iv_rank)
             pop_result = estimate_pop(
-                spec_obj, float(entry_price),
-                regime_id=int(regime_id), atr_pct=float(atr_pct),
-                current_price=float(current_price),
+                spec_obj, float(entry_price), **pop_kwargs,
             )
             proposal['pop_at_entry'] = pop_result.pop_pct
             proposal['ev_at_entry'] = pop_result.expected_value

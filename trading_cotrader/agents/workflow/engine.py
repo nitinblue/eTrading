@@ -444,6 +444,22 @@ class WorkflowEngine:
             except Exception as e:
                 logger.debug(f"ML learning failed (non-blocking): {e}")
 
+        # 9b. ML learning cycle — drift, bandits, thresholds, POP (ML-E1 to ML-E4)
+        if cycle % 10 == 0 and cycle > 0 and self._ma:
+            try:
+                from trading_cotrader.services.ml_learning_service import MLLearningService
+                ml = MLLearningService(ma=self._ma)
+                ml_result = ml.run_full_learning_cycle()
+                # Store drift alerts in context for Maverick
+                self.context['drift_alerts'] = ml.get_drift_alerts()
+                self.context['ml_thresholds'] = ml.get_thresholds()
+                if ml_result.get('drift', {}).get('critical', 0) > 0:
+                    logger.warning(f"ML: {ml_result['drift']['critical']} CRITICAL drift alerts!")
+                else:
+                    logger.info(f"ML cycle: {ml_result}")
+            except Exception as e:
+                logger.debug(f"ML learning cycle skipped: {e}")
+
         # Log summary
         proposals = self.context.get('trade_proposals', [])
         proposed = [p for p in proposals if p.get('status') == 'proposed']

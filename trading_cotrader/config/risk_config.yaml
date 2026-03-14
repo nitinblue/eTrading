@@ -247,7 +247,7 @@ portfolios:
     account_number: "desk_medium_001"
     portfolio_type: what_if
     currency: USD
-    initial_capital: 10000
+    initial_capital: 15000
     target_annual_return_pct: 30
     exit_rule_profile: balanced
     tags: ["desk", "medium_term", "income"]
