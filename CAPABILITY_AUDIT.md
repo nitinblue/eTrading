@@ -1,23 +1,48 @@
 # Capability Audit — What's in UI vs CLI-Only vs Not Wired
-# Date: 2026-03-14 (Session 41)
-# 57 MA functions, 265 exports. What's visible to the user?
+# Date: 2026-03-15 (Session 41 overnight)
+# MA: 62+ functions, 88 instruments, 48 CLI commands, 10 presets
+# eTrading: 25+ CLI commands, 40+ API endpoints, 12 frontend pages
+# Reference: market_analyzer/USER_MANUAL.md (trader's perspective)
 
-## Summary
+## Summary (Updated)
 
-| Category | Total | In UI | CLI Only | Not Wired |
-|----------|-------|-------|----------|-----------|
-| Market Analysis | 8 | 5 | 1 | 2 |
-| Technical Analysis | 2 | 1 | 0 | 1 |
-| Trade Assessment | 13 | 0 | 0 | 13 |
-| Trade Analytics | 10 | 3 | 3 | 4 |
-| Position Management | 5 | 2 | 3 | 0 |
-| Machine Learning | 8 | 0 | 2 | 6 |
-| Performance | 6 | 1 | 2 | 3 |
-| Multi-Market | 5 | 0 | 1 | 4 |
-| Hedging | 4 | 0 | 0 | 4 |
-| **Total** | **61** | **12** | **12** | **37** |
+Per MA USER_MANUAL.md, MA provides 62+ functions across 10 categories.
 
-**Only 20% of capabilities are visible in the UI. 60% are not wired at all.**
+| Category | MA Functions | In UI | CLI Only | API Only | Not Wired |
+|----------|-------------|-------|----------|----------|-----------|
+| Market Analysis (8 services) | context, regime, technicals, levels, phase, fundamentals, macro, vol_surface | 5 | 2 | 1 | 0 |
+| Technical Analysis (13 indicators) | RSI, MACD, BB, Stoch, ADX, Fib, Donchian, Keltner, Pivots, VWAP, VCP, SmartMoney, ORB | 6 | 0 | 0 | 7 |
+| Trade Assessment (12 assessors) | IC, IFly, calendar, diagonal, ratio, 0DTE, LEAP, earnings, breakout, momentum, MR, ORB | 0 | 0 | 0 | 12 (internal) |
+| Trade Analytics (10 functions) | POP+quality, yield, breakevens, income_entry, exec_quality, sizing, Greeks, strike_align, account_filter, entry_window | 5 | 3 | 2 | 0 |
+| Position Management (5 functions) | exit_monitor, health_check, adjustment, overnight_risk, intraday | 3 | 5 | 2 | 0 |
+| ML/Learning (7 functions) | drift, bandits, thresholds, POP_calibrate, weight_calibrate, Q-learning, performance_report | 1 | 2 | 0 | 4 |
+| Performance (4 functions) | sharpe, drawdown, regime_perf, profit_factor | 1 | 1 | 1 | 1 |
+| Multi-Market (6) | registry, universe, cross_market, instrument_info, margin, strategy_available | 1 | 2 | 1 | 2 |
+| Hedging (4 functions) | assess_hedge, currency_pnl, portfolio_exposure, currency_exposure | 0 | 0 | 1 | 3 |
+| Macro (5 functions) | dashboard, bond, credit, dollar, inflation | 1 | 1 | 1 | 2 |
+| Currency (4 functions) | convert, exposure, pnl, hedge_assessment | 0 | 0 | 0 | 4 |
+| **Total** | **~78** | **23** | **16** | **9** | **35** |
+
+**30% in UI (up from 20%). 45% not wired (down from 60%). Significant improvement.**
+
+### What Improved Since Last Audit
+- Macro dashboard → now in UI (Research + Agents page)
+- Cross-market → now in UI (Research + Agents page)
+- Trade quality score (TQ1) → in proposals + explain modal
+- Health detail → clickable badge with exit plan, breakevens, adjustments
+- Sharpe/drawdown → Performance Analytics panel on Desks page
+- Daily report → panel on Desks page
+- System alerts → panel on Desks page
+- Explain trade → modal with gates, commentary, data gaps
+- Income yield ROC → grid column
+
+### Biggest Remaining Gaps (from USER_MANUAL.md)
+1. **7 advanced technicals** not shown (Fibonacci, ADX, Donchian, Keltner, Pivots, VWAP, ORB)
+2. **12 assessor details** never visible (user can't see WHY iron condor scored 0.82)
+3. **4 currency functions** not wired (currency P&L, exposure, conversion)
+4. **4 ML functions** not surfaced in UI (drift alerts, bandit rankings, thresholds — CLI only)
+5. **Hedging recommendations** wired in backend but not shown anywhere
+6. **Vol surface** computed but never displayed
 
 ---
 

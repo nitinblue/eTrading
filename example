@@ -1,0 +1,75 @@
+# CoTrader Environment Variables
+# Copy this file to .env and fill in your values:
+#   cp .env.example .env
+#
+# NEVER commit .env to git. It contains secrets.
+
+# =============================================================================
+# TastyTrade (US Market)
+# =============================================================================
+# Get these from TastyTrade developer portal or account settings
+
+# Paper trading credentials
+TASTYTRADE_CLIENT_SECRET_PAPER=your_paper_client_secret_here
+TASTYTRADE_REFRESH_TOKEN_PAPER=your_paper_refresh_token_here
+
+# Live trading credentials
+TASTYTRADE_CLIENT_SECRET_LIVE=your_live_client_secret_here
+TASTYTRADE_REFRESH_TOKEN_LIVE=your_live_refresh_token_here
+
+# Data streaming (DXLink) — usually same as live
+TASTYTRADE_CLIENT_SECRET_DATA=your_data_client_secret_here
+TASTYTRADE_REFRESH_TOKEN_DATA=your_data_refresh_token_here
+
+# Account number (optional — auto-detected if only one account)
+TASTYTRADE_ACCOUNT_NUMBER=
+
+# =============================================================================
+# Zerodha (India Market) — Optional
+# =============================================================================
+# Get API key from https://developers.kite.trade/
+
+ZERODHA_API_KEY=your_kite_connect_api_key
+ZERODHA_API_SECRET=your_kite_connect_api_secret
+ZERODHA_ACCESS_TOKEN=your_daily_access_token
+
+# =============================================================================
+# Application Settings
+# =============================================================================
+
+# Database — SQLite for dev, PostgreSQL for production
+# DATABASE_URL=postgresql://cotrader:password@localhost:5432/cotrader
+DATABASE_URL=sqlite:///trading_cotrader.db
+
+# Trade execution safety rail — MUST be 'true' to place real orders
+TRADE_EXECUTION_ENABLED=false
+
+# JWT secret for user auth — change in production!
+SECRET_KEY=change-this-to-a-random-string-in-production
+
+# CORS origins — restrict in production
+# CORS_ORIGINS=https://app.cotrader.com
+CORS_ORIGINS=*
+
+# =============================================================================
+# How to get TastyTrade tokens
+# =============================================================================
+# 1. Go to https://developer.tastyworks.com/
+# 2. Create an application (or use existing)
+# 3. Get Client Secret from app settings
+# 4. Generate Refresh Token:
+#    curl -X POST https://api.tastyworks.com/oauth/token \
+#      -d "grant_type=refresh_token&client_secret=YOUR_SECRET"
+# 5. Copy the refresh_token from the response
+#
+# Tokens expire periodically — regenerate when you see "Invalid JWT" error
+
+# =============================================================================
+# How to get Zerodha tokens
+# =============================================================================
+# 1. Get API key + secret from https://developers.kite.trade/
+# 2. Run the server: python -m trading_cotrader.runners.run_workflow --paper --web
+# 3. In CLI: zerodha-login → get URL → login in browser → copy request_token
+# 4. In CLI: zerodha-login <request_token> → get access_token
+# 5. Paste access_token above
+# 6. Token expires daily at 6 AM IST — repeat steps 3-5 each morning
