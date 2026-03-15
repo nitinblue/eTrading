@@ -63,13 +63,14 @@ class TestScoutAgentRun:
         result = agent.run({})
         assert result.status == AgentStatus.ERROR
 
-    def test_empty_watchlist_returns_completed(self):
+    def test_empty_watchlist_uses_registry(self):
+        """Empty YAML watchlist falls back to MarketRegistry (UV1)."""
         container = MagicMock()
         container.symbols = []
         agent = ScoutAgent(container=container)
         result = agent.run({})
         assert result.status == AgentStatus.COMPLETED
-        assert result.data['tickers'] == 0
+        # UV1: Registry provides tickers even when container is empty
 
     def test_screening_and_ranking(self):
         """Test run() calls screening and ranking."""

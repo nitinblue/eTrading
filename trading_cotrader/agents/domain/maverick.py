@@ -538,6 +538,12 @@ class MaverickAgent(BaseAgent):
             )
             proposal['pop_at_entry'] = pop_result.pop_pct
             proposal['ev_at_entry'] = pop_result.expected_value
+            # TQ1: trade quality scoring
+            proposal['trade_quality'] = getattr(pop_result, 'trade_quality', None)
+            proposal['trade_quality_score'] = getattr(pop_result, 'trade_quality_score', None)
+            proposal['max_profit'] = getattr(pop_result, 'max_profit', None)
+            proposal['max_loss'] = getattr(pop_result, 'max_loss', None)
+            proposal['risk_reward_ratio'] = getattr(pop_result, 'risk_reward_ratio', None)
 
             if pop_result.pop_pct < self.MIN_POP:
                 return f'POP {pop_result.pop_pct:.0%} < {self.MIN_POP:.0%}'
@@ -545,6 +551,11 @@ class MaverickAgent(BaseAgent):
             # Gate 8: EV > $0
             if pop_result.expected_value <= 0:
                 return f'Negative EV: ${pop_result.expected_value:.2f}'
+
+            # TQ1: reject "poor" quality trades
+            quality = getattr(pop_result, 'trade_quality', None)
+            if quality == 'poor':
+                return f'Trade quality: POOR (score={getattr(pop_result, "trade_quality_score", 0):.2f})'
         except Exception as e:
             logger.debug(f"POP/EV gate skipped: {e}")
 
@@ -576,9 +587,16 @@ class MaverickAgent(BaseAgent):
         # Gate 10: Entry time window — don't enter outside allowed window (G20)
         entry_start = trade_spec.get('entry_window_start')
         entry_end = trade_spec.get('entry_window_end')
+        entry_tz = trade_spec.get('entry_window_timezone', 'US/Eastern')  # E8
         if entry_start or entry_end:
             from datetime import time as dt_time
-            now_time = datetime.now().time()
+            # E8: Convert current time to the trade's timezone
+            try:
+                from zoneinfo import ZoneInfo
+                now_in_tz = datetime.now(ZoneInfo(entry_tz))
+                now_time = now_in_tz.time()
+            except Exception:
+                now_time = datetime.now().time()  # fallback to local
             if entry_start and isinstance(entry_start, str):
                 h, m = map(int, entry_start.split(':'))
                 entry_start = dt_time(h, m)
@@ -586,9 +604,9 @@ class MaverickAgent(BaseAgent):
                 h, m = map(int, entry_end.split(':'))
                 entry_end = dt_time(h, m)
             if entry_start and now_time < entry_start:
-                return f'Outside entry window: before {entry_start}'
+                return f'Outside entry window: before {entry_start} ({entry_tz})'
             if entry_end and now_time > entry_end:
-                return f'Outside entry window: after {entry_end}'
+                return f'Outside entry window: after {entry_end} ({entry_tz})'
 
         # Gate 11: Execution quality — reject illiquid trades (G19)
         try:

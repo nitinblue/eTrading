@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cotrader
+      POSTGRES_USER: cotrader
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cotrader_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cotrader"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis (task queue + cache)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # API server
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://cotrader:${POSTGRES_PASSWORD:-cotrader_dev}@db:5432/cotrader
+      REDIS_URL: redis://redis:6379/0
+      TRADE_EXECUTION_ENABLED: "false"
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ../.env
+
+volumes:
+  pgdata:

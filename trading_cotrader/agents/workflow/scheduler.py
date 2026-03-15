@@ -35,7 +35,12 @@ class WorkflowScheduler:
         )
 
     def start(self):
-        """Start all scheduled jobs."""
+        """Start all scheduled jobs.
+
+        E27: Uses market hours from config. For multi-market (US + India),
+        each broker connection would have its own schedule based on
+        MarketRegistry timezone. For now, uses the config's market hours.
+        """
         tz = self.config.market_hours.timezone
 
         # Parse market hours

@@ -461,12 +461,25 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                 deployed = sum(_dec(t.max_risk) or 0 for t in open_trades)
                 deployed_pct = (deployed / capital * 100) if capital else 0
 
+                # Determine market from broker or tags
+                broker_firm = desk_cfg.get('broker_firm', 'tastytrade')
+                currency = desk_cfg.get('currency', 'USD')
+                if currency == 'INR' or broker_firm in ('dhan', 'zerodha'):
+                    market = 'INDIA'
+                    timezone = 'Asia/Kolkata'
+                else:
+                    market = 'US'
+                    timezone = 'US/Eastern'
+
                 desks.append({
                     'name': name,
                     'display_name': desk_cfg.get('display_name', name),
                     'description': desk_cfg.get('description', ''),
                     'capital': capital,
-                    'currency': desk_cfg.get('currency', 'USD'),
+                    'currency': currency,
+                    'market': market,
+                    'timezone': timezone,
+                    'broker': broker_firm,
                     'target_return_pct': desk_cfg.get('target_annual_return_pct', 0),
                     'allowed_strategies': desk_cfg.get('active_strategies', []),
                     'tags': desk_cfg.get('tags', []),
@@ -483,6 +496,15 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
                     'deployed_pct': round(deployed_pct, 1),
                     'health': health_counts,
                     'portfolio_exists': portfolio is not None,
+                    # H: Overnight risk indicator
+                    'has_overnight_risk': any(
+                        (t.health_status or '') in ('tested', 'breached')
+                        for t in open_trades
+                    ),
+                    'last_health_check': _iso(max(
+                        (t.health_checked_at for t in open_trades if t.health_checked_at),
+                        default=None,
+                    )),
                 })
 
         return desks
@@ -511,9 +533,171 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
 
             return [_serialize_trade(t) for t in q.all()]
 
+    @router.get("/report/daily")
+    async def get_daily_report():
+        """Daily P&L report — per desk, positions at risk, exits today."""
+        import asyncio
+        if not engine:
+            raise HTTPException(503, "Engine not initialized")
+        try:
+            result = await asyncio.to_thread(engine.steward.generate_daily_report)
+            return result
+        except Exception as e:
+            raise HTTPException(500, f"Report generation failed: {e}")
+
+    @router.get("/system/events")
+    async def get_system_events(
+        limit: int = Query(50, ge=1, le=200),
+        severity: Optional[str] = Query(None),
+    ):
+        """Recent system events from Atlas health monitoring."""
+        from trading_cotrader.core.database.schema import SystemEventORM
+        with session_scope() as session:
+            q = session.query(SystemEventORM).order_by(SystemEventORM.timestamp.desc())
+            if severity:
+                q = q.filter(SystemEventORM.severity == severity.upper())
+            events = q.limit(limit).all()
+            return [{
+                'id': e.id,
+                'event_type': e.event_type,
+                'severity': e.severity,
+                'source': e.source,
+                'message': e.message,
+                'resolved': e.resolved,
+                'timestamp': e.timestamp.isoformat() if e.timestamp else None,
+            } for e in events]
+
+    @router.get("/adjustments/pending")
+    async def get_pending_adjustments():
+        """Pending adjustment recommendations with leg detail (A17)."""
+        if not engine:
+            return []
+        adjustments = engine.context.get('pending_adjustments', [])
+        return adjustments
+
+    @router.get("/cross-market")
+    async def get_cross_market():
+        """US-India cross-market analysis (CM1)."""
+        if not engine:
+            raise HTTPException(503, "Engine not initialized")
+        cm = engine.context.get('cross_market')
+        if not cm:
+            return {"message": "No cross-market data. Run scan first."}
+        return cm
+
+    @router.get("/macro")
+    async def get_macro_dashboard():
+        """Macro indicators dashboard (MC1-MC5)."""
+        if not engine:
+            raise HTTPException(503, "Engine not initialized")
+        macro = engine.context.get('macro_dashboard')
+        if not macro:
+            return {"message": "No macro data. Run scan first."}
+        return macro
+
+    @router.get("/brokers")
+    async def get_brokers():
+        """Supported brokers and their metadata."""
+        from trading_cotrader.adapters.broker_factory import get_supported_brokers
+        return get_supported_brokers()
+
+    @router.get("/desks/performance")
+    async def get_desk_performance():
+        """Compare desk performance — Sharpe, drawdown, regime P&L (K6)."""
+        import asyncio
+        if not engine:
+            raise HTTPException(503, "Engine not initialized")
+        try:
+            result = await asyncio.to_thread(engine.steward.compare_desk_performance)
+            return result
+        except Exception as e:
+            raise HTTPException(500, f"Performance analysis failed: {e}")
+
+    @router.post("/desks/scan")
+    async def trigger_scan():
+        """Trigger a scan cycle (Scout + Maverick). Returns proposals."""
+        import asyncio
+        if not engine:
+            raise HTTPException(503, "Engine not initialized")
+        try:
+            def _run():
+                engine.scout.populate(engine.context)
+                engine.scout.run(engine.context)
+                engine.maverick.run(engine.context)
+                proposals = engine.context.get('trade_proposals', [])
+                return {
+                    'proposals': len([p for p in proposals if p.get('status') == 'proposed']),
+                    'rejected': len([p for p in proposals if p.get('status') == 'rejected']),
+                    'ranking': len(engine.context.get('ranking', [])),
+                }
+            result = await asyncio.to_thread(_run)
+            return result
+        except Exception as e:
+            raise HTTPException(500, f"Scan failed: {e}")
+
+    @router.post("/desks/deploy")
+    async def trigger_deploy():
+        """Book all proposed trades to their routed desks."""
+        import asyncio
+        if not engine:
+            raise HTTPException(503, "Engine not initialized")
+        try:
+            def _run():
+                results = engine.maverick.book_proposals(engine.context)
+                booked = sum(1 for r in results if r.get('success'))
+                engine.context['trade_proposals'] = []
+                return {'booked': booked, 'results': results}
+            result = await asyncio.to_thread(_run)
+            return result
+        except Exception as e:
+            raise HTTPException(500, f"Deploy failed: {e}")
+
+    @router.post("/desks/mark")
+    async def trigger_mark():
+        """Run mark-to-market + health checks on all open trades."""
+        import asyncio
+        if not engine:
+            raise HTTPException(503, "Engine not initialized")
+        try:
+            def _run():
+                result = engine.maverick.mark_to_market()
+                return {
+                    'marked': result.trades_marked,
+                    'total_pnl': float(result.total_pnl),
+                    'failed': result.trades_failed,
+                }
+            result = await asyncio.to_thread(_run)
+            return result
+        except Exception as e:
+            raise HTTPException(500, f"Mark-to-market failed: {e}")
+
     # ------------------------------------------------------------------
     # Trade Explain + Health (G14, G15)
     # ------------------------------------------------------------------
+
+    @router.get("/trades/{trade_id}/health")
+    async def get_trade_health(trade_id: str):
+        """Health status + adjustment recommendation for a trade (C, D)."""
+        import asyncio
+        with session_scope() as session:
+            trade = session.query(TradeORM).filter(TradeORM.id == trade_id).first()
+            if not trade:
+                raise HTTPException(404, f"Trade '{trade_id}' not found")
+            return {
+                'trade_id': trade.id,
+                'ticker': trade.underlying_symbol,
+                'health_status': trade.health_status,
+                'health_checked_at': _iso(trade.health_checked_at),
+                'exit_plan': trade.exit_plan_json,
+                'adjustment_history': trade.adjustment_history or [],
+                'breakeven_low': _dec(trade.breakeven_low),
+                'breakeven_high': _dec(trade.breakeven_high),
+                'pop_at_entry': _dec(trade.pop_at_entry),
+                'regime_at_entry': trade.regime_at_entry,
+                'total_pnl': _dec(trade.total_pnl),
+                'entry_price': _dec(trade.entry_price),
+                'current_price': _dec(trade.current_price),
+            }
 
     @router.get("/trades/{trade_id}/explain")
     async def explain_trade(trade_id: str):

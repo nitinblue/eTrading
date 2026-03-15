@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { clsx } from 'clsx'
-import { Beaker, BookOpen, Brain, AlertCircle, Clock, Award, Activity, Pause, Play, AlertTriangle } from 'lucide-react'
+import { Beaker, BookOpen, Brain, AlertCircle, Clock, Award, Activity, Pause, Play, AlertTriangle, BarChart3, Globe } from 'lucide-react'
 import { useAgents, useAgentSummary, useMLStatus, useAgentTimeline } from '../hooks/useAgents'
 import { useClosedTrades, useRecentTrades, type RecentTrade } from '../hooks/useRecentTrades'
 import { useWorkflowStatus } from '../hooks/useWorkflowStatus'
@@ -507,6 +507,42 @@ function ActiveAgentsTab() {
 
   return (
     <div>
+      {/* Agent Character Introductions */}
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-5 gap-3">
+        {[
+          { name: 'Chanakya', role: 'Scout', icon: '🔭', color: 'border-blue-800 bg-blue-950/20',
+            tagline: 'The Strategist', desc: 'Scans markets using 20+ services. Ranks opportunities. Selects strategies via Thompson Sampling. Every decision backed by regime, technicals, and fundamentals.',
+            metric: 'Score↔P&L correlation', ml: true },
+          { name: 'Kubera', role: 'Steward', icon: '⚖️', color: 'border-purple-800 bg-purple-950/20',
+            tagline: 'The Treasurer', desc: 'Guards the treasury. Tracks P&L by desk, Greek attribution, capital utilization. Decides how capital flows between desks.',
+            metric: 'Portfolio Sharpe ratio', ml: true },
+          { name: 'Bhishma', role: 'Sentinel', icon: '🛡️', color: 'border-red-800 bg-red-950/20',
+            tagline: 'The Guardian', desc: '5 circuit breakers. 8 trading constraints. When Bhishma says halt, everything stops. Unbreakable vows protect capital.',
+            metric: 'Max drawdown vs limit', ml: false },
+          { name: 'Arjuna', role: 'Maverick', icon: '🎯', color: 'border-green-800 bg-green-950/20',
+            tagline: 'The Archer', desc: '11 gates — no trade without conviction. POP, EV, drift check, execution quality. Books to 3 desks. Monitors health. Auto-closes.',
+            metric: 'Win rate × avg P&L', ml: true },
+          { name: 'Vishwakarma', role: 'Atlas', icon: '🔧', color: 'border-amber-800 bg-amber-950/20',
+            tagline: 'The Architect', desc: 'Watches the watchers. Broker health, price freshness, ML model staleness, cross-desk risk, Greek attribution. Sounds the alarm.',
+            metric: 'System uptime × ML freshness', ml: true },
+        ].map(a => (
+          <div key={a.name} className={clsx('border rounded-xl p-3', a.color)}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">{a.icon}</span>
+              <div>
+                <p className="text-xs font-bold text-text-primary">{a.name}</p>
+                <p className="text-[9px] text-text-muted">{a.tagline}</p>
+              </div>
+            </div>
+            <p className="text-[9px] text-text-secondary leading-relaxed mb-2">{a.desc}</p>
+            <div className="flex items-center justify-between">
+              <span className="text-[8px] text-text-muted">KPI: {a.metric}</span>
+              {a.ml && <span className="text-[7px] px-1 py-0.5 rounded bg-purple-900/30 text-purple-400 border border-purple-800/30">ML</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <SummaryBar />
 
       {/* Agent cards grouped by category with headers */}
@@ -618,6 +654,68 @@ function ComingSoonTab({ title, description, icon: Icon }: { title: string; desc
 }
 
 // ---------------------------------------------------------------------------
+function MLSystemCard({ title, icon, color, description, status, statusColor }: {
+  title: string; icon: string; color: string; description: string; status: string; statusColor: string;
+}) {
+  return (
+    <div className="border border-border-secondary rounded-lg p-3 bg-bg-secondary/30">
+      <div className="flex items-center gap-2 mb-1">
+        <span>{icon}</span>
+        <span className={clsx('text-[11px] font-bold', color)}>{title}</span>
+      </div>
+      <p className="text-[9px] text-text-muted mb-2">{description}</p>
+      <span className={clsx('text-[10px] font-mono font-semibold', statusColor)}>{status}</span>
+    </div>
+  )
+}
+
+function MacroCrossMarketPanel() {
+  const [macro, setMacro] = useState<any>(null)
+  const [cm, setCm] = useState<any>(null)
+
+  useEffect(() => {
+    fetch('/api/v2/macro').then(r => r.json()).then(d => { if (!d.message) setMacro(d) }).catch(() => {})
+    fetch('/api/v2/cross-market').then(r => r.json()).then(d => { if (!d.message) setCm(d) }).catch(() => {})
+  }, [])
+
+  if (!macro && !cm) return null
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {macro && (
+        <div className="border border-border-secondary rounded-lg p-3 bg-bg-secondary/30">
+          <h4 className="text-[11px] font-bold text-text-primary mb-2 flex items-center gap-1">
+            <BarChart3 size={12} className="text-amber-400" /> Macro Indicators
+          </h4>
+          <p className="text-[10px] text-text-muted mb-1">Risk: <span className={clsx('font-semibold',
+            macro.overall_risk_level === 'low' ? 'text-green-400' : macro.overall_risk_level === 'high' ? 'text-red-400' : 'text-amber-400'
+          )}>{macro.overall_risk_level?.toUpperCase()}</span></p>
+          {macro.indicators && Object.entries(macro.indicators).slice(0, 4).map(([name, ind]: [string, any]) => (
+            <div key={name} className="flex items-center justify-between text-[9px] py-0.5">
+              <span className="text-text-muted">{name}</span>
+              <span className="text-text-primary font-mono">{ind?.risk_level || ind?.level || '--'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {cm && (
+        <div className="border border-border-secondary rounded-lg p-3 bg-bg-secondary/30">
+          <h4 className="text-[11px] font-bold text-text-primary mb-2 flex items-center gap-1">
+            <Globe size={12} className="text-blue-400" /> US-India Cross-Market
+          </h4>
+          <div className="space-y-1 text-[9px]">
+            <div className="flex justify-between"><span className="text-text-muted">Correlation (20d)</span><span className="font-mono">{cm.correlation_20d?.toFixed(3)}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Predicted gap</span><span className={clsx('font-mono', (cm.predicted_india_gap_pct || 0) < 0 ? 'text-red-400' : 'text-green-400')}>{cm.predicted_india_gap_pct?.toFixed(2)}%</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Sync</span><span className="font-mono">{cm.sync_status}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">US regime</span><span className="font-mono">R{cm.source_regime}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">India regime</span><span className="font-mono">R{cm.target_regime}</span></div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ML Status Tab
 // ---------------------------------------------------------------------------
 
@@ -679,6 +777,41 @@ function MLStatusTab() {
           </span>
         </div>
       </div>
+
+      {/* ML Intelligence Systems */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Drift Detection */}
+        <MLSystemCard
+          title="Drift Detection" icon="\u26A0" color="text-red-400"
+          description="Monitors strategy degradation per regime"
+          status={ml?.drift_alerts === 0 ? 'All stable' : `${ml?.drift_alerts || 0} alerts`}
+          statusColor={ml?.drift_alerts ? 'text-red-400' : 'text-green-400'}
+        />
+        {/* Thompson Sampling */}
+        <MLSystemCard
+          title="Thompson Sampling" icon="\uD83C\uDFB0" color="text-purple-400"
+          description="Learns which strategies win per regime"
+          status={`${ml?.bandit_cells || 0} cells`}
+          statusColor="text-purple-400"
+        />
+        {/* Threshold Optimization */}
+        <MLSystemCard
+          title="Thresholds" icon="\u2699" color="text-amber-400"
+          description="Self-tunes gate cutoffs from outcomes"
+          status={ml?.thresholds_optimized ? 'Optimized' : 'Default'}
+          statusColor={ml?.thresholds_optimized ? 'text-green-400' : 'text-zinc-400'}
+        />
+        {/* POP Calibration */}
+        <MLSystemCard
+          title="POP Calibration" icon="\uD83C\uDFAF" color="text-cyan-400"
+          description="Corrects probability from actual win rates"
+          status={ml?.pop_calibrated ? 'Calibrated' : 'Uncalibrated'}
+          statusColor={ml?.pop_calibrated ? 'text-green-400' : 'text-zinc-400'}
+        />
+      </div>
+
+      {/* Macro + Cross-Market */}
+      <MacroCrossMarketPanel />
 
       {/* Training Data — Closed Trades Table */}
       <div className="bg-bg-secondary rounded-lg border border-border-primary overflow-hidden">

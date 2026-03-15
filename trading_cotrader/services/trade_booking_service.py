@@ -496,13 +496,26 @@ class TradeBookingService:
             # Route to named portfolio if specified, otherwise default what-if
             target_portfolio = None
             if portfolio_name:
-                from trading_cotrader.services.portfolio_manager import PortfolioManager
-                pm = PortfolioManager(session)
-                target_portfolio = pm.get_portfolio_by_name(portfolio_name)
-                if not target_portfolio:
-                    logger.warning(
-                        f"Portfolio '{portfolio_name}' not found, falling back to default what-if"
+                # Direct name lookup first (desk_0dte, desk_medium, desk_leaps)
+                from trading_cotrader.core.database.schema import PortfolioORM as PfORM
+                pf_orm = session.query(PfORM).filter(PfORM.name == portfolio_name).first()
+                if pf_orm:
+                    target_portfolio = dm.Portfolio(
+                        name=pf_orm.name,
+                        broker=pf_orm.broker or 'whatif',
+                        account_id=pf_orm.account_id or portfolio_name,
+                        portfolio_type=pf_orm.portfolio_type,
                     )
+                    target_portfolio.id = pf_orm.id
+                else:
+                    # Fallback to config-based lookup
+                    from trading_cotrader.services.portfolio_manager import PortfolioManager
+                    pm = PortfolioManager(session)
+                    target_portfolio = pm.get_portfolio_by_name(portfolio_name)
+                    if not target_portfolio:
+                        logger.warning(
+                            f"Portfolio '{portfolio_name}' not found, falling back to default what-if"
+                        )
 
             if not target_portfolio:
                 target_portfolio = portfolio_repo.get_by_account(
@@ -521,6 +534,17 @@ class TradeBookingService:
             if not created:
                 raise RuntimeError(f"Failed to save trade {trade.id} to database")
             logger.info(f"Saved trade to DB: {trade.id}")
+
+            # WhatIf trades are immediately "executed" and open
+            # (no real order to fill — trade is live the moment we book it)
+            from trading_cotrader.core.database.schema import TradeORM
+            trade_orm = session.query(TradeORM).get(trade.id)
+            if trade_orm and trade_orm.trade_type == 'what_if':
+                trade_orm.is_open = True
+                trade_orm.trade_status = 'executed'
+                trade_orm.opened_at = datetime.utcnow()
+                trade_orm.executed_at = datetime.utcnow()
+                trade_orm.health_status = 'unknown'
 
             # Save event
             event_repo.create_from_domain(event)

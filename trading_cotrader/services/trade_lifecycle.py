@@ -120,6 +120,20 @@ class TradeLifecycleService:
                 f"P&L=${pnl:+.2f} ({pnl_pct:+.1f}%) reason={reason}"
             )
 
+            # W15: Auto-update Thompson Sampling bandit on close
+            try:
+                regime_at_entry = 1
+                if trade_orm.regime_at_entry:
+                    try:
+                        regime_at_entry = int(trade_orm.regime_at_entry.replace('R', ''))
+                    except (ValueError, AttributeError):
+                        pass
+                from trading_cotrader.services.ml_learning_service import MLLearningService
+                ml = MLLearningService()
+                ml.update_single_bandit(strategy_type, regime_at_entry, won=(pnl > 0))
+            except Exception as e:
+                logger.debug(f"Bandit update skipped: {e}")
+
             return {
                 'success': True,
                 'trade_id': trade_id,

@@ -257,21 +257,22 @@ class ScoutAgent(BaseAgent):
         return stats
 
     def _resolve_tickers(self) -> List[str]:
-        """Resolve ticker universe: broker watchlist (G10) → YAML fallback.
+        """Resolve ticker universe: broker watchlist → registry presets → YAML fallback.
 
-        Tries TastyTrade watchlists 'MA-Income' and 'MA-Sectors' first.
-        Falls back to container.symbols from market_watchlist.yaml.
+        Priority:
+          1. TastyTrade broker watchlists (MA-Income, MA-Sectors)
+          2. MarketRegistry presets (UV1: 85+ curated instruments)
+          3. YAML config (market_watchlist.yaml)
         """
         # G10: Try broker watchlists
         if self._watchlist_provider:
             try:
                 tickers = self._watchlist_provider.get_watchlist('MA-Income')
                 if tickers:
-                    # Optionally merge sectors
                     try:
                         sectors = self._watchlist_provider.get_watchlist('MA-Sectors')
                         if sectors:
-                            combined = list(dict.fromkeys(tickers + sectors))  # dedup, preserve order
+                            combined = list(dict.fromkeys(tickers + sectors))
                             logger.info(f"Watchlist: {len(combined)} tickers from MA-Income + MA-Sectors")
                             return combined
                     except Exception:
@@ -280,6 +281,23 @@ class ScoutAgent(BaseAgent):
                     return tickers
             except Exception as e:
                 logger.debug(f"Watchlist provider failed: {e}")
+
+        # UV1: Try MarketRegistry presets (broker-independent)
+        try:
+            from market_analyzer import MarketRegistry
+            registry = MarketRegistry()
+            # Use 'income' preset — the core trading universe
+            tickers = registry.get_universe(preset='income')
+            if tickers:
+                logger.info(f"Watchlist: {len(tickers)} tickers from registry (income preset)")
+                return tickers
+            # Fallback: all US instruments
+            tickers = registry.get_universe(market='US')
+            if tickers:
+                logger.info(f"Watchlist: {len(tickers)} tickers from registry (US market)")
+                return tickers[:25]  # Cap at 25 for scan speed
+        except Exception as e:
+            logger.debug(f"Registry universe failed: {e}")
 
         # Fallback: YAML config
         yaml_tickers = self.container.symbols if self.container else []
@@ -468,6 +486,45 @@ class ScoutAgent(BaseAgent):
                 logger.debug(f"Context check failed: {e}")
         except Exception as e:
             logger.debug(f"Context check failed: {e}")
+
+        # 4b. Macro dashboard (MC1-MC5)
+        try:
+            from market_analyzer import compute_macro_dashboard
+            macro = compute_macro_dashboard()
+            context['macro_dashboard'] = macro.model_dump(mode='json') if hasattr(macro, 'model_dump') else {}
+            if hasattr(macro, 'overall_risk_level'):
+                messages.append(f"Macro: {macro.overall_risk_level} risk")
+        except Exception as e:
+            logger.debug(f"Macro dashboard skipped: {e}")
+
+        # 4c. Cross-market US-India correlation (CM1)
+        try:
+            from market_analyzer import analyze_cross_market
+            from market_analyzer.data import DataService
+            ds = DataService()
+            spy_data = ds.get_ohlcv('SPY', period='3mo')
+            nifty_data = ds.get_ohlcv('^NSEI', period='3mo')
+            if spy_data is not None and not spy_data.empty and nifty_data is not None and not nifty_data.empty:
+                # Get regimes for both
+                spy_regime = 1
+                nifty_regime = 1
+                try:
+                    spy_r = ma.regime.detect('SPY')
+                    spy_regime = spy_r.regime if hasattr(spy_r, 'regime') else 1
+                    nifty_r = ma.regime.detect('NIFTY')
+                    nifty_regime = nifty_r.regime if hasattr(nifty_r, 'regime') else 1
+                except Exception:
+                    pass
+                cm = analyze_cross_market(
+                    source_ticker='SPY', target_ticker='NIFTY',
+                    source_ohlcv=spy_data, target_ohlcv=nifty_data,
+                    source_regime_id=spy_regime, target_regime_id=nifty_regime,
+                )
+                context['cross_market'] = cm.model_dump(mode='json') if hasattr(cm, 'model_dump') else {}
+                sync = cm.sync_status.value if hasattr(cm.sync_status, 'value') else str(cm.sync_status)
+                messages.append(f"Cross-market: US-India {sync}, corr={cm.correlation_20d:.2f}, gap={cm.predicted_india_gap_pct:+.2f}%")
+        except Exception as e:
+            logger.debug(f"Cross-market analysis skipped: {e}")
 
         # 5. Regime staleness check (SQ2)
         try:

@@ -127,6 +127,14 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
     terminal_router = create_terminal_router(engine)
     app.include_router(terminal_router, prefix="/api/v2")
 
+    # Auth API
+    try:
+        from trading_cotrader.web.api_auth import create_auth_router
+        auth_router = create_auth_router()
+        app.include_router(auth_router, prefix="/api/auth")
+    except Exception as e:
+        logger.warning(f"Auth router not available: {e}")
+
     # ------------------------------------------------------------------
     # Serve React frontend (production build)
     # ------------------------------------------------------------------

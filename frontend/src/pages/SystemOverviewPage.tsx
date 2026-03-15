@@ -105,6 +105,13 @@ export default function SystemOverviewPage() {
                   <p className="text-[9px] text-amber-400/70">Every trade has a max loss. No naked positions.</p>
                 </div>
               </div>
+              <div className="flex items-center gap-2 bg-green-950/30 border border-green-900/50 rounded-lg px-3 py-2">
+                <TrendingUp size={16} className="text-green-400" />
+                <div>
+                  <p className="text-[10px] font-bold text-green-400">Trade Small, Trade Frequent</p>
+                  <p className="text-[9px] text-green-400/70">Mathematical edge over many trades. Sample size matters.</p>
+                </div>
+              </div>
               <div className="flex items-center gap-2 bg-blue-950/30 border border-blue-900/50 rounded-lg px-3 py-2">
                 <Brain size={16} className="text-blue-400" />
                 <div>

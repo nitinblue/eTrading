@@ -136,10 +136,17 @@ class InteractionManager:
             'mark': self._mark,
             'exits': self._exits,
             'golive': self._execute,  # Alias: go live = execute on broker
-            # MA integration: explain, health, ml
+            # MA integration: explain, health, ml, report, syscheck, deskperf, brokers, markets, crossmarket, macro
             'explain': self._explain,
+            'crossmarket': self._crossmarket,
+            'macro': self._macro,
             'health': self._health,
             'ml': self._ml_status,
+            'report': self._daily_report,
+            'syscheck': self._system_check,
+            'deskperf': self._desk_performance,
+            'brokers': self._brokers,
+            'markets': self._markets,
             # New: close, performance, learn, setup-desks
             'close': self._close,
             'perf': self._performance,
@@ -1943,6 +1950,13 @@ class InteractionManager:
                 ev = p.get('ev_at_entry')
                 if ev is not None:
                     analytics.append(f"EV=${ev:.2f}")
+                tq = p.get('trade_quality')
+                if tq:
+                    tqs = p.get('trade_quality_score', 0)
+                    analytics.append(f"Quality={tq}({tqs:.2f})" if tqs else f"Quality={tq}")
+                rr = p.get('risk_reward_ratio')
+                if rr:
+                    analytics.append(f"R:R={rr:.1f}")
                 regime = p.get('exit_rules', {}).get('regime_at_entry')
                 if regime:
                     analytics.append(f"Regime={regime}")
@@ -2664,5 +2678,233 @@ class InteractionManager:
 
         except Exception as e:
             lines.append(f"  Error: {e}")
+
+        return SystemResponse(message="\n".join(lines))
+
+    def _daily_report(self, intent: UserIntent = None) -> SystemResponse:
+        """Daily P&L report across all desks (K9)."""
+        lines = ["DAILY P&L REPORT", "\u2550" * 80]
+        try:
+            report = self.engine.steward.generate_daily_report()
+            for msg in report.get('messages', []):
+                lines.append(f"  {msg}")
+
+            desks = report.get('desks', {})
+            if desks:
+                lines.extend(["", f"  {'Desk':<16} {'Capital':>8} {'Deploy%':>8} {'P&L':>10} {'Realized':>10} {'\u0398/day':>8} {'Open':>5}"])
+                lines.append("  " + "\u2500" * 70)
+                for name, d in desks.items():
+                    lines.append(
+                        f"  {name:<16} ${d['capital']:>7,.0f} {d['deployed_pct']:>7.0f}% "
+                        f"${d['total_pnl']:>+9,.2f} ${d['realized_pnl']:>+9,.2f} "
+                        f"${d['daily_theta']:>7.2f} {d['open_positions']:>5}"
+                    )
+
+            at_risk = report.get('positions_at_risk', [])
+            if at_risk:
+                lines.extend(["", "  POSITIONS AT RISK:"])
+                for p in at_risk:
+                    lines.append(f"    {p['ticker']} ({p['desk']}) \u2014 {p['health']} \u2014 P&L ${p['pnl']:+,.2f}")
+
+            exits = report.get('exits_today', [])
+            if exits:
+                lines.extend(["", "  EXITS TODAY:"])
+                for e in exits:
+                    lines.append(f"    {e['ticker']} ({e['desk']}) \u2014 {e['reason']} \u2014 P&L ${e['pnl']:+,.2f}")
+        except Exception as e:
+            lines.append(f"  Error: {e}")
+
+        return SystemResponse(message="\n".join(lines))
+
+    def _system_check(self, intent: UserIntent = None) -> SystemResponse:
+        """Run Atlas system health checks (V1-V6, B14, K7)."""
+        lines = ["SYSTEM HEALTH CHECK", "\u2550" * 80]
+        try:
+            result = self.engine.atlas.run(self.engine.context)
+            for msg in result.messages:
+                lines.append(f"  {msg}")
+
+            alerts = self.engine.context.get('system_alerts', [])
+            if alerts:
+                lines.extend(["", "  ALERTS:"])
+                for a in alerts:
+                    lines.append(f"    [{a.get('severity', '?')}] {a.get('message', '?')}")
+
+            cross_desk = self.engine.context.get('cross_desk_risk', {})
+            desks_risk = cross_desk.get('desks', {})
+            if desks_risk:
+                lines.extend(["", "  CROSS-DESK RISK:"])
+                lines.append(f"  {'Desk':<16} {'\u0394':>8} {'\u0398':>8} {'Risk':>8} {'Pos':>5}")
+                lines.append("  " + "\u2500" * 50)
+                for name, d in desks_risk.items():
+                    lines.append(f"  {name:<16} {d['delta']:>+7.1f} ${d['theta']:>7.2f} ${d['risk']:>7,.0f} {d['positions']:>5}")
+                lines.append(f"  {'TOTAL':<16} {cross_desk['total_delta']:>+7.1f} "
+                             f"${cross_desk['total_theta']:>7.2f} ${cross_desk['total_risk']:>7,.0f} "
+                             f"{cross_desk['total_positions']:>5}")
+        except Exception as e:
+            lines.append(f"  Error: {e}")
+
+        return SystemResponse(message="\n".join(lines))
+
+    def _desk_performance(self, intent: UserIntent = None) -> SystemResponse:
+        """Compare desk performance — Sharpe, drawdown, regime P&L (K6)."""
+        lines = ["DESK PERFORMANCE COMPARISON", "\u2550" * 80]
+        try:
+            result = self.engine.steward.compare_desk_performance()
+            for msg in result.get('messages', []):
+                lines.append(f"  {msg}")
+
+            desks = result.get('desks', {})
+            if desks:
+                lines.extend(["", f"  {'Desk':<16} {'Trades':>6} {'Win%':>6} {'Sharpe':>7} {'MaxDD':>7} {'P&L':>10} {'Avg':>8} {'Days':>5}"])
+                lines.append("  " + "\u2500" * 70)
+                for name, d in desks.items():
+                    if d.get('trades', 0) == 0:
+                        lines.append(f"  {name:<16} {'--':>6} {'--':>6} {'--':>7} {'--':>7} {'--':>10} {'--':>8} {'--':>5}")
+                        continue
+                    lines.append(
+                        f"  {name:<16} {d['trades']:>6} {d.get('win_rate', 0):>5.0f}% "
+                        f"{d.get('sharpe', 0):>+6.2f} {d.get('max_drawdown_pct', 0):>6.1f}% "
+                        f"${d.get('total_pnl', 0):>+9,.2f} ${d.get('avg_pnl', 0):>+7.2f} "
+                        f"{d.get('avg_holding_days', 0):>5.1f}"
+                    )
+
+                # Regime breakdown
+                for name, d in desks.items():
+                    regime_perf = d.get('regime_performance', {})
+                    if regime_perf:
+                        lines.append(f"\n  {name} by regime:")
+                        for regime, rp in sorted(regime_perf.items()):
+                            lines.append(f"    {regime}: win={rp['win_rate']:.0f}% avg={rp['avg_pnl']:+.1f}% ({rp['trades']} trades)")
+
+        except Exception as e:
+            lines.append(f"  Error: {e}")
+
+        return SystemResponse(message="\n".join(lines))
+
+    def _brokers(self, intent: UserIntent = None) -> SystemResponse:
+        """Show supported brokers and connection status."""
+        lines = ["BROKER STATUS", "\u2550" * 80]
+
+        from trading_cotrader.adapters.broker_factory import get_supported_brokers
+        brokers = get_supported_brokers()
+
+        lines.append(f"  {'Broker':<16} {'Market':<8} {'Currency':<8} {'Timezone':<16} {'Auth':<15} {'Connected'}")
+        lines.append("  " + "\u2500" * 75)
+
+        for name, info in brokers.items():
+            # Check if connected
+            connected = False
+            engine = self.engine
+            if hasattr(engine, 'broker') and engine.broker:
+                if hasattr(engine.broker, 'name') and engine.broker.name == name:
+                    connected = True
+
+            status = '\u2713 YES' if connected else '\u2717 no'
+            lines.append(
+                f"  {info['display_name']:<16} {info['market']:<8} {info['currency']:<8} "
+                f"{info['timezone']:<16} {info['auth_type']:<15} {status}"
+            )
+
+        lines.extend([
+            "",
+            "  To connect: configure credentials in .env or broker YAML",
+            "  TastyTrade: TASTYTRADE_USERNAME + TASTYTRADE_PASSWORD",
+            "  Dhan:       DHAN_API_KEY + DHAN_ACCESS_TOKEN",
+            "  Zerodha:    ZERODHA_API_KEY + ZERODHA_ACCESS_TOKEN",
+        ])
+
+        return SystemResponse(message="\n".join(lines))
+
+    def _markets(self, intent: UserIntent = None) -> SystemResponse:
+        """Show supported markets, instruments, and key specs."""
+        lines = ["MARKET REFERENCE", "\u2550" * 80]
+
+        try:
+            from market_analyzer import MarketRegistry
+            registry = MarketRegistry()
+
+            # Markets
+            for market_code in ['US', 'INDIA']:
+                try:
+                    market = registry.get_market(market_code)
+                    lines.append(f"\n  {market_code} ({market.currency} / {market.timezone})")
+                    lines.append(f"    Hours: {market.open_time} - {market.close_time}")
+                    lines.append(f"    Settlement: T+{market.settlement_days}")
+                except Exception:
+                    lines.append(f"\n  {market_code}: not configured")
+                    continue
+
+                # Key instruments
+                instruments = {
+                    'US': ['SPY', 'QQQ', 'IWM', 'GLD', 'AAPL'],
+                    'INDIA': ['NIFTY', 'BANKNIFTY', 'RELIANCE', 'HDFCBANK', 'TCS'],
+                }
+                tickers = instruments.get(market_code, [])
+                if tickers:
+                    lines.append(f"    {'Instrument':<14} {'Lot':>5} {'Strike':>7} {'Settle':<8} {'0DTE':>5} {'LEAPs':>5}")
+                    lines.append(f"    " + "\u2500" * 50)
+                    for ticker in tickers:
+                        try:
+                            inst = registry.get_instrument(ticker, market=market_code)
+                            lines.append(
+                                f"    {ticker:<14} {inst.lot_size:>5} {inst.strike_interval:>7.1f} "
+                                f"{inst.settlement:<8} {'yes' if inst.has_0dte else 'no':>5} "
+                                f"{'yes' if inst.has_leaps else 'no':>5}"
+                            )
+                        except Exception:
+                            lines.append(f"    {ticker:<14} (not configured)")
+
+        except ImportError:
+            lines.append("  MarketRegistry not available. Update market_analyzer.")
+        except Exception as e:
+            lines.append(f"  Error: {e}")
+
+        return SystemResponse(message="\n".join(lines))
+
+    def _crossmarket(self, intent: UserIntent = None) -> SystemResponse:
+        """US-India cross-market analysis (CM1)."""
+        lines = ["CROSS-MARKET ANALYSIS (US-India)", "\u2550" * 80]
+
+        cm = self.engine.context.get('cross_market')
+        if cm:
+            lines.append(f"  Correlation (20d): {cm.get('correlation_20d', 0):.3f}")
+            lines.append(f"  Correlation (60d): {cm.get('correlation_60d', 0):.3f}")
+            lines.append(f"  US close return:   {cm.get('us_close_return_pct', 0):+.2f}%")
+            lines.append(f"  Predicted India gap: {cm.get('predicted_india_gap_pct', 0):+.2f}%")
+            lines.append(f"  Confidence:        {cm.get('prediction_confidence', 0):.2f}")
+            lines.append(f"  Sync status:       {cm.get('sync_status', '?')}")
+            lines.append(f"  US regime:         R{cm.get('source_regime', '?')}")
+            lines.append(f"  India regime:      R{cm.get('target_regime', '?')}")
+            signals = cm.get('signals', [])
+            if signals:
+                lines.extend(["", "  SIGNALS:"])
+                for s in signals:
+                    lines.append(f"    {s.get('signal_type', '?')}: {s.get('description', '?')} (strength={s.get('strength', 0):.2f})")
+            lines.append(f"")
+            lines.append(f"  {cm.get('summary', '')}")
+        else:
+            lines.append("  No cross-market data. Run 'scan' first (needs US+India data).")
+
+        return SystemResponse(message="\n".join(lines))
+
+    def _macro(self, intent: UserIntent = None) -> SystemResponse:
+        """Macro indicators dashboard (MC1-MC5)."""
+        lines = ["MACRO INDICATORS", "\u2550" * 80]
+
+        macro = self.engine.context.get('macro_dashboard')
+        if macro:
+            lines.append(f"  Overall risk: {macro.get('overall_risk_level', '?')}")
+            indicators = macro.get('indicators', {})
+            for name, ind in indicators.items():
+                if isinstance(ind, dict):
+                    level = ind.get('risk_level', ind.get('level', '?'))
+                    val = ind.get('value', ind.get('current', '?'))
+                    lines.append(f"  {name:25s} {str(val):>10s}  risk={level}")
+            guidance = macro.get('trading_guidance', '')
+            if guidance:
+                lines.extend(["", f"  Guidance: {guidance}"])
+        else:
+            lines.append("  No macro data. Run 'scan' first.")
 
         return SystemResponse(message="\n".join(lines))

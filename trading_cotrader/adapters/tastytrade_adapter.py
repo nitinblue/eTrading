@@ -38,84 +38,76 @@ _thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 class TastytradeAdapter(BrokerAdapterBase):
     """Tastytrade broker integration with DXLink Greeks streaming"""
 
-    def __init__(self, account_number: str = None, is_paper: bool = False):
-        tastytrade_credential_file = "tastytrade_broker.yaml"
+    def __init__(self, account_number: str = None, is_paper: bool = False, read_only: bool = True):
         self.account_id = account_number or ""
-        self.credentials = tastytrade_credential_file
 
         self.name = "tastytrade"
         self.currency = "USD"
         self.is_paper = is_paper
+        self._read_only = read_only  # S27: read-only mode blocks order placement
         self.session = None
         self.data_session = None  # Always-live session for DXLink market data
         self.account = None
         self.accounts = {}
         self._account_number = account_number
 
-        # Load credentials
+        # Load credentials — env vars only, no YAML files
         self._load_credentials()
 
     def _load_credentials(self):
-        """Load credentials from YAML file"""
-        try:
-            possible_paths = [
-                Path(self.credentials),
-                Path(__file__).parent / self.credentials,
-                Path(__file__).parent.parent / self.credentials,
-                Path(__file__).parent.parent.parent / self.credentials,
-            ]
+        """Load credentials from environment variables.
 
-            cred_path = None
-            for path in possible_paths:
-                if path.exists():
-                    cred_path = path
-                    logger.info(f"Found credentials file at: {path.absolute()}")
-                    break
+        Required env vars:
+          TASTYTRADE_CLIENT_SECRET_PAPER — paper mode secret
+          TASTYTRADE_REFRESH_TOKEN_PAPER — paper mode refresh token
+          TASTYTRADE_CLIENT_SECRET_LIVE  — live mode secret
+          TASTYTRADE_REFRESH_TOKEN_LIVE  — live mode refresh token
 
-            if not cred_path:
-                raise FileNotFoundError(f"Credentials file '{self.credentials}' not found")
+        Optional:
+          TASTYTRADE_CLIENT_SECRET_DATA  — DXLink data streaming secret (falls back to live)
+          TASTYTRADE_REFRESH_TOKEN_DATA  — DXLink data streaming token (falls back to live)
+          TASTYTRADE_ACCOUNT_NUMBER      — account number override
 
-            logger.info(f"Loading credentials from: {cred_path}")
+        No YAML files. No credentials on disk. .env only (in .gitignore).
+        """
+        mode = 'PAPER' if self.is_paper else 'LIVE'
 
-            with open(cred_path, 'r') as f:
-                creds = yaml.safe_load(f)
+        self.client_secret = self._require_env(f'TASTYTRADE_CLIENT_SECRET_{mode}')
+        self.refresh_token = self._require_env(f'TASTYTRADE_REFRESH_TOKEN_{mode}')
 
-            mode = 'paper' if self.is_paper else 'live'
-            mode_secret = creds["broker"][mode]['client_secret']
-            mode_token = creds["broker"][mode]['refresh_token']
+        # Data credentials for DXLink streaming (always live for real-time quotes)
+        self.data_client_secret = os.getenv('TASTYTRADE_CLIENT_SECRET_DATA') or os.getenv('TASTYTRADE_CLIENT_SECRET_LIVE', '')
+        self.data_refresh_token = os.getenv('TASTYTRADE_REFRESH_TOKEN_DATA') or os.getenv('TASTYTRADE_REFRESH_TOKEN_LIVE', '')
 
-            self.client_secret = self._resolve_credential(mode_secret)
-            self.refresh_token = self._resolve_credential(mode_token)
+        # Account number from env or constructor
+        if not self._account_number:
+            self._account_number = os.getenv('TASTYTRADE_ACCOUNT_NUMBER', '')
 
-            # Load data credentials for DXLink streaming (always live)
-            # Falls back to live credentials if 'data' section not present
-            data_section = creds["broker"].get('data') or creds["broker"]['live']
-            self.data_client_secret = self._resolve_credential(data_section['client_secret'])
-            self.data_refresh_token = self._resolve_credential(data_section['refresh_token'])
+        logger.info(f"Credentials loaded from env vars ({mode} mode)")
 
-            logger.info(f"✓ Loaded credentials for {mode} mode (secret length: {len(self.client_secret)})")
-            logger.info(f"✓ Loaded data credentials for DXLink streaming")
-
-        except Exception as e:
-            logger.error(f"Failed to load credentials: {e}")
-            raise
-
-    def _resolve_credential(self, value: str) -> str:
-        """Resolve credential value from environment variable"""
+    @staticmethod
+    def _require_env(var_name: str) -> str:
+        """Get required env var or raise clear error."""
+        value = os.getenv(var_name)
         if not value:
-            return value
-
-        env_pattern = r'\$\{?([A-Z_]+)\}?'
-        match = re.match(env_pattern, value)
-
-        if match:
-            env_var = match.group(1)
-            resolved = os.getenv(env_var)
-            if not resolved:
-                raise ValueError(f"Environment variable {env_var} not found")
-            return resolved
-
+            raise ValueError(
+                f"Missing env var: {var_name}. "
+                f"Set it in .env file (never commit .env to git)."
+            )
         return value
+
+    def is_token_valid(self) -> bool:
+        """Check if broker session is still valid (E23)."""
+        if not self.session:
+            return False
+        try:
+            # MA providers expose is_token_valid()
+            providers = self.get_market_providers()
+            if providers and hasattr(providers[0], 'is_token_valid'):
+                return providers[0].is_token_valid()
+            return self.session is not None
+        except Exception:
+            return False
 
     def authenticate(self) -> bool:
         """Authenticate with Tastytrade"""
@@ -702,6 +694,23 @@ class TastytradeAdapter(BrokerAdapterBase):
         """
         if not self.session or not self.account:
             raise ValueError("Not authenticated — call authenticate() first")
+
+        # S27: Trade execution rail guard — defense in depth
+        # Layer 1: Environment variable gate
+        import os
+        if not dry_run:
+            execution_enabled = os.environ.get('TRADE_EXECUTION_ENABLED', 'false').lower()
+            if execution_enabled != 'true':
+                raise PermissionError(
+                    "TRADE EXECUTION BLOCKED: Set TRADE_EXECUTION_ENABLED=true in .env to allow real orders. "
+                    "This is a safety rail. Remove only when you are ready to trade real money."
+                )
+        # Layer 2: Read-only adapter mode
+        if not dry_run and getattr(self, '_read_only', False):
+            raise PermissionError(
+                "TRADE EXECUTION BLOCKED: Adapter is in read-only mode. "
+                "Initialize with TastytradeAdapter(read_only=False) to allow orders."
+            )
 
         # Map string actions to SDK enums
         action_map = {

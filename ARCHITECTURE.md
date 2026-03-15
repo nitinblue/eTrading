@@ -1,342 +1,214 @@
-# Trading Co-Trader: Architecture & Data Flow
-
-> Source of truth for system architecture and data flows.
-> Uses Mermaid format for diagrams (renders in GitHub/VS Code).
-> Last updated: 2026-02-21 (Session 28)
+# CoTrader Architecture — SaaS Design
+# Date: 2026-03-14 (Session 41)
+# Purpose: Production architecture for multi-user, multi-broker, multi-market.
 
 ---
 
-## 1. Position Data Flow: Broker to Screen
-
-This is the critical path. Every number you see on screen traces back through this flow.
-
-```mermaid
-sequenceDiagram
-    participant TT as TastyTrade API
-    participant DX as DXLink (Streaming)
-    participant AD as TastytradeAdapter
-    participant SS as PortfolioSyncService
-    participant DB as SQLite DB
-    participant CM as ContainerManager
-    participant API as FastAPI
-    participant UI as React Frontend
-
-    Note over TT,UI: === SYNC CYCLE (every 60s in monitoring state) ===
-
-    AD->>TT: account.get_positions(include_marks=True)
-    TT-->>AD: positions[] (qty, avg_open_price, mark_price, direction)
-
-    AD->>DX: Subscribe Greeks for option symbols
-    DX-->>AD: delta, gamma, theta, vega, IV (current only)
-
-    Note over AD: Creates dm.Position objects:<br/>entry_price = average_open_price<br/>current_price = mark_price<br/>quantity = signed (+long, -short)<br/>total_cost = entry * qty * multiplier (signed)<br/>greeks = current from DXLink
-
-    AD-->>SS: List[dm.Position]
-
-    SS->>DB: DELETE all positions for this portfolio_id
-    loop For each position
-        SS->>DB: INSERT PositionORM (entry, current, qty, Greeks, total_pnl)
-    end
-    SS->>DB: UPDATE PortfolioORM (equity, cash, aggregate Greeks, total_pnl)
-
-    Note over CM: === CONTAINER REFRESH ===
-
-    CM->>DB: SELECT PositionORM WHERE portfolio_id matches bundle
-    Note over CM: Bundle matched by broker_firm + account_number<br/>(NOT first-found — that was the duplication bug)
-    DB-->>CM: positions[]
-
-    CM->>CM: Compute P&L per position:<br/>(current - entry) * qty * multiplier
-    CM->>CM: Aggregate RiskFactors per underlying:<br/>sum delta, gamma, theta, vega
-
-    Note over API,UI: === API RESPONSE ===
-
-    UI->>API: GET /api/v2/broker-positions
-    API->>CM: bundle.positions.to_grid_rows()
-    CM-->>API: [{symbol, qty, entry, mark, delta, pnl, ...}]
-    API-->>UI: JSON response
-
-    UI->>API: GET /api/v2/risk/factors
-    API->>CM: bundle.risk_factors.to_grid_rows()
-    CM-->>API: [{underlying, delta, gamma, theta, vega, delta_$}]
-    API-->>UI: JSON response
-
-    UI->>API: GET /api/v2/portfolios
-    API->>DB: SELECT PortfolioORM
-    DB-->>API: [{equity, cash, Greeks, pnl}]
-    API-->>UI: JSON response
-```
-
-### What TastyTrade Provides vs What We Compute
-
-| Data Point | Source | Notes |
-|-----------|--------|-------|
-| Entry price | TT `average_open_price` | Per-contract price at fill |
-| Current price | TT `mark_price` | Mid of bid/ask |
-| Quantity + direction | TT `quantity_direction` | Long/Short enum |
-| Current Greeks | DXLink streaming | Real-time delta/gamma/theta/vega |
-| **Entry Greeks** | **NOT AVAILABLE** | TT has no historical Greeks API |
-| **P&L** | **We compute** | `(current - entry) * qty * multiplier` |
-| **P&L attribution** | **NOT YET** | Needs entry Greeks + daily snapshots |
-
----
-
-## 2. Container Architecture
-
-```mermaid
-graph TB
-    subgraph "risk_config.yaml (5 real portfolios)"
-        RC_TT["tastytrade<br/>broker=tastytrade<br/>account=5WZ78765"]
-        RC_FI["fidelity_ira<br/>broker=fidelity<br/>account=259510977"]
-        RC_FP["fidelity_personal<br/>broker=fidelity<br/>account=Z71212342"]
-        RC_ZE["zerodha<br/>broker=zerodha"]
-        RC_ST["stallion<br/>broker=stallion<br/>account=SACF5925"]
-    end
-
-    subgraph "ContainerManager (in-memory)"
-        subgraph "Bundle: tastytrade"
-            B1_PF["PortfolioContainer<br/>equity, cash, Greeks"]
-            B1_PS["PositionContainer<br/>9 positions + P&L"]
-            B1_RF["RiskFactorContainer<br/>per-underlying Greeks"]
-            B1_TR["TradeContainer<br/>agent-booked trades"]
-        end
-        subgraph "Bundle: fidelity_ira"
-            B2["Empty — no API broker"]
-        end
-        subgraph "Bundle: stallion"
-            B5["INR fund — separate currency"]
-        end
-    end
-
-    subgraph "SQLite DB"
-        DB_P["PortfolioORM<br/>14 rows (5 real + 5 whatif + 4 research)"]
-        DB_POS["PositionORM<br/>9 rows (all TastyTrade)"]
-        DB_TR["TradeORM<br/>0 rows (no agent trades yet)"]
-    end
-
-    RC_TT -->|"broker+account match"| B1_PF
-    DB_P -->|"WHERE broker=tastytrade<br/>AND account=5WZ78765"| B1_PF
-    DB_POS -->|"WHERE portfolio_id IN bundle.portfolio_ids"| B1_PS
-    B1_PS -->|"aggregate by underlying"| B1_RF
-```
-
-### Bundle-to-DB Matching (Fixed Bug)
-
-**Before (broken):** `load_from_repositories()` grabbed the first portfolio from DB for every bundle. All 5 bundles got TastyTrade's portfolio_id → 5x duplication.
-
-**After (fixed):** Each bundle stores `broker_firm` + `account_number` from risk_config.yaml. DB lookup uses `WHERE broker = ? AND account_id = ?`. Only the matching bundle gets positions.
-
----
-
-## 3. Real Trades vs Agent Trades vs WhatIf
-
-```mermaid
-graph LR
-    subgraph "Data Sources"
-        BROKER["TastyTrade Broker"]
-        AGENT["Agents/Screeners"]
-        USER["User (Trading Sheet)"]
-    end
-
-    subgraph "DB Tables"
-        POS["PositionORM<br/>(Live Positions)"]
-        TRADE_REAL["TradeORM<br/>type=paper/live"]
-        TRADE_WI["TradeORM<br/>type=what_if"]
-    end
-
-    subgraph "Frontend Sections"
-        UI_LIVE["Live Positions<br/>(always shown)"]
-        UI_AGENT["Agent-Booked Trades<br/>(shown when non-empty)"]
-        UI_WI["WhatIf Trades<br/>(Trading Sheet only)"]
-    end
-
-    BROKER -->|"PortfolioSyncService<br/>clear+rebuild every 60s"| POS
-    AGENT -->|"TradeBookingService"| TRADE_REAL
-    USER -->|"POST /add-whatif"| TRADE_WI
-
-    POS -->|"GET /broker-positions"| UI_LIVE
-    TRADE_REAL -->|"GET /positions"| UI_AGENT
-    TRADE_WI -->|"GET /trading-sheet"| UI_WI
-```
-
-| Concept | DB Table | Created By | Lifecycle | Has Entry Greeks? |
-|---------|----------|-----------|-----------|-------------------|
-| **Live Positions** | PositionORM | Broker sync | Destroyed + recreated every sync | No |
-| **Agent Trades** | TradeORM (paper/live) | Agents/Screeners | Persist until closed | Yes (captured at booking) |
-| **WhatIf Trades** | TradeORM (what_if) | User via UI | Persist until booked or deleted | Yes (computed at creation) |
-
----
-
-## 4. Workflow Engine Lifecycle
-
-```mermaid
-stateDiagram-v2
-    [*] --> INITIALIZING
-    INITIALIZING --> MARKET_ANALYSIS: boot complete
-    MARKET_ANALYSIS --> PORTFOLIO_STATE: market data fetched
-    PORTFOLIO_STATE --> MONITORING: state loaded
-
-    MONITORING --> OPPORTUNITY_SCAN: scheduled scan
-    MONITORING --> EOD_EVALUATION: market close
-
-    OPPORTUNITY_SCAN --> RECOMMENDATION: opportunities found
-    RECOMMENDATION --> PENDING_APPROVAL: trades proposed
-    PENDING_APPROVAL --> EXECUTION: user approves
-    EXECUTION --> MONITORING: trades executed
-
-    EOD_EVALUATION --> MONITORING: no action needed
-
-    note right of MONITORING
-        Every 60s:
-        1. Sync broker positions
-        2. Refresh containers
-        3. Check capital utilization
-    end note
-```
-
-### Engine Boot Sequence
+## CURRENT STATE
 
 ```
-1. _init_container_manager()     → Create bundles from risk_config.yaml
-2. _authenticate_adapters()      → Auth TastyTrade API
-3. _sync_broker_positions()      → Fetch positions → DB
-4. _refresh_containers()         → Load DB → ContainerManager
-5. Start FastAPI web server      → Serve API on :8080
-6. Start APScheduler             → Monitor every 60s
+Single process. Single user. SQLite. In-memory state.
+
+Python process (run_workflow.py)
+  ├── FastAPI (port 8080)
+  │    ├── React frontend (static)
+  │    └── API endpoints (/api/v2/*)
+  ├── WorkflowEngine (state machine)
+  │    ├── 5 agents (Scout, Steward, Sentinel, Maverick, Atlas)
+  │    ├── APScheduler (30min, 2min 0DTE, EOD)
+  │    └── MarketAnalyzer (stateless library)
+  ├── SQLite (trading_cotrader.db — 25 tables)
+  └── Broker adapter (TastyTrade only)
 ```
 
 ---
 
-## 5. P&L Calculation
-
-### Formula (Fixed 2026-02-21)
+## TARGET STATE
 
 ```
-unrealized_pnl = (current_price - entry_price) * quantity * multiplier
-```
-
-- **Long call** bought at $5, now at $3: `(3 - 5) * 1 * 100 = -$200`
-- **Short put** sold at $7.47, now at $5.05: `(5.05 - 7.47) * (-2) * 100 = +$484`
-- **Long stock** at $54.50, now at $52.79: `(52.79 - 54.50) * 100 * 1 = -$171`
-
-### Previous Bug (Sessions 25-27)
-
-Old formula: `current_price * qty * multiplier - abs(total_cost)`
-- Short positions always showed massive losses because total_cost was unsigned
-- Portfolio P&L was **-$6,260.50** when actual was **-$162.50**
-
----
-
-## 6. Key File Map
-
-| Layer | File | Purpose |
-|-------|------|---------|
-| **Adapter** | `adapters/tastytrade_adapter.py` | TastyTrade API + DXLink Greeks |
-| **Sync** | `services/portfolio_sync.py` | Broker → DB (clear+rebuild) |
-| **DB Schema** | `core/database/schema.py` | 21 ORM tables |
-| **Domain** | `core/models/domain.py` | Position, Trade, Portfolio, Greeks |
-| **Containers** | `containers/container_manager.py` | In-memory bundles, DB loading |
-| **Bundle** | `containers/portfolio_bundle.py` | Per-portfolio container group |
-| **Position Container** | `containers/position_container.py` | Position state + P&L computation |
-| **Risk Factors** | `containers/risk_factor_container.py` | Per-underlying Greeks aggregation |
-| **Engine** | `workflow/engine.py` | State machine + sync + refresh |
-| **API v2** | `web/api_v2.py` | FastAPI endpoints for frontend |
-| **Trading Sheet** | `web/api_trading_sheet.py` | 4 endpoints for trading view |
-| **Config** | `config/risk_config.yaml` | 15 portfolios, risk limits |
-| **Frontend** | `frontend/src/pages/PortfolioPage.tsx` | Portfolio + Positions + Risk |
-
----
-
-## 7. Known Gaps
-
-| Gap | Impact | Fix Needed |
-|-----|--------|------------|
-| No entry Greeks | Can't do P&L attribution (delta/theta/vega breakdown) | Capture Greeks at first sync of new position |
-| No daily snapshots | Can't track Greeks evolution over time | PositionGreeksSnapshotORM exists but unpopulated |
-| VaR not computed fresh | Shows stale DB value | Wire VaR calculator into sync cycle |
-| No position health | Missing % of max profit, breakeven distance | Compute from entry/current/strikes |
-| Fidelity/Zerodha no API | Positions only for TastyTrade | Manual entry or adapter stubs |
-
----
-
----
-
-## 8. Coding Standards
-
-- `Decimal` for ALL money/price values. Never float.
-- Type hints on every function. `dataclass` for domain models.
-- `session_scope()` for DB. No raw sessions.
-- ALL imports at file top (unless circular avoidance).
-- Agent files = NOUNS. Service files = VERBS.
-- **ZERO dead code.** Every file/class/function must be called. No stubs.
-- **ZERO local math.** Greeks/prices from broker only. No Black-Scholes, POP/EV, VaR.
-- **ZERO bogus data.** No mock trades in production flow.
-
----
-
-## 9. Key Files
-
-```
-runners/run_workflow.py          # THE entry point
-agents/workflow/engine.py        # 12-state orchestrator
-agents/workflow/interaction.py   # CLI command handlers
-agents/domain/maverick.py        # Trader (6 gates, proposals, booking, sizing)
-agents/domain/scout.py           # Quant (screening, ranking)
-agents/domain/steward.py         # Portfolio manager
-agents/domain/sentinel.py        # Risk manager
-adapters/tastytrade_adapter.py   # Broker (40+ methods, SaaS credential pattern)
-services/daily_plan_service.py   # Desk-aware plan generation (shared API + CLI)
-services/trade_booking_service.py # Book trades with legs + Greeks
-services/trade_lifecycle.py      # Close trades, record outcomes
-services/exit_monitor.py         # Profit target, stop loss, DTE exit
-services/mark_to_market.py       # Update P&L from live quotes
-services/trade_learner.py        # ML/RL pattern recognition
-core/models/events.py            # TradeEvent, DecisionContext, MarketContext
-repositories/event.py            # Event persistence + queries
-config/risk_config.yaml          # 15 portfolios, 3 desks
-config/workflow_rules.yaml       # Circuit breakers, limits
-web/api_v2.py                    # Main API router (plan, positions, risk, etc.)
-web/api_terminal.py              # Terminal command API
+┌──────────────────────────────────────────────────────────┐
+│                    LOAD BALANCER                          │
+│                 (nginx / cloud ALB)                       │
+│                   HTTPS + JWT auth                        │
+└─────────┬──────────────────────────┬─────────────────────┘
+          │                          │
+┌─────────▼──────────┐    ┌─────────▼──────────┐
+│   API SERVER (N)    │    │  FRONTEND (CDN)     │
+│   FastAPI stateless │    │  React SPA           │
+│   JWT middleware    │    │  S3 / CloudFront     │
+│   Read/write DB    │    └─────────────────────┘
+└─────────┬──────────┘
+          │
+┌─────────▼──────────┐    ┌─────────────────────┐
+│   TASK QUEUE        │───▷│  Redis               │
+│   (Celery / ARQ)    │    │  - task broker        │
+│                     │    │  - session cache      │
+│  Per-user tasks:    │    │  - rate limiting      │
+│  - scan(user_id)    │    └─────────────────────┘
+│  - mark(user_id)    │
+│  - ml_learn(uid)    │    ┌─────────────────────┐
+│  - health(uid)      │───▷│  PostgreSQL           │
+└─────────┬──────────┘    │  - tenant-scoped      │
+          │               │  - connection pool     │
+┌─────────▼──────────┐    │  - JSONB columns      │
+│   WORKER (N)        │    └─────────────────────┘
+│   Agent pipeline    │
+│   Per-user context  │
+│   MA library        │
+│   Broker sessions   │
+│   (per-user, temp)  │
+└────────────────────┘
 ```
 
 ---
 
-## 10. Agent Pattern
+## KEY DESIGN DECISIONS
 
-**Agent owns Container → populate() fills from data → save_to_db() → API reads → UI renders**
+### 1. API Server is STATELESS
+No in-memory engine context. Every request: authenticate → read DB → compute → respond.
+Horizontally scalable. Any API instance handles any user.
 
-- **ResearchContainer** (`containers/research_container.py`) — ~155 fields: technicals, regime, phase, opportunities, smart money, levels, fundamentals, macro
-- **PortfolioBundle** (`containers/portfolio_bundle.py`) — per-portfolio: positions, trades, risk, Greeks, P&L
-- **ContainerManager** (`containers/container_manager.py`) — orchestrates all bundles + research
+### 2. Workers run agent pipelines
+One Celery task per user per cycle. Worker loads user config + broker token → runs agents → writes results to PostgreSQL → discards state.
+
+### 3. Broker sessions are per-user, short-lived
+User authenticates with broker → encrypted token stored in DB.
+Worker loads token → creates session → runs pipeline → discards.
+No persistent broker connections.
+
+### 4. MA library is shared, stateless
+One MarketAnalyzer instance per task. Broker providers injected per-user.
+No cross-user contamination. MA never stores state.
+
+### 5. Frontend is static SPA
+React built → CDN. All data via API + JWT. Optional WebSocket for real-time.
+
+### 6. Currency and timezone are first-class
+Every broker connection has currency + timezone. Desks inherit from broker.
+No cross-currency mixing within a desk. P&L in local currency per desk.
 
 ---
 
-## 11. Credential Flow (SaaS Pattern)
+## DATA MODEL
 
-eTrading authenticates with TastyTrade → passes pre-authenticated sessions to MarketAnalyzer.
-MarketAnalyzer never touches credentials. Single connection reused everywhere.
+### Multi-Tenant Tables
 
 ```
-TastytradeAdapter.authenticate() → session + data_session
-  → adapter.get_market_providers() → (MarketDataProvider, MarketMetricsProvider)
-  → injected into Scout → MarketAnalyzer(market_data=..., market_metrics=...)
-  → also available to API endpoints via engine._market_data/_market_metrics
+users
+  ├── broker_connections (per broker, encrypted tokens)
+  ├── portfolios (per desk, tenant_id scoped)
+  │    ├── trades
+  │    │    ├── legs
+  │    │    └── trade_events
+  │    ├── positions
+  │    └── daily_performance
+  ├── ml_state (bandits, thresholds, drift per user)
+  ├── system_events (Atlas health log per user)
+  └── research_snapshots (cached MA data per user)
+```
+
+All existing tables get `tenant_id UUID REFERENCES users(id)`.
+All queries scoped by `tenant_id = current_user.id`.
+
+### Broker Connections Table
+
+```sql
+CREATE TABLE broker_connections (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES users(id),
+    broker_name VARCHAR(50) NOT NULL,  -- tastytrade, dhan, zerodha
+    account_id VARCHAR(100),
+    encrypted_token TEXT,              -- AES-256 encrypted
+    token_expires_at TIMESTAMP,
+    market VARCHAR(10) NOT NULL,       -- US, INDIA
+    currency VARCHAR(5) NOT NULL,      -- USD, INR
+    timezone VARCHAR(50) NOT NULL,     -- US/Eastern, Asia/Kolkata
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
 ```
 
 ---
 
-## 12. UI Pages
+## SCHEDULING — Per-User, Per-Market
 
-| Route | Page | Content |
-|-------|------|---------|
-| `/` | Research Dashboard | Scout data, daily plan, screener |
-| `/trading` | Trading Terminal | Positions, WhatIf blotter, AG Grid, command sidebar |
-| `/portfolio` | Portfolio | Positions, Performance, Capital (tabs) |
-| `/risk` | Risk | Risk dashboard |
-| `/agents` | Agents | Workflow, Active Agents, Quant, Knowledge, ML/RL (tabs) |
-| `/reports` | Reports | Portfolio reports |
-| `/data` | Data Explorer | Query builder |
-| `/settings` | Config | Portfolios, Risk, Workflow, Capital (tabs) |
+Users trade in different timezones. Same system handles both.
+
+| Task | US (ET) | India (IST) | Frequency |
+|------|---------|-------------|-----------|
+| scan_and_propose | 9:30 AM - 4:00 PM | 9:15 AM - 3:30 PM | Every 30 min |
+| mark_to_market | 9:30 AM - 4:00 PM | 9:15 AM - 3:30 PM | Every 30 min |
+| intraday_0dte | 9:30 AM - 4:00 PM | 9:15 AM - 3:30 PM (Thu/Wed) | Every 2 min |
+| overnight_risk | 3:30 PM ET | 3:00 PM IST | Once |
+| daily_report | 4:15 PM ET | 3:45 PM IST | Once |
+| ml_learning | 4:30 PM ET | 4:00 PM IST | Daily |
+
+Per-user schedules created based on their broker connections.
 
 ---
 
-*This document is the single source of truth for architecture and technical reference. Update it when the system changes.*
+## BROKER INTEGRATION
+
+### Supported Brokers
+
+| Broker | Market | Auth | SDK | Status |
+|--------|--------|------|-----|--------|
+| TastyTrade | US | Session token | `tastytrade` | Production |
+| Dhan | India | API key + access token | `dhanhq` | MA providers ready |
+| Zerodha | India | Kite API key + access token | `kiteconnect` | MA providers ready |
+
+### Session Flow
+
+```
+User clicks "Connect Broker"
+  → Redirects to broker login (or API key entry)
+  → Token received
+  → Encrypted (AES-256) and stored in broker_connections
+  → On each pipeline run:
+      Load token → decrypt → create MA providers → run agents → discard
+```
+
+---
+
+## MIGRATION PATH
+
+### Phase 0: Production-Ready Single User (NOW)
+- [x] Trade execution rail guard (S27)
+- [ ] PostgreSQL migration
+- [ ] Alembic migrations
+- [ ] Docker containerization
+- [ ] Wire Dhan + Zerodha into adapter
+- [ ] Multi-leg order generation
+
+### Phase 1: Auth (Single User, Protected)
+- [ ] User model + JWT
+- [ ] Login page
+- [ ] API middleware
+
+### Phase 2: Multi-Tenant
+- [ ] tenant_id on all tables
+- [ ] Scoped queries
+- [ ] Per-user broker connections
+- [ ] BrokerSessionManager
+
+### Phase 3: Background Workers
+- [ ] Celery + Redis
+- [ ] Agent pipeline as tasks
+- [ ] Per-user scheduling
+
+### Phase 4: Scale
+- [ ] Multiple API instances
+- [ ] CDN for frontend
+- [ ] WebSocket
+- [ ] Monitoring (Sentry, Prometheus)
+
+---
+
+## WHAT NOT TO BUILD YET
+
+- Mobile app (web works on mobile)
+- Social features (sharing, following)
+- Backtesting (MA has no harness)
+- Multi-currency P&L conversion (keep per-desk currency)
+- Real-time streaming to frontend (polling is fine)
+- AI chatbot / MCP (later)

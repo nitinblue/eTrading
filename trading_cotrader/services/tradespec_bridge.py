@@ -17,11 +17,31 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from market_analyzer import from_dxlink_symbols, TradeSpec
+from market_analyzer import from_dxlink_symbols, TradeSpec, MarketRegistry
 
 from trading_cotrader.core.database.schema import TradeORM, LegORM, SymbolORM
 
 logger = logging.getLogger(__name__)
+
+# Cache registry instance
+_registry = None
+
+def get_registry() -> MarketRegistry:
+    """Get cached MarketRegistry instance."""
+    global _registry
+    if _registry is None:
+        _registry = MarketRegistry()
+    return _registry
+
+
+def get_lot_size(ticker: str, market: str = 'US') -> int:
+    """Get lot size for a ticker from MarketRegistry. Default 100."""
+    try:
+        registry = get_registry()
+        inst = registry.get_instrument(ticker, market=market)
+        return inst.lot_size
+    except Exception:
+        return 100
 
 
 def _symbol_to_dxlink(symbol: SymbolORM) -> Optional[str]:
@@ -230,4 +250,5 @@ def trade_to_monitor_params(trade: TradeORM) -> Optional[dict]:
         'stop_loss_pct': stop_loss_pct,
         'exit_dte': exit_dte,
         'entry_regime_id': entry_regime_id,
+        'lot_size': get_lot_size(trade.underlying_symbol),  # E11: India lots differ
     }

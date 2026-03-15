@@ -192,6 +192,8 @@ eT  = orchestrator. Fetches data from broker, decides WHEN to call MA, executes 
 | ML-E4 | POP calibration | `calibrate_pop_factors(outcomes)` → regime factor map | `ml_learning_service.calibrate_pop()`. Stored in MLStateORM. | **DONE** |
 | ML-E5 | IV rank threading | `rank(tickers, iv_rank_map=...)` | `ml_learning_service.build_iv_rank_map()`. Ready for Scout integration. | **DONE** |
 
+**MA at 1331 tests. All CRs delivered including SaaS (CR14-17) + Hedging (H1-H5).**
+
 **All ML + signal quality items wired. Additional wiring completed:**
 - Scout passes `min_score=0.4, top_n=20` to `scan()` (G06)
 - Scout passes `debug=True` to `context.assess()` and `regime.detect()` (G08)
@@ -202,7 +204,33 @@ eT  = orchestrator. Fetches data from broker, decides WHEN to call MA, executes 
 - Maverick stores `iv_rank_at_entry`, `dte_at_entry`, `composite_score` at booking (Fix 7)
 - Commentary from `debug=True` stored in context for decision lineage (G25)
 
-**MA total: 1241 tests passing. 43 gaps closed. eTrading: 185 tests. All wiring complete.**
+**MA total: 1331+ tests. eTrading: 185 tests.**
+
+### Latest MA Deliveries (IN1-IN5, CM1, MC1-MC5, TQ1)
+
+| MA Gap | What | eTrading Status |
+|--------|------|----------------|
+| IN1-IN3 | India equity/futures trade models + builders | Available — assessors auto-use for India stocks without weekly options |
+| IN4 | Market-aware exit notes (no assignment for cash-settled) | Available — flows through TradeSpec |
+| IN5 | LEAP blocked for India | Available — assessor auto-checks registry |
+| CM1 | Cross-market US-India correlation | TODO: Wire `analyze_cross_market()` into overnight risk / context |
+| MC1-MC5 | Macro indicators (bonds, credit, dollar, inflation, dashboard) | TODO: Wire `compute_macro_dashboard()` into context check |
+| **TQ1** | **POP now has trade_quality + quality_score** | TODO: Show trade_quality in proposals + UI. **POP $0.00 fixed.** |
+
+### New MA Capabilities to Wire (E-series from MA's pickup list)
+
+| # | What | MA API | eTrading Status |
+|---|------|--------|----------------|
+| E3 | time_of_day to check_trade_health | `check_trade_health(..., time_of_day=)` | PARTIAL (exit_monitor does, mark_to_market doesn't) |
+| E8 | entry_window_timezone for India | `entry_window_timezone` on TradeSpec | TODO |
+| E9 | MarketRegistry for lot sizes | `registry.get_instrument().lot_size` | **DONE** (get_lot_size helper in bridge) |
+| E11 | lot_size in trade_lifecycle calls | `monitor_exit_conditions(lot_size=)` | TODO (pass from registry) |
+| E12 | Hedge assessment for positions | `assess_hedge(spec, regime, technicals)` | **DONE** (trade_health_service.assess_hedges) |
+| E13 | Currency P&L decomposition | `compute_currency_pnl()` | TODO |
+| E23 | TokenExpiredError handling | Catch `TokenExpiredError`, prompt re-auth | TODO |
+| E24 | Rate limiting for India brokers | `rate_limit_per_second` on provider | TODO |
+| E26 | Currency-aware P&L display | `compute_currency_pnl()` in dashboard | TODO |
+| E27 | Timezone-aware scheduling | `registry.get_market().market_hours` | TODO |
 
 ---
 

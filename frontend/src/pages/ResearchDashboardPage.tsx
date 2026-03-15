@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { clsx } from 'clsx'
 import { RefreshCw, Plus, X, Settings } from 'lucide-react'
 import { useResearch, useRefreshResearch, useWatchlist, useAddWatchlistTicker, useRemoveWatchlistTicker } from '../hooks/useResearch'
@@ -271,6 +271,9 @@ export function ResearchDashboardPage() {
 
           {/* Row 4: Macro strip */}
           {macro && <MacroStrip macro={macro} />}
+
+          {/* Row 5: Macro Indicators + Cross-Market (from new APIs) */}
+          <MacroCrossMarketRow />
 
           {/* Watchlist manager (expandable) */}
           {showWatchlistManager && <WatchlistManager onClose={() => setShowWatchlistManager(false)} />}
@@ -822,6 +825,44 @@ function ResearchRow({ entry: r, activeGroups, selected, onClick }: {
 // ---------------------------------------------------------------------------
 // Macro Strip
 // ---------------------------------------------------------------------------
+
+function MacroCrossMarketRow() {
+  const [macro, setMacro] = useState<any>(null)
+  const [cm, setCm] = useState<any>(null)
+
+  useEffect(() => {
+    fetch('/api/v2/macro').then(r => r.json()).then(d => { if (!d.message) setMacro(d) }).catch(() => {})
+    fetch('/api/v2/cross-market').then(r => r.json()).then(d => { if (!d.message) setCm(d) }).catch(() => {})
+  }, [])
+
+  if (!macro && !cm) return null
+
+  return (
+    <div className="flex gap-3 flex-wrap">
+      {macro && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-bg-secondary rounded border border-border-primary">
+          <span className="text-[10px] text-text-muted">Macro:</span>
+          <span className={clsx('text-[10px] font-bold',
+            macro.overall_risk_level === 'low' ? 'text-green-400' : macro.overall_risk_level === 'high' ? 'text-red-400' : 'text-amber-400'
+          )}>{(macro.overall_risk_level || '?').toUpperCase()}</span>
+          {macro.indicators && Object.entries(macro.indicators).slice(0, 3).map(([name, ind]: [string, any]) => (
+            <span key={name} className="text-[9px] text-text-muted">{name}: <span className="text-text-primary">{ind?.risk_level || ind?.level || '?'}</span></span>
+          ))}
+        </div>
+      )}
+      {cm && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-bg-secondary rounded border border-border-primary">
+          <span className="text-[10px] text-text-muted">US-India:</span>
+          <span className="text-[10px] font-mono text-text-primary">corr={cm.correlation_20d?.toFixed(2)}</span>
+          <span className={clsx('text-[10px] font-mono', (cm.predicted_india_gap_pct || 0) < -0.5 ? 'text-red-400' : 'text-green-400')}>
+            gap={cm.predicted_india_gap_pct?.toFixed(2)}%
+          </span>
+          <span className="text-[9px] text-text-muted">{cm.sync_status}</span>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function MacroStrip({ macro }: { macro: ResearchMacroContext }) {
   const [expanded, setExpanded] = useState(false)

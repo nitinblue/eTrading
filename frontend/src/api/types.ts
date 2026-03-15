@@ -724,6 +724,11 @@ export interface MLStatus {
     position: number
     portfolio: number
   }
+  // ML systems (session 41)
+  drift_alerts?: number
+  bandit_cells?: number
+  thresholds_optimized?: boolean
+  pop_calibrated?: boolean
 }
 
 export interface AgentTimelineCycle {

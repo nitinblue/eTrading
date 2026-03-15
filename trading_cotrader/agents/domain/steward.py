@@ -490,3 +490,230 @@ class StewardAgent(BaseAgent):
             )
 
         return f"${idle:,.0f} above reserve. Consider deploying via active strategies."
+
+    # -----------------------------------------------------------------
+    # K9: Daily P&L Report
+    # -----------------------------------------------------------------
+
+    def generate_daily_report(self) -> dict:
+        """Generate daily P&L report across all desks (K9)."""
+        from trading_cotrader.core.database.session import session_scope
+        from trading_cotrader.core.database.schema import TradeORM, PortfolioORM
+
+        report = {
+            'date': datetime.utcnow().strftime('%Y-%m-%d'),
+            'desks': {},
+            'totals': {
+                'total_pnl': 0, 'realized_pnl': 0, 'unrealized_pnl': 0,
+                'daily_theta': 0, 'open_positions': 0, 'trades_today': 0,
+                'total_capital': 0, 'total_deployed': 0,
+            },
+            'positions_at_risk': [],
+            'exits_today': [],
+            'messages': [],
+        }
+
+        today = datetime.utcnow().date()
+
+        with session_scope() as session:
+            desks = session.query(PortfolioORM).filter(
+                PortfolioORM.portfolio_type == 'what_if'
+            ).all()
+
+            for desk in desks:
+                trades = session.query(TradeORM).filter(
+                    TradeORM.portfolio_id == desk.id,
+                ).all()
+
+                open_trades = [t for t in trades if t.is_open]
+                closed_today = [t for t in trades if not t.is_open
+                                and t.closed_at and t.closed_at.date() == today]
+
+                desk_pnl = sum(float(t.total_pnl or 0) for t in trades)
+                realized = sum(float(t.total_pnl or 0) for t in trades if not t.is_open)
+                unrealized = sum(float(t.total_pnl or 0) for t in open_trades)
+                daily_theta = sum(float(t.current_theta or 0) for t in open_trades)
+                deployed = sum(float(t.max_risk or 0) for t in open_trades)
+                capital = float(desk.initial_capital or 0)
+
+                desk_data = {
+                    'capital': capital,
+                    'deployed': round(deployed, 0),
+                    'deployed_pct': round(deployed / capital * 100, 1) if capital else 0,
+                    'total_pnl': round(desk_pnl, 2),
+                    'realized_pnl': round(realized, 2),
+                    'unrealized_pnl': round(unrealized, 2),
+                    'daily_theta': round(daily_theta, 2),
+                    'open_positions': len(open_trades),
+                    'closed_today': len(closed_today),
+                }
+                report['desks'][desk.name] = desk_data
+
+                # Totals
+                report['totals']['total_pnl'] += desk_pnl
+                report['totals']['realized_pnl'] += realized
+                report['totals']['unrealized_pnl'] += unrealized
+                report['totals']['daily_theta'] += daily_theta
+                report['totals']['open_positions'] += len(open_trades)
+                report['totals']['trades_today'] += len(closed_today)
+                report['totals']['total_capital'] += capital
+                report['totals']['total_deployed'] += deployed
+
+                # Positions at risk
+                for t in open_trades:
+                    health = t.health_status or 'unknown'
+                    if health in ('tested', 'breached', 'exit_triggered'):
+                        report['positions_at_risk'].append({
+                            'ticker': t.underlying_symbol,
+                            'desk': desk.name,
+                            'health': health,
+                            'pnl': round(float(t.total_pnl or 0), 2),
+                        })
+
+                # Exits today
+                for t in closed_today:
+                    report['exits_today'].append({
+                        'ticker': t.underlying_symbol,
+                        'desk': desk.name,
+                        'pnl': round(float(t.total_pnl or 0), 2),
+                        'reason': t.exit_reason or '?',
+                    })
+
+        # Round totals
+        for key in report['totals']:
+            if isinstance(report['totals'][key], float):
+                report['totals'][key] = round(report['totals'][key], 2)
+
+        # Generate messages
+        t = report['totals']
+        report['messages'].append(
+            f"Total P&L: ${t['total_pnl']:+,.2f} "
+            f"(realized ${t['realized_pnl']:+,.2f}, unrealized ${t['unrealized_pnl']:+,.2f})"
+        )
+        report['messages'].append(
+            f"Theta earning: ${t['daily_theta']:.2f}/day across {t['open_positions']} positions"
+        )
+        if t['total_capital'] > 0:
+            deploy_pct = t['total_deployed'] / t['total_capital'] * 100
+            report['messages'].append(f"Capital: ${t['total_capital']:,.0f} deployed {deploy_pct:.0f}%")
+        if report['positions_at_risk']:
+            report['messages'].append(
+                f"AT RISK: {len(report['positions_at_risk'])} positions "
+                f"({', '.join(p['ticker'] for p in report['positions_at_risk'])})"
+            )
+        if report['exits_today']:
+            exits_pnl = sum(e['pnl'] for e in report['exits_today'])
+            report['messages'].append(
+                f"Exits today: {len(report['exits_today'])} trades, P&L ${exits_pnl:+,.2f}"
+            )
+
+        return report
+
+    # -----------------------------------------------------------------
+    # K6: Desk Performance Comparison
+    # -----------------------------------------------------------------
+
+    def compare_desk_performance(self, days: int = 90) -> dict:
+        """Compare performance across all desks using MA analytics (K6).
+
+        Returns Sharpe, drawdown, regime performance per desk.
+        """
+        from trading_cotrader.services.ml_learning_service import MLLearningService
+
+        result = {'desks': {}, 'recommendation': '', 'messages': []}
+        ml = MLLearningService()
+
+        with session_scope() as session:
+            desks = session.query(PortfolioORM).filter(
+                PortfolioORM.portfolio_type == 'what_if'
+            ).all()
+
+            all_outcomes = ml._build_outcomes(days=days)
+            if not all_outcomes:
+                result['messages'].append("No closed trades to analyze")
+                return result
+
+            for desk in desks:
+                # Filter outcomes to this desk's trades
+                desk_trades = session.query(TradeORM).filter(
+                    TradeORM.portfolio_id == desk.id,
+                    TradeORM.is_open == False,
+                ).all()
+                desk_trade_ids = {t.id for t in desk_trades}
+                desk_outcomes = [o for o in all_outcomes if o.trade_id in desk_trade_ids]
+
+                if not desk_outcomes:
+                    result['desks'][desk.name] = {
+                        'trades': 0, 'message': 'No closed trades yet'
+                    }
+                    continue
+
+                desk_data = {
+                    'trades': len(desk_outcomes),
+                    'capital': float(desk.initial_capital or 0),
+                }
+
+                # Sharpe
+                try:
+                    from market_analyzer import compute_sharpe
+                    sharpe = compute_sharpe(desk_outcomes)
+                    desk_data['sharpe'] = round(sharpe.sharpe_ratio, 2)
+                    desk_data['sortino'] = round(sharpe.sortino_ratio, 2)
+                    desk_data['annualized_return'] = round(sharpe.annualized_return_pct, 1)
+                except Exception as e:
+                    desk_data['sharpe_error'] = str(e)
+
+                # Drawdown
+                try:
+                    from market_analyzer import compute_drawdown
+                    dd = compute_drawdown(desk_outcomes)
+                    desk_data['max_drawdown_pct'] = round(dd.max_drawdown_pct, 1)
+                    desk_data['max_drawdown_dollars'] = round(dd.max_drawdown_dollars, 0)
+                except Exception as e:
+                    desk_data['drawdown_error'] = str(e)
+
+                # Regime performance
+                try:
+                    from market_analyzer import compute_regime_performance
+                    regime_perf = compute_regime_performance(desk_outcomes)
+                    desk_data['regime_performance'] = {}
+                    for regime_id, perf in regime_perf.items():
+                        desk_data['regime_performance'][f'R{regime_id}'] = {
+                            'win_rate': round(perf.win_rate * 100, 0),
+                            'avg_pnl': round(perf.avg_pnl_pct * 100, 1),
+                            'trades': perf.trade_count,
+                        }
+                except Exception as e:
+                    desk_data['regime_error'] = str(e)
+
+                # Win rate + P&L
+                wins = sum(1 for o in desk_outcomes if o.pnl_dollars > 0)
+                total_pnl = sum(o.pnl_dollars for o in desk_outcomes)
+                desk_data['win_rate'] = round(wins / len(desk_outcomes) * 100, 0)
+                desk_data['total_pnl'] = round(total_pnl, 2)
+                desk_data['avg_pnl'] = round(total_pnl / len(desk_outcomes), 2)
+                desk_data['avg_holding_days'] = round(
+                    sum(o.holding_days for o in desk_outcomes) / len(desk_outcomes), 1
+                )
+
+                result['desks'][desk.name] = desk_data
+
+            # Recommendation: which desk deserves more capital?
+            best_sharpe = -999
+            best_desk = None
+            for name, data in result['desks'].items():
+                sharpe = data.get('sharpe', -999)
+                if sharpe > best_sharpe and data.get('trades', 0) >= 5:
+                    best_sharpe = sharpe
+                    best_desk = name
+
+            if best_desk:
+                result['recommendation'] = (
+                    f"{best_desk} has the best risk-adjusted return (Sharpe {best_sharpe:.2f}). "
+                    f"Consider increasing its capital allocation."
+                )
+                result['messages'].append(result['recommendation'])
+            else:
+                result['messages'].append("Not enough trades for capital reallocation recommendation (need 5+ per desk)")
+
+        return result

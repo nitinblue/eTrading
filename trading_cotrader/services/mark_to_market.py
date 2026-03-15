@@ -365,6 +365,7 @@ class MarkToMarketService:
                     regime=regime,
                     technicals=technicals,
                     entry_regime_id=entry_regime_id,
+                    time_of_day=datetime.now().time(),  # E3: time-of-day urgency
                 )
 
                 trade.health_status = health.status

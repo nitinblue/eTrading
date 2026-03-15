@@ -120,18 +120,28 @@ class WorkflowEngine:
         self._account_provider = None
         self._watchlist_provider = None
         self._ma = None  # MarketAnalyzer instance for health checks + adjustments
-        tt_adapter = adapters.get('tastytrade')
-        if tt_adapter and hasattr(tt_adapter, 'get_market_providers'):
-            try:
-                providers = tt_adapter.get_market_providers()
-                # connect_from_sessions returns 4-tuple: (market_data, metrics, account, watchlist)
-                if len(providers) >= 4:
-                    self._market_data, self._market_metrics, self._account_provider, self._watchlist_provider = providers
-                else:
-                    self._market_data, self._market_metrics, self._account_provider = providers[:3]
-                logger.info("Market providers extracted from broker adapter — single connection")
+        # Extract market providers from any available broker
+        # Supports: TastyTrade (US), Dhan (India), Zerodha (India)
+        for broker_name in ['tastytrade', 'dhan', 'zerodha']:
+            adapter = adapters.get(broker_name)
+            if adapter and hasattr(adapter, 'get_market_providers'):
+                try:
+                    providers = adapter.get_market_providers()
+                    if len(providers) >= 4:
+                        self._market_data, self._market_metrics, self._account_provider, self._watchlist_provider = providers
+                    else:
+                        self._market_data, self._market_metrics, self._account_provider = providers[:3]
 
-                # Build MA instance for downstream services (G4, G9, G22, G23)
+                    from trading_cotrader.adapters.broker_factory import get_broker_info
+                    info = get_broker_info(broker_name)
+                    logger.info(f"Broker: {broker_name} ({info.get('market', '?')}/{info.get('currency', '?')})")
+                    break
+                except Exception as e:
+                    logger.warning(f"Broker {broker_name} failed: {e}")
+
+        # Build MA instance for downstream services
+        if self._market_data or self._market_metrics:
+            try:
                 from market_analyzer import MarketAnalyzer
                 from market_analyzer.data import DataService
                 self._ma = MarketAnalyzer(
@@ -142,7 +152,7 @@ class WorkflowEngine:
                     watchlist_provider=self._watchlist_provider,
                 )
             except Exception as e:
-                logger.warning(f"Could not extract market providers from broker: {e}")
+                logger.warning(f"Could not build MarketAnalyzer: {e}")
 
         # Shared context between all agents
         self.context: dict = {
@@ -165,7 +175,7 @@ class WorkflowEngine:
         self.maverick = MaverickAgent(container_manager=self.container_manager, config=self.config, broker=broker)
         # Pass MA instance to Maverick for health checks + analytics gates
         self.maverick._ma = self._ma
-        self.atlas = AtlasAgent(config=self.config)
+        self.atlas = AtlasAgent(config=self.config, broker=broker, ma=self._ma)
 
         # Interaction manager (command router, not an agent)
         self.interaction = InteractionManager(self)
@@ -346,6 +356,11 @@ class WorkflowEngine:
             logger.info(f"Scout.run: {result.status.value} — {result.messages}")
         except Exception as e:
             logger.warning(f"Scout.run failed: {e}")
+            try:
+                from trading_cotrader.agents.domain.atlas import AtlasAgent
+                AtlasAgent.log_error('scout', f'Scout.run failed: {e}')
+            except Exception:
+                pass
 
         # 6. Mark-to-market: update open trade prices before Maverick checks exits
         try:
@@ -364,6 +379,11 @@ class WorkflowEngine:
             logger.info(f"Maverick.run: {result.status.value} — {result.messages}")
         except Exception as e:
             logger.warning(f"Maverick.run failed: {e}")
+            try:
+                from trading_cotrader.agents.domain.atlas import AtlasAgent
+                AtlasAgent.log_error('maverick', f'Maverick.run failed: {e}')
+            except Exception:
+                pass
 
         # 7b. Auto-book proposed trades to WhatIf desks
         proposals = self.context.get('trade_proposals', [])
@@ -418,13 +438,30 @@ class WorkflowEngine:
                             logger.warning(f"Auto-close adjustment failed for {action.ticker}: {e}")
                     elif action.action in ('ADJUST', 'ROLL'):
                         # Flag for human execution (adjustments = new orders)
-                        self.context.setdefault('pending_adjustments', []).append({
+                        adjustment = {
                             'trade_id': action.trade_id,
                             'ticker': action.ticker,
                             'type': action.adjustment_type,
                             'urgency': action.urgency,
                             'rationale': action.rationale,
-                        })
+                            'close_legs': action.close_legs,  # A17: legs to close
+                            'new_legs': action.new_legs,      # A17: legs to open
+                        }
+                        self.context.setdefault('pending_adjustments', []).append(adjustment)
+
+                        # Log detail for human execution
+                        if action.close_legs:
+                            leg_str = ', '.join(
+                                f"{l.get('action','?')} {l.get('option_type','?')}{l.get('strike','?')}"
+                                for l in action.close_legs
+                            )
+                            logger.info(f"Adjustment {action.ticker} CLOSE: {leg_str}")
+                        if action.new_legs:
+                            leg_str = ', '.join(
+                                f"{l.get('action','?')} {l.get('option_type','?')}{l.get('strike','?')}"
+                                for l in action.new_legs
+                            )
+                            logger.info(f"Adjustment {action.ticker} OPEN: {leg_str}")
                         logger.info(f"Adjustment queued: {action.ticker} {action.adjustment_type} ({action.urgency})")
             except Exception as e:
                 logger.debug(f"Adjustment pipeline skipped: {e}")
@@ -459,6 +496,16 @@ class WorkflowEngine:
                     logger.info(f"ML cycle: {ml_result}")
             except Exception as e:
                 logger.debug(f"ML learning cycle skipped: {e}")
+
+        # 10. Atlas: system health, ML monitoring, analytics (V1-V6, B14, K7)
+        try:
+            result = self.atlas.run(self.context)
+            if result.metrics.get('high_alerts', 0) > 0:
+                logger.warning(f"Atlas: {result.metrics['high_alerts']} HIGH alerts!")
+            elif result.metrics.get('alerts', 0) > 0:
+                logger.info(f"Atlas: {result.metrics['alerts']} alerts, {result.metrics.get('checks_passed', 0)} checks OK")
+        except Exception as e:
+            logger.debug(f"Atlas.run failed (non-blocking): {e}")
 
         # Log summary
         proposals = self.context.get('trade_proposals', [])
@@ -529,6 +576,45 @@ class WorkflowEngine:
         self._sync_broker_positions()
         self._refresh_containers()
         self._run_agent_pipeline()
+
+    def eod(self):
+        """End-of-day: overnight risk check + daily report."""
+        logger.info("--- EOD Evaluation ---")
+
+        # Overnight risk assessment
+        if self._ma:
+            try:
+                from trading_cotrader.services.trade_health_service import TradeHealthService
+                health_service = TradeHealthService(ma=self._ma)
+                overnight = health_service.assess_overnight_risk(
+                    cross_market=self.context.get('cross_market'),
+                )
+                for action in overnight:
+                    if action.action == 'CLOSE':
+                        logger.warning(f"Overnight risk: CLOSE {action.ticker} — {action.summary}")
+                        try:
+                            from trading_cotrader.services.trade_lifecycle import TradeLifecycleService
+                            lifecycle = TradeLifecycleService(container_manager=self.container_manager)
+                            lifecycle.close_trade(action.trade_id, reason='overnight_risk')
+                        except Exception as e:
+                            logger.warning(f"Overnight close failed for {action.ticker}: {e}")
+            except Exception as e:
+                logger.debug(f"Overnight risk check failed: {e}")
+
+        # Generate daily report
+        self.report()
+
+    def report(self):
+        """Generate and log daily P&L report."""
+        logger.info("--- Daily Report ---")
+        try:
+            report = self.steward.generate_daily_report()
+            for msg in report.get('messages', []):
+                logger.info(f"  {msg}")
+            # Store in context for API consumption
+            self.context['daily_report'] = report
+        except Exception as e:
+            logger.debug(f"Daily report failed: {e}")
 
     def run_intraday_cycle(self):
         """Fast cycle for 0DTE positions (G13). Called every 2 min during market hours.

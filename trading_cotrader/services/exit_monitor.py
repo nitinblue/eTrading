@@ -299,6 +299,27 @@ class ExitMonitorService:
                     current_price=current_price, dte=dte, target_value=stop_loss_pct,
                 ))
 
+        # W12: Trailing stop — check ExitPlan for trailing_stop
+        if trade.exit_plan_json and pnl > 0:
+            exit_plan = trade.exit_plan_json
+            if isinstance(exit_plan, dict):
+                trailing = exit_plan.get('trailing_stop')
+                if trailing:
+                    trail_pct = trailing.get('pct_from_entry', 0)
+                    if trail_pct > 0:
+                        # Trailing stop: if P&L was positive but dropped back by trail_pct
+                        # This is simplified — a full trailing stop tracks high-water mark
+                        trail_threshold = abs(entry_price) * Decimal(str(trail_pct))
+                        if pnl < trail_threshold and pnl > 0:
+                            signals.append(ExitSignal(
+                                trade_id=trade.id, underlying=trade.underlying_symbol,
+                                strategy_type=strategy_type, signal_type='TRAILING_STOP',
+                                severity='WARNING', current_pnl=pnl, current_pnl_pct=pnl_pct,
+                                message=f"{trade.underlying_symbol} — trailing stop: P&L ${pnl:.2f} below trail threshold",
+                                action='CLOSE', entry_price=entry_price,
+                                current_price=current_price, dte=dte,
+                            ))
+
         return signals
 
     # ----------------------------------------------------------------

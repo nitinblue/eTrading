@@ -33,6 +33,65 @@ Base = declarative_base()
 # Core Trading Entities (Enhanced)
 # ============================================================================
 
+# ============================================================================
+# SaaS: Users & Auth
+# ============================================================================
+
+class UserORM(Base):
+    """Users — authentication and tenant identity."""
+    __tablename__ = 'users'
+
+    __table_args__ = (
+        UniqueConstraint('email', name='uix_user_email'),
+    )
+
+    id = Column(String(36), primary_key=True)
+    email = Column(String(255), nullable=False)
+    name = Column(String(255))
+    password_hash = Column(String(255))  # bcrypt
+    oauth_provider = Column(String(50))  # google, github, null
+    oauth_id = Column(String(255))
+    is_active = Column(Boolean, default=True)
+    subscription_tier = Column(String(20), default='free')  # free, pro, enterprise
+    settings_json = Column(JSON)  # user preferences
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_login = Column(DateTime)
+
+    # Relationships
+    broker_connections = relationship("BrokerConnectionORM", back_populates="user", cascade="all, delete-orphan")
+
+
+class BrokerConnectionORM(Base):
+    """Broker connections — per user, per broker."""
+    __tablename__ = 'broker_connections'
+
+    __table_args__ = (
+        Index('idx_broker_conn_user', 'user_id'),
+    )
+
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    broker_name = Column(String(50), nullable=False)  # tastytrade, dhan, zerodha
+    account_id = Column(String(100))
+    encrypted_token = Column(Text)  # AES-256 encrypted session token
+    token_expires_at = Column(DateTime)
+    market = Column(String(10), nullable=False)  # US, INDIA
+    currency = Column(String(5), nullable=False, default='USD')  # USD, INR
+    timezone = Column(String(50), nullable=False, default='US/Eastern')
+    is_active = Column(Boolean, default=True)
+    last_connected_at = Column(DateTime)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    user = relationship("UserORM", back_populates="broker_connections")
+
+
+# ============================================================================
+# Core Trading Entities (Enhanced)
+# ============================================================================
+
 class SymbolORM(Base):
     """Symbols - cached to avoid duplicates"""
     __tablename__ = 'symbols'
@@ -66,18 +125,19 @@ class SymbolORM(Base):
 class PortfolioORM(Base):
     """
     Portfolio - top level container
-    
+
     ENHANCED: Supports real and what-if portfolios with configurable limits
     """
     __tablename__ = 'portfolios'
-    
+
     __table_args__ = (
         UniqueConstraint('broker', 'account_id', name='uix_broker_account'),
         Index('idx_broker', 'broker'),
         Index('idx_portfolio_type', 'portfolio_type'),
     )
-    
+
     id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(36), ForeignKey('users.id'), index=True)  # SaaS: user ownership
     name = Column(String(100), nullable=False)
     
     # === TYPE ===
@@ -307,9 +367,10 @@ class TradeORM(Base):
     )
     
     id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(36), ForeignKey('users.id'), index=True)  # SaaS: user ownership
     portfolio_id = Column(String(36), ForeignKey('portfolios.id', ondelete='CASCADE'), nullable=False)
     strategy_id = Column(String(36), ForeignKey('strategies.id'))
-    
+
     # === CLASSIFICATION ===
     trade_type = Column(String(20), nullable=False, default='real')
     # Values: 'real', 'paper', 'what_if', 'backtest', 'research', 'replay'
@@ -580,8 +641,9 @@ class TradeEventORM(Base):
     )
     
     event_id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(36), ForeignKey('users.id'), index=True)  # SaaS
     trade_id = Column(String(36), ForeignKey('trades.id', ondelete='CASCADE'), nullable=True)
-    
+
     # Event metadata
     event_type = Column(String(50), nullable=False)
     timestamp = Column(DateTime, nullable=False)
@@ -817,6 +879,7 @@ class WorkflowStateORM(Base):
     __tablename__ = 'workflow_state'
 
     id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(36), ForeignKey('users.id'), index=True)  # SaaS
     current_state = Column(String(50), nullable=False, default='idle')
     previous_state = Column(String(50))
     last_transition_at = Column(DateTime)
@@ -875,6 +938,7 @@ class AgentRunORM(Base):
     )
 
     id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(36), ForeignKey('users.id'), index=True)  # SaaS
     agent_name = Column(String(50), nullable=False)
     cycle_id = Column(Integer)
     workflow_state = Column(String(50))
@@ -938,6 +1002,7 @@ class ResearchSnapshotORM(Base):
     )
 
     id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(36), ForeignKey('users.id'), index=True)  # SaaS
     symbol = Column(String(50), nullable=False)
     snapshot_date = Column(Date, nullable=False)
 
@@ -1143,12 +1208,31 @@ class ResearchSnapshotORM(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
-class MLStateORM(Base):
-    """ML learning state — bandits, thresholds, drift alerts.
+class SystemEventORM(Base):
+    """System events captured by Atlas — errors, alerts, health checks."""
+    __tablename__ = 'system_events'
 
-    One row per state_type: 'bandits', 'thresholds', 'drift_alerts', 'pop_factors'.
-    JSON column holds the serialized state.
-    """
+    __table_args__ = (
+        Index('idx_system_events_type', 'event_type'),
+        Index('idx_system_events_severity', 'severity'),
+        Index('idx_system_events_timestamp', 'timestamp'),
+    )
+
+    id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(36), ForeignKey('users.id'), index=True)  # SaaS
+    event_type = Column(String(50), nullable=False)  # agent_error, broker_disconnect, stale_prices, ml_stale, pipeline_gap, consistency_issue
+    severity = Column(String(20), nullable=False)     # INFO, WARNING, HIGH, CRITICAL
+    source = Column(String(50))                        # agent name, service name, or 'system'
+    message = Column(Text, nullable=False)
+    details = Column(JSON)                             # additional structured data
+    resolved = Column(Boolean, default=False)
+    resolved_at = Column(DateTime)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class MLStateORM(Base):
+    """ML learning state — bandits, thresholds, drift alerts."""
     __tablename__ = 'ml_state'
 
     __table_args__ = (
@@ -1156,6 +1240,7 @@ class MLStateORM(Base):
     )
 
     id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(36), ForeignKey('users.id'), index=True)  # SaaS
     state_type = Column(String(50), nullable=False)  # bandits, thresholds, drift_alerts, pop_factors
     state_json = Column(JSON, nullable=False)
     trades_analyzed = Column(Integer, default=0)

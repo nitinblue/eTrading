@@ -270,20 +270,25 @@ def create_agents_router(engine: 'WorkflowEngine') -> APIRouter:
     @router.get("/agents/context")
     async def agent_context():
         ctx = {}
+        # Skip keys that contain large/complex objects
+        skip_keys = {'research', 'container_manager', 'containers', 'ranking',
+                      'screening_candidates', 'trade_proposals'}
         for k, v in engine.context.items():
-            s = _safe_json(v)
-            # Truncate large values
-            if isinstance(s, (list, dict)):
-                try:
+            if k in skip_keys:
+                ctx[k] = f"<{type(v).__name__}, {len(v) if hasattr(v, '__len__') else '?'} items>"
+                continue
+            try:
+                s = _safe_json(v)
+                if isinstance(s, (list, dict)):
                     serialized = json.dumps(s)
                     if len(serialized) > 2000:
                         ctx[k] = f"<{type(v).__name__}, {len(serialized)} chars>"
                     else:
                         ctx[k] = s
-                except (TypeError, ValueError):
-                    ctx[k] = str(v)[:200]
-            else:
-                ctx[k] = s
+                else:
+                    ctx[k] = s
+            except Exception:
+                ctx[k] = f"<{type(v).__name__}>"
         return ctx
 
     # ------------------------------------------------------------------

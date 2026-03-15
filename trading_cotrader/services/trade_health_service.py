@@ -23,7 +23,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from trading_cotrader.core.database.session import session_scope
-from trading_cotrader.core.database.schema import TradeORM
+from trading_cotrader.core.database.schema import TradeORM, PortfolioORM
 from trading_cotrader.services.tradespec_bridge import trade_to_tradespec
 
 logger = logging.getLogger(__name__)
@@ -221,11 +221,15 @@ class TradeHealthService:
     # G22: Overnight risk assessment
     # -----------------------------------------------------------------
 
-    def assess_overnight_risk(self, trade_type: str = None) -> List[OvernightAction]:
+    def assess_overnight_risk(self, trade_type: str = None, cross_market: dict = None) -> List[OvernightAction]:
         """Check all open positions for overnight gap risk.
 
         Call this at ~15:30 ET. Returns list of positions with
         HIGH or CLOSE_BEFORE_CLOSE risk level.
+
+        Args:
+            cross_market: Optional cross-market analysis dict (CM1).
+                If US had a bad close, India positions face elevated gap risk.
         """
         try:
             from market_analyzer import assess_overnight_risk
@@ -303,6 +307,36 @@ class TradeHealthService:
                 except Exception as e:
                     logger.debug(f"Overnight risk failed for {trade.id}: {e}")
 
+        # CM1: Cross-market gap risk — US bad close affects India positions
+        if cross_market and cross_market.get('predicted_india_gap_pct'):
+            gap_pct = abs(cross_market['predicted_india_gap_pct'])
+            if gap_pct > 0.5:  # Predicted gap > 0.5%
+                # Check if any India-market positions are open
+                with session_scope() as session:
+                    india_trades = session.query(TradeORM).filter(
+                        TradeORM.is_open == True,
+                    ).all()
+                    for t in india_trades:
+                        # Check if this is an India ticker (from portfolio currency or broker)
+                        portfolio = session.get(PortfolioORM, t.portfolio_id) if t.portfolio_id else None
+                        if not portfolio:
+                            continue
+                        # Simple check: INR currency or India-named desk
+                        is_india = 'india' in (portfolio.name or '').lower()
+                        if is_india and t.id not in {a.trade_id for a in actions}:
+                            severity = 'HIGH' if gap_pct > 1.0 else 'MEDIUM'
+                            actions.append(OvernightAction(
+                                trade_id=t.id,
+                                ticker=t.underlying_symbol,
+                                risk_level=severity,
+                                action='HOLD',
+                                reasons=[
+                                    f"US close predicts {cross_market['predicted_india_gap_pct']:+.2f}% India gap",
+                                    f"US-India correlation: {cross_market.get('correlation_20d', 0):.2f} (20d)",
+                                ],
+                                summary=f"Cross-market: US move may cause {gap_pct:.1f}% India gap",
+                            ))
+
         if actions:
             logger.info(
                 f"Overnight risk: {len(actions)} positions flagged "
@@ -310,6 +344,53 @@ class TradeHealthService:
             )
 
         return actions
+
+    # -----------------------------------------------------------------
+    # E12: Hedge assessment
+    # -----------------------------------------------------------------
+
+    def assess_hedges(self, trade_type: str = None) -> list:
+        """Assess hedge recommendations for all open positions (E12)."""
+        try:
+            from market_analyzer import assess_hedge
+        except ImportError:
+            return []
+
+        results = []
+
+        with session_scope() as session:
+            query = session.query(TradeORM).filter(TradeORM.is_open == True)
+            if trade_type:
+                query = query.filter(TradeORM.trade_type == trade_type)
+            trades = query.all()
+
+            for trade in trades:
+                spec = trade_to_tradespec(trade)
+                if not spec:
+                    continue
+
+                try:
+                    regime = self.ma.regime.detect(trade.underlying_symbol)
+                    technicals = self.ma.technicals.snapshot(trade.underlying_symbol)
+
+                    hedge = assess_hedge(
+                        trade_spec=spec,
+                        regime=regime,
+                        technicals=technicals,
+                    )
+
+                    if hedge.recommendation != 'no_hedge':
+                        results.append({
+                            'trade_id': trade.id,
+                            'ticker': trade.underlying_symbol,
+                            'recommendation': hedge.recommendation,
+                            'rationale': hedge.rationale,
+                            'hedge_spec': hedge.hedge_spec.model_dump(mode='json') if hedge.hedge_spec else None,
+                        })
+                except Exception as e:
+                    logger.debug(f"Hedge assessment failed for {trade.underlying_symbol}: {e}")
+
+        return results
 
     def _compute_dte(self, trade: TradeORM) -> Optional[int]:
         """Compute days to earliest leg expiration."""
