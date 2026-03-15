@@ -172,25 +172,41 @@ def main():
     from trading_cotrader.config.settings import setup_logging
     setup_logging()
 
-    # Broker setup
-    broker = None
+    # Broker setup — connect all available brokers
+    brokers = {}
+    primary_broker = None
     if not args.no_broker:
+        # TastyTrade (US)
         try:
             from trading_cotrader.adapters.tastytrade_adapter import TastytradeAdapter
-            broker = TastytradeAdapter()
-            if not broker.authenticate():
-                logger.warning("Broker authenticate() returned False. Running without broker.")
-                broker = None
-            else:
-                logger.info(f"Broker authenticated: account={broker.account_id}")
+            tt = TastytradeAdapter(is_paper=args.paper)
+            if tt.authenticate():
+                brokers['tastytrade'] = tt
+                primary_broker = tt
+                logger.info(f"TastyTrade: connected (account={tt.account_id})")
         except Exception as e:
-            logger.warning(f"Broker auth failed: {e}. Running without broker.")
-            broker = None
+            logger.debug(f"TastyTrade: {e}")
 
-    # Initialize engine
+        # Zerodha (India)
+        try:
+            from trading_cotrader.adapters.zerodha_adapter import ZerodhaAdapter
+            zd = ZerodhaAdapter()
+            if zd.authenticate():
+                brokers['zerodha'] = zd
+                if not primary_broker:
+                    primary_broker = zd
+                logger.info(f"Zerodha: connected (market=INDIA)")
+        except Exception as e:
+            logger.debug(f"Zerodha: {e}")
+
+        if not brokers:
+            logger.warning("No brokers connected. Running without broker.")
+
+    # Initialize engine with all connected brokers
     from trading_cotrader.agents.workflow.engine import WorkflowEngine
     engine = WorkflowEngine(
-        broker=broker,
+        broker=primary_broker,
+        adapters=brokers,  # Pass all brokers
         use_mock=args.mock or args.no_broker,
         paper_mode=args.paper,
         config_path=args.config,

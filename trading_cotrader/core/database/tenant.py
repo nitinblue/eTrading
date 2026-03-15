@@ -67,8 +67,7 @@ class tenant_context:
 
     Usage:
         with tenant_context(user_id):
-            # All queries in this block are scoped to user_id
-            trades = session.query(TradeORM).filter(TradeORM.tenant_id == get_tenant_id()).all()
+            trades = tenant_query(session, TradeORM).filter(...).all()
     """
     def __init__(self, tenant_id: str):
         self.tenant_id = tenant_id
@@ -80,3 +79,34 @@ class tenant_context:
 
     def __exit__(self, *args):
         _current_tenant.set(None)
+
+
+def scoped_open_trades(session, model=None, tenant_id: str = None):
+    """Convenience: query open trades scoped to tenant.
+
+    Most common query pattern in the codebase.
+    """
+    if model is None:
+        from trading_cotrader.core.database.schema import TradeORM
+        model = TradeORM
+    q = tenant_query(session, model, tenant_id)
+    return q.filter(model.is_open == True)
+
+
+def scoped_portfolios(session, portfolio_type: str = None, tenant_id: str = None):
+    """Convenience: query portfolios scoped to tenant."""
+    from trading_cotrader.core.database.schema import PortfolioORM
+    q = tenant_query(session, PortfolioORM, tenant_id)
+    if portfolio_type:
+        q = q.filter(PortfolioORM.portfolio_type == portfolio_type)
+    return q
+
+
+def stamp_tenant(orm_obj, tenant_id: str = None) -> None:
+    """Set tenant_id on an ORM object before saving.
+
+    Call this in booking/creation flows to tag new records.
+    """
+    tid = tenant_id or get_tenant_id()
+    if tid and hasattr(orm_obj, 'tenant_id') and not orm_obj.tenant_id:
+        orm_obj.tenant_id = tid

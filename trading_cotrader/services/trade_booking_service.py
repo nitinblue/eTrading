@@ -536,7 +536,6 @@ class TradeBookingService:
             logger.info(f"Saved trade to DB: {trade.id}")
 
             # WhatIf trades are immediately "executed" and open
-            # (no real order to fill — trade is live the moment we book it)
             from trading_cotrader.core.database.schema import TradeORM
             trade_orm = session.query(TradeORM).get(trade.id)
             if trade_orm and trade_orm.trade_type == 'what_if':
@@ -545,6 +544,11 @@ class TradeBookingService:
                 trade_orm.opened_at = datetime.utcnow()
                 trade_orm.executed_at = datetime.utcnow()
                 trade_orm.health_status = 'unknown'
+
+            # S5: Stamp tenant_id on new trade + portfolio
+            from trading_cotrader.core.database.tenant import stamp_tenant
+            if trade_orm:
+                stamp_tenant(trade_orm)
 
             # Save event
             event_repo.create_from_domain(event)

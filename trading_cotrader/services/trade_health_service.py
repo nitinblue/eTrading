@@ -102,7 +102,7 @@ class TradeHealthService:
         )
 
         with session_scope() as session:
-            query = session.query(TradeORM).filter(TradeORM.is_open == True)
+            from trading_cotrader.core.database.tenant import scoped_open_trades; query = scoped_open_trades(session)
             if trade_type:
                 query = query.filter(TradeORM.trade_type == trade_type)
             trades = query.all()
@@ -239,7 +239,7 @@ class TradeHealthService:
         actions = []
 
         with session_scope() as session:
-            query = session.query(TradeORM).filter(TradeORM.is_open == True)
+            from trading_cotrader.core.database.tenant import scoped_open_trades; query = scoped_open_trades(session)
             if trade_type:
                 query = query.filter(TradeORM.trade_type == trade_type)
             trades = query.all()
@@ -359,7 +359,7 @@ class TradeHealthService:
         results = []
 
         with session_scope() as session:
-            query = session.query(TradeORM).filter(TradeORM.is_open == True)
+            from trading_cotrader.core.database.tenant import scoped_open_trades; query = scoped_open_trades(session)
             if trade_type:
                 query = query.filter(TradeORM.trade_type == trade_type)
             trades = query.all()

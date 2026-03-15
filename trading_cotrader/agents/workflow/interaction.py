@@ -147,6 +147,7 @@ class InteractionManager:
             'deskperf': self._desk_performance,
             'brokers': self._brokers,
             'markets': self._markets,
+            'zerodha-login': self._zerodha_login,
             # New: close, performance, learn, setup-desks
             'close': self._close,
             'perf': self._performance,
@@ -2906,5 +2907,56 @@ class InteractionManager:
                 lines.extend(["", f"  Guidance: {guidance}"])
         else:
             lines.append("  No macro data. Run 'scan' first.")
+
+        return SystemResponse(message="\n".join(lines))
+
+    def _zerodha_login(self, intent: UserIntent = None) -> SystemResponse:
+        """Zerodha Kite Connect OAuth login flow."""
+        from trading_cotrader.adapters.zerodha_adapter import ZerodhaAdapter
+        import os
+
+        lines = ["ZERODHA LOGIN", "\u2550" * 60]
+
+        api_key = os.getenv('ZERODHA_API_KEY', '')
+        if not api_key:
+            lines.extend([
+                "  Step 1: Set ZERODHA_API_KEY in .env",
+                "  Step 2: Set ZERODHA_API_SECRET in .env",
+                "  Step 3: Run 'zerodha-login' again",
+                "",
+                "  Get API key from: https://developers.kite.trade/",
+            ])
+            return SystemResponse(message="\n".join(lines))
+
+        if intent and intent.target:
+            # User provided request_token — complete the flow
+            request_token = intent.target
+            lines.append(f"  Exchanging request_token for access_token...")
+            access_token = ZerodhaAdapter.complete_login(request_token)
+            if access_token:
+                lines.extend([
+                    f"  Login successful!",
+                    f"  Access token: {access_token[:20]}...",
+                    f"",
+                    f"  Add to .env:",
+                    f"  ZERODHA_ACCESS_TOKEN={access_token}",
+                    f"",
+                    f"  Then restart the server to connect.",
+                    f"  Note: Token expires daily. Re-login each morning.",
+                ])
+            else:
+                lines.append("  Login failed. Check API key/secret and try again.")
+        else:
+            # Show login URL
+            url = ZerodhaAdapter.get_login_url(api_key)
+            lines.extend([
+                f"  Open this URL in your browser:",
+                f"",
+                f"  {url}",
+                f"",
+                f"  After login, Zerodha will redirect you.",
+                f"  Copy the 'request_token' from the redirect URL.",
+                f"  Then run: zerodha-login <request_token>",
+            ])
 
         return SystemResponse(message="\n".join(lines))

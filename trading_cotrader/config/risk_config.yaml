@@ -337,6 +337,94 @@ portfolios:
       - QQQ
 
   # -------------------------------------------------------------------------
+  # INDIA DESKS — Zerodha (INR, Asia/Kolkata)
+  # -------------------------------------------------------------------------
+
+  desk_india_weekly:
+    display_name: "India Weekly (NIFTY/BANKNIFTY)"
+    description: "Weekly expiry F&O trades. Iron condors, straddles, credit spreads on NIFTY and BANKNIFTY."
+    broker_firm: zerodha
+    account_number: "desk_india_weekly_001"
+    portfolio_type: what_if
+    currency: INR
+    initial_capital: 500000  # ₹5 Lakh
+    target_annual_return_pct: 40
+    exit_rule_profile: aggressive
+    tags: ["desk", "india", "weekly", "income"]
+
+    allowed_strategies:
+      - iron_condor
+      - iron_butterfly
+      - credit_spread
+      - vertical_spread
+      - straddle
+      - strangle
+
+    active_strategies:
+      - iron_condor
+      - credit_spread
+      - straddle
+
+    risk_limits:
+      max_portfolio_delta: 500
+      max_positions: 5
+      max_single_position_pct: 30
+      max_single_trade_risk_pct: 10
+      risk_per_trade_pct: 3
+      max_total_risk_pct: 60
+      min_cash_reserve_pct: 20
+      max_concentration_pct: 40
+
+    preferred_underlyings:
+      - NIFTY
+      - BANKNIFTY
+
+  desk_india_monthly:
+    display_name: "India Monthly (F&O)"
+    description: "Monthly expiry trades on index and stock options. Theta strategies."
+    broker_firm: zerodha
+    account_number: "desk_india_monthly_001"
+    portfolio_type: what_if
+    currency: INR
+    initial_capital: 1000000  # ₹10 Lakh
+    target_annual_return_pct: 25
+    exit_rule_profile: balanced
+    tags: ["desk", "india", "monthly", "income"]
+
+    allowed_strategies:
+      - iron_condor
+      - iron_butterfly
+      - vertical_spread
+      - credit_spread
+      - calendar_spread
+      - diagonal
+      - strangle
+
+    active_strategies:
+      - iron_condor
+      - vertical_spread
+      - credit_spread
+
+    risk_limits:
+      max_portfolio_delta: 300
+      max_positions: 8
+      max_single_position_pct: 20
+      max_single_trade_risk_pct: 8
+      risk_per_trade_pct: 2
+      max_total_risk_pct: 50
+      min_cash_reserve_pct: 20
+      max_concentration_pct: 30
+
+    preferred_underlyings:
+      - NIFTY
+      - BANKNIFTY
+      - RELIANCE
+      - HDFCBANK
+      - ICICIBANK
+      - TCS
+      - INFY
+
+  # -------------------------------------------------------------------------
   # RESEARCH PORTFOLIOS — Virtual, no capital, auto-booked by QuantResearchAgent
   # -------------------------------------------------------------------------
 

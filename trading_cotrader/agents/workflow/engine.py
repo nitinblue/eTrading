@@ -69,11 +69,13 @@ class WorkflowEngine:
     def __init__(
         self,
         broker=None,
+        adapters: dict = None,
         use_mock: bool = False,
         paper_mode: bool = True,
         config_path: str = None,
     ):
         self.broker = broker
+        self._pre_adapters = adapters  # Pre-authenticated brokers from run_workflow
         self.use_mock = use_mock
         self.paper_mode = paper_mode
 
@@ -89,11 +91,15 @@ class WorkflowEngine:
         except FileNotFoundError:
             self.broker_registry = BrokerRegistry()
 
-        # Create adapters via factory (or use pre-provided broker)
+        # Create adapters via factory (or use pre-provided brokers)
         adapters = {}
-        if broker:
-            # Pre-provided broker (e.g., from harness) — assumed already authenticated
-            adapters['tastytrade'] = broker
+        if self._pre_adapters:
+            # Pre-authenticated brokers from run_workflow (multi-broker)
+            adapters = dict(self._pre_adapters)
+        elif broker:
+            # Single pre-provided broker (e.g., from harness)
+            broker_name = getattr(broker, 'name', 'tastytrade')
+            adapters[broker_name] = broker
         else:
             # Create API adapters from registry and authenticate each one
             api_adapters = BrokerAdapterFactory.create_all_api(self.broker_registry)
@@ -120,24 +126,36 @@ class WorkflowEngine:
         self._account_provider = None
         self._watchlist_provider = None
         self._ma = None  # MarketAnalyzer instance for health checks + adjustments
-        # Extract market providers from any available broker
+        # Extract market providers from ALL available brokers
         # Supports: TastyTrade (US), Dhan (India), Zerodha (India)
+        # Primary broker = first connected (used for MA instance)
+        # All brokers stored for multi-market scanning
+        self._brokers = {}  # {name: {providers, info}}
         for broker_name in ['tastytrade', 'dhan', 'zerodha']:
             adapter = adapters.get(broker_name)
             if adapter and hasattr(adapter, 'get_market_providers'):
                 try:
                     providers = adapter.get_market_providers()
-                    if len(providers) >= 4:
-                        self._market_data, self._market_metrics, self._account_provider, self._watchlist_provider = providers
-                    else:
-                        self._market_data, self._market_metrics, self._account_provider = providers[:3]
-
                     from trading_cotrader.adapters.broker_factory import get_broker_info
                     info = get_broker_info(broker_name)
+                    self._brokers[broker_name] = {
+                        'providers': providers,
+                        'info': info,
+                        'adapter': adapter,
+                    }
                     logger.info(f"Broker: {broker_name} ({info.get('market', '?')}/{info.get('currency', '?')})")
-                    break
+
+                    # First broker becomes primary (used for MA instance)
+                    if not self._market_data:
+                        if len(providers) >= 4:
+                            self._market_data, self._market_metrics, self._account_provider, self._watchlist_provider = providers
+                        else:
+                            self._market_data, self._market_metrics, self._account_provider = providers[:3]
                 except Exception as e:
                     logger.warning(f"Broker {broker_name} failed: {e}")
+
+        if self._brokers:
+            logger.info(f"Connected brokers: {list(self._brokers.keys())}")
 
         # Build MA instance for downstream services
         if self._market_data or self._market_metrics:

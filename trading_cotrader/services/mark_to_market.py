@@ -105,8 +105,9 @@ class MarkToMarketService:
         result = MarkToMarketResult()
 
         with session_scope() as session:
-            # Get all open trades
-            query = session.query(TradeORM).filter(TradeORM.is_open == True)
+            # Get all open trades (tenant-scoped)
+            from trading_cotrader.core.database.tenant import scoped_open_trades
+            query = scoped_open_trades(session)
             if trade_type:
                 query = query.filter(TradeORM.trade_type == trade_type)
             open_trades = query.all()

@@ -64,12 +64,37 @@ def create_approval_app(engine: 'WorkflowEngine') -> FastAPI:
     """
     app = FastAPI(title="CoTrader Approval Dashboard", docs_url="/docs")
 
+    # S26: CORS — restrict in production, allow all in dev
+    import os
+    cors_origins = os.environ.get('CORS_ORIGINS', '*').split(',')
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=cors_origins,
         allow_methods=["*"],
         allow_headers=["*"],
+        allow_credentials=True,
     )
+
+    # S30: Health endpoints for Docker/K8s probes
+    @app.get("/health")
+    async def health():
+        """Liveness probe — is the process running?"""
+        return {"status": "ok", "service": "cotrader-api"}
+
+    @app.get("/ready")
+    async def ready():
+        """Readiness probe — is the app ready to serve?"""
+        from trading_cotrader.core.database.session import get_db_manager
+        try:
+            db = get_db_manager()
+            healthy = db.health_check()
+            return {
+                "status": "ok" if healthy else "degraded",
+                "database": "connected" if healthy else "error",
+                "engine_state": engine.state if hasattr(engine, 'state') else "unknown",
+            }
+        except Exception as e:
+            return {"status": "error", "detail": str(e)}
 
     # ------------------------------------------------------------------
     # v2 API Router (React frontend)

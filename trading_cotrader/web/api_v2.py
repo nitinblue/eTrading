@@ -419,7 +419,8 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
         except Exception:
             return []
 
-        desk_names = ['desk_0dte', 'desk_medium', 'desk_leaps']
+        desk_names = [k for k, v in cfg.get('portfolios', {}).items()
+                      if v.get('portfolio_type') == 'what_if' and k.startswith('desk_')]
         desks = []
 
         with session_scope() as session:
@@ -745,7 +746,8 @@ def create_v2_router(engine: 'WorkflowEngine') -> APIRouter:
     ):
         """All trades, paginated and filterable."""
         with session_scope() as session:
-            q = session.query(TradeORM).order_by(TradeORM.created_at.desc())
+            from trading_cotrader.core.database.tenant import tenant_query
+            q = tenant_query(session, TradeORM).order_by(TradeORM.created_at.desc())
 
             if portfolio:
                 p = session.query(PortfolioORM).filter(PortfolioORM.name == portfolio).first()

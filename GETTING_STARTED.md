@@ -188,6 +188,106 @@ STOP:     Type 'quit' or close the terminal
 
 ---
 
+---
+
+## Connecting Zerodha (India Market)
+
+CoTrader supports trading on Indian markets through Zerodha's Kite Connect. This gives you access to NIFTY, BANKNIFTY, and stock F&O.
+
+### One-Time Setup
+
+1. **Get Kite Connect API credentials:**
+   - Go to https://developers.kite.trade/
+   - Sign up and create an app
+   - You'll get an **API Key** and **API Secret**
+
+2. **Add to your `.env` file:**
+   ```
+   ZERODHA_API_KEY=your_api_key
+   ZERODHA_API_SECRET=your_api_secret
+   ```
+
+### Daily Login
+
+Zerodha tokens expire every day at 6 AM IST. You need to re-login each morning before the market opens (9:15 AM IST).
+
+**Step 1:** Start the server if not running:
+```
+python -m trading_cotrader.runners.run_workflow --paper --web
+```
+
+**Step 2:** In the terminal, type:
+```
+> zerodha-login
+```
+
+You'll see a URL like:
+```
+https://kite.zerodha.com/connect/login?v=3&api_key=xxxxx
+```
+
+**Step 3:** Open that URL in your browser. Log in with your Zerodha credentials.
+
+**Step 4:** After login, Zerodha redirects you to a page. The URL will look like:
+```
+https://your-app.com/?request_token=abc123def456&action=login&status=success
+```
+
+**Step 5:** Copy the `request_token` value (the part after `request_token=` and before `&`). In the terminal, type:
+```
+> zerodha-login abc123def456
+```
+
+**Step 6:** You'll see:
+```
+Login successful!
+Access token: xxxxxxxxxxxx...
+
+Add to .env:
+ZERODHA_ACCESS_TOKEN=xxxxxxxxxxxx
+```
+
+**Step 7:** Add the token to your `.env` file and restart the server.
+
+### What You Get
+
+Once connected, two India desks appear on the Desks page:
+
+| Desk | Capital | What It Trades |
+|------|---------|---------------|
+| **desk_india_weekly** | ₹5,00,000 | NIFTY/BANKNIFTY weekly expiry. Iron condors, straddles, credit spreads. |
+| **desk_india_monthly** | ₹10,00,000 | NIFTY/BANKNIFTY/stocks monthly expiry. Iron condors, verticals, calendars. |
+
+The system will:
+- Scan NIFTY and BANKNIFTY automatically
+- Apply all 11 gates (same quality filter as US trades)
+- Use INR currency (₹) for all India desk P&L
+- Monitor during India market hours (9:15 AM - 3:30 PM IST)
+
+### Important Notes
+
+- **Token expires daily** — you must re-login each morning before market opens
+- **Market hours are different** — India: 9:15 AM - 3:30 PM IST, US: 9:30 AM - 4:00 PM ET
+- **Lot sizes vary** — NIFTY = 25, BANKNIFTY = 15 (not 100 like US options)
+- **Cash-settled** — no assignment risk on index options (unlike US)
+- **No LEAPs** — India F&O max expiry is ~3 months
+
+### Both Markets at Once
+
+You can run US (TastyTrade) and India (Zerodha) simultaneously. The Desks page groups them by market with flags:
+
+```
+🇺🇸 United States  USD
+  desk_0dte ($10,000)  |  desk_medium ($15,000)  |  desk_leaps ($20,000)
+
+🇮🇳 India  INR
+  desk_india_weekly (₹5,00,000)  |  desk_india_monthly (₹10,00,000)
+```
+
+P&L is never mixed between currencies. Each market has its own capital total.
+
+---
+
 ## For Nitin (Technical Notes)
 
 - Broker credentials now in `.env` only — no YAML files

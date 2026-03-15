@@ -13,36 +13,36 @@ Agent desk performance IS the product's track record. Numbers speak.
 
 | # | Category | Gap | Priority | Effort | Status |
 |---|----------|-----|----------|--------|--------|
-| **S1** | Auth | User model + registration | **CRITICAL** | Large | TODO |
+| **S1** | Auth | User model + registration | **CRITICAL** | Large | **DONE** — UserORM, register endpoint |
 | **S2** | Auth | OAuth/SSO login (Google, GitHub) | **CRITICAL** | Medium | TODO |
-| **S3** | Auth | JWT token-based API auth | **CRITICAL** | Medium | TODO |
-| **S4** | Auth | Session management + refresh tokens | **HIGH** | Medium | TODO |
-| **S5** | Multi-tenant | Tenant-scoped DB queries (all tables) | **CRITICAL** | Large | TODO |
-| **S6** | Multi-tenant | User → tenant → portfolios isolation | **CRITICAL** | Medium | TODO |
-| **S7** | Multi-tenant | Per-tenant config (desks, risk limits, strategies) | **HIGH** | Medium | TODO |
-| **S8** | Broker | Broker account linking per user | **CRITICAL** | Large | TODO |
-| **S9** | Broker | TastyTrade stored token auth (not user/pass) | **HIGH** | Medium | TODO |
-| **S10** | Broker | TastyTrade API key / session token | **HIGH** | Small | TODO |
-| **S11** | Broker | Multi-broker support (Schwab, IBKR) | MEDIUM | Large | TODO |
-| **S12** | Database | PostgreSQL migration (from SQLite) | **CRITICAL** | Large | TODO |
-| **S13** | Database | Alembic migrations | **HIGH** | Medium | TODO |
-| **S14** | Database | Connection pooling | **HIGH** | Small | TODO |
-| **S15** | Infra | Docker containerization | **CRITICAL** | Medium | TODO |
-| **S16** | Infra | Docker Compose (API + worker + DB + Redis) | **HIGH** | Medium | TODO |
+| **S3** | Auth | JWT token-based API auth | **CRITICAL** | Medium | **DONE** — JWT create/decode, auth.py |
+| **S4** | Auth | Session management + refresh tokens | **HIGH** | Medium | **DONE** — refresh endpoint, localStorage |
+| **S5** | Multi-tenant | Tenant-scoped DB queries (all tables) | **CRITICAL** | Large | **DONE** — tenant.py helpers + exit_monitor, mark_to_market, health_service, booking, API scoped. Remaining: API middleware to auto-set tenant from JWT. |
+| **S6** | Multi-tenant | User → tenant → portfolios isolation | **CRITICAL** | Medium | **DONE** — stamp_tenant() on booking. scoped_open_trades(), scoped_portfolios(), tenant_query() helpers. |
+| **S7** | Multi-tenant | Per-tenant config (desks, risk limits, strategies) | **HIGH** | Medium | TODO — Currently global YAML. Need per-user config storage. |
+| **S8** | Broker | Broker account linking per user | **CRITICAL** | Large | **PARTIAL** — BrokerConnectionORM exists. Need UI + encrypt/decrypt flow. |
+| **S9** | Broker | TastyTrade stored token auth (not user/pass) | **HIGH** | Medium | **DONE** — Adapter reads env vars directly, no YAML. |
+| **S10** | Broker | TastyTrade API key / session token | **HIGH** | Small | **DONE** — Session token auth via SDK. |
+| **S11** | Broker | Multi-broker support (Schwab, IBKR) | MEDIUM | Large | **PARTIAL** — Dhan + Zerodha stubs from MA. Broker factory built. |
+| **S12** | Database | PostgreSQL migration (from SQLite) | **CRITICAL** | Large | **DONE** — scripts/migrate_to_postgres.py (schema + data + validation) |
+| **S13** | Database | Alembic migrations | **HIGH** | Medium | **DONE** — alembic/env.py configured with models + settings |
+| **S14** | Database | Connection pooling | **HIGH** | Small | **DONE** — settings.py has pool_size=20, max_overflow=40 for PostgreSQL |
+| **S15** | Infra | Docker containerization | **CRITICAL** | Medium | **DONE** — docker/Dockerfile |
+| **S16** | Infra | Docker Compose (API + worker + DB + Redis) | **HIGH** | Medium | **DONE** — docker/docker-compose.yml |
 | **S17** | Infra | Kubernetes manifests | MEDIUM | Medium | TODO |
-| **S18** | Infra | Async task queue (Celery/ARQ + Redis) | **HIGH** | Large | TODO |
+| **S18** | Infra | Async task queue (Celery/ARQ + Redis) | **HIGH** | Large | TODO — Redis in docker-compose. Celery not configured. |
 | **S19** | Infra | WebSocket for real-time updates | MEDIUM | Medium | TODO |
 | **S20** | Infra | Rate limiting per user | **HIGH** | Small | TODO |
 | **S21** | Onboarding | Desk setup wizard UI | **HIGH** | Medium | TODO |
 | **S22** | Onboarding | Broker connection flow UI | **HIGH** | Medium | TODO |
 | **S23** | Onboarding | Risk profile questionnaire | MEDIUM | Medium | TODO |
-| **S24** | Security | Credential encryption at rest | **CRITICAL** | Medium | TODO |
-| **S25** | Security | HTTPS / TLS termination | **CRITICAL** | Small | TODO |
-| **S26** | Security | CORS policy | **HIGH** | Small | TODO |
-| **S27** | Security | Trade execution rail guard (env var + adapter) | **CRITICAL** | Small | PARTIAL |
+| **S24** | Security | Credential encryption at rest | **CRITICAL** | Medium | **DONE** — Fernet (AES) encrypt/decrypt. Per-user key from SECRET_KEY + user_id. |
+| **S25** | Security | HTTPS / TLS termination | **CRITICAL** | Small | TODO — Cloud LB or nginx |
+| **S26** | Security | CORS policy | **HIGH** | Small | **DONE** — CORS_ORIGINS env var. Default * (dev), restrict in production. |
+| **S27** | Security | Trade execution rail guard (env var + adapter) | **CRITICAL** | Small | **DONE** — env var + read_only adapter |
 | **S28** | Billing | Subscription tiers | MEDIUM | Large | TODO |
 | **S29** | Billing | Usage tracking (scans, trades, API calls) | LOW | Medium | TODO |
-| **S30** | Monitoring | Application health endpoints | **HIGH** | Small | TODO |
+| **S30** | Monitoring | Application health endpoints | **HIGH** | Small | **DONE** — /health (liveness) + /ready (readiness with DB check). |
 | **S31** | Monitoring | Error tracking (Sentry) | **HIGH** | Small | TODO |
 | **S32** | Monitoring | Structured logging | MEDIUM | Small | TODO |
 | **S33** | Monitoring | Metrics (Prometheus/Grafana) | MEDIUM | Medium | TODO |
