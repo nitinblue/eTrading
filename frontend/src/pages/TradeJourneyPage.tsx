@@ -123,7 +123,7 @@ function StepCard({ step, isOpen, onToggle }: { step: StepData; isOpen: boolean;
       </div>
 
       {/* Arrow down to next step */}
-      {step.id < 15 && (
+      {step.id < 16 && (
         <div className="flex justify-center py-1">
           <ArrowDown size={14} className="text-text-muted/30" />
         </div>
@@ -498,7 +498,92 @@ Liquidity: GO (spread 0.8%, OI 2,400)`,
     maServices: ['from_dxlink_symbols()', 'compute_breakevens()', 'ExitPlan'],
   },
   {
-    id: 10, phase: 'MONITOR', phaseColor: 'text-purple-400',
+    id: 10, phase: 'DEPLOY', phaseColor: 'text-amber-400',
+    title: 'Promote to Real (User Action)',
+    icon: Shield, iconColor: 'text-amber-400',
+    headline: 'The ONLY step that requires human action. System proposes in WhatIf — you decide what goes live.',
+    visual: (
+      <div className="space-y-3">
+        {/* Three types of promotions */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="border border-green-700 bg-green-950/20 rounded-lg p-2.5 text-center">
+            <Target size={16} className="text-green-400 mx-auto mb-1" />
+            <p className="text-[10px] text-green-400 font-semibold">New Trade</p>
+            <p className="text-[8px] text-text-muted mt-1">System books to WhatIf. You review, then promote entry order to broker.</p>
+          </div>
+          <div className="border border-red-700 bg-red-950/20 rounded-lg p-2.5 text-center">
+            <AlertTriangle size={16} className="text-red-400 mx-auto mb-1" />
+            <p className="text-[10px] text-red-400 font-semibold">Exit / Close</p>
+            <p className="text-[8px] text-text-muted mt-1">System signals exit in WhatIf. You review, then place closing order on broker.</p>
+          </div>
+          <div className="border border-amber-700 bg-amber-950/20 rounded-lg p-2.5 text-center">
+            <Activity size={16} className="text-amber-400 mx-auto mb-1" />
+            <p className="text-[10px] text-amber-400 font-semibold">Adjustment / Roll</p>
+            <p className="text-[8px] text-text-muted mt-1">System recommends roll/adjust in WhatIf. You review legs, then execute on broker.</p>
+          </div>
+        </div>
+
+        {/* WhatIf vs Live */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="border border-blue-700 bg-blue-950/20 rounded-lg p-2.5">
+            <p className="text-[10px] text-blue-400 font-semibold text-center">WhatIf (System)</p>
+            <ul className="text-[8px] text-text-muted mt-1 space-y-0.5">
+              <li>• Scans, gates, books automatically</li>
+              <li>• Monitors health, signals exits</li>
+              <li>• Recommends adjustments with exact legs</li>
+              <li>• Tracks full P&L + decision lineage</li>
+              <li>• Zero real money at risk</li>
+            </ul>
+          </div>
+          <div className="border border-green-700 bg-green-950/20 rounded-lg p-2.5">
+            <p className="text-[10px] text-green-400 font-semibold text-center">Real (User Promotes)</p>
+            <ul className="text-[8px] text-text-muted mt-1 space-y-0.5">
+              <li>• User reviews WhatIf track record</li>
+              <li>• Confirms each action on broker</li>
+              <li>• Entry: <code className="text-green-400">execute &lt;id&gt; --confirm</code></li>
+              <li>• Exit: <code className="text-red-400">close &lt;id&gt; --confirm</code></li>
+              <li>• Adjust: place new legs manually</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="bg-bg-primary rounded border border-border-secondary p-2 text-center">
+          <p className="text-[9px] text-text-muted">System decides WHAT and WHEN. Human decides WHETHER. Capital at risk = human responsibility.</p>
+        </div>
+      </div>
+    ),
+    whatHappens: [
+      'ENTRY: System books to WhatIf → user reviews → execute <id> --confirm → real order placed',
+      'EXIT: System signals close in WhatIf → user reviews → close <id> --confirm → closing order placed',
+      'ADJUST: System recommends roll with exact legs → user reviews → places multi-leg order on broker',
+      'All three follow same pattern: WhatIf first, human promotes second',
+      'Two safety rails: TRADE_EXECUTION_ENABLED env var + adapter read_only mode',
+      'Configurable: auto-promote mode (future) for users who trust the system fully',
+    ],
+    whatCanGoWrong: [
+      'User ignores exit signal → position stays open past optimal close point',
+      'Market moves between WhatIf signal and real execution → slippage',
+      'User promotes without reviewing → defeats the purpose of WhatIf',
+      'TRADE_EXECUTION_ENABLED=false → all promotions blocked (safety default)',
+    ],
+    maServices: ['TradeSpec.order_data', 'validate_execution_quality()', 'recommend_action()'],
+    exampleOutput: `ENTRY:
+> execute abc123 --confirm
+  ORDER PLACED: SPY Iron Condor, 4 legs, filled at $0.70
+
+EXIT:
+> close abc123 --confirm
+  CLOSING ORDER: SPY IC, buy back at $0.35, P&L +$35
+
+ADJUSTMENT:
+> health
+  GLD: TESTED — recommend ROLL_AWAY
+  Close legs: BTC P455, STO P450
+  New legs: STO P445, BTO P440
+  → Place this manually on broker`,
+  },
+  {
+    id: 11, phase: 'MONITOR', phaseColor: 'text-purple-400',
     title: 'Mark-to-Market (every 30 min)',
     icon: Activity, iconColor: 'text-purple-400',
     headline: 'Live prices and Greeks update. System knows exactly where every position stands.',
@@ -530,7 +615,7 @@ Liquidity: GO (spread 0.8%, OI 2,400)`,
     maServices: ['check_trade_health()', 'regime.detect()', 'technicals.snapshot()'],
   },
   {
-    id: 11, phase: 'MONITOR', phaseColor: 'text-purple-400',
+    id: 12, phase: 'MONITOR', phaseColor: 'text-purple-400',
     title: 'Health Check & Adjustment',
     icon: Gauge, iconColor: 'text-purple-400',
     headline: 'Is GLD still safe? Price near short strike? System decides: HOLD, ADJUST, or CLOSE.',
@@ -568,7 +653,7 @@ Liquidity: GO (spread 0.8%, OI 2,400)`,
     maServices: ['recommend_action()', 'AdjustmentDecision'],
   },
   {
-    id: 12, phase: 'EXIT', phaseColor: 'text-red-400',
+    id: 13, phase: 'EXIT', phaseColor: 'text-red-400',
     title: 'Exit Signal Detection',
     icon: AlertTriangle, iconColor: 'text-red-400',
     headline: 'Day 15: GLD spread at $0.36. That\'s 50% of credit. PROFIT TARGET HIT.',
@@ -608,7 +693,7 @@ Liquidity: GO (spread 0.8%, OI 2,400)`,
     maServices: ['monitor_exit_conditions()', 'time_of_day', 'regime change detection'],
   },
   {
-    id: 13, phase: 'EXIT', phaseColor: 'text-red-400',
+    id: 14, phase: 'EXIT', phaseColor: 'text-red-400',
     title: 'Auto-Close',
     icon: Zap, iconColor: 'text-red-400',
     headline: 'System closes the GLD iron condor. $36 profit. 15 days held. No human involved.',
@@ -638,7 +723,7 @@ Liquidity: GO (spread 0.8%, OI 2,400)`,
     maServices: ['TradeLifecycleService'],
   },
   {
-    id: 14, phase: 'LEARN', phaseColor: 'text-cyan-400',
+    id: 15, phase: 'LEARN', phaseColor: 'text-cyan-400',
     title: 'ML Learning Loop',
     icon: Brain, iconColor: 'text-cyan-400',
     headline: 'This win feeds the machine. GLD IC in R1 → bandit updated. System gets smarter.',
@@ -678,7 +763,7 @@ Liquidity: GO (spread 0.8%, OI 2,400)`,
     maServices: ['update_bandit()', 'detect_drift()', 'optimize_thresholds()', 'calibrate_pop_factors()'],
   },
   {
-    id: 15, phase: 'LEARN', phaseColor: 'text-cyan-400',
+    id: 16, phase: 'LEARN', phaseColor: 'text-cyan-400',
     title: 'Decision Lineage',
     icon: GitBranch, iconColor: 'text-cyan-400',
     headline: '"Why this trade?" Full audit trail. Every gate, every number, every reason. Always.',
@@ -777,7 +862,7 @@ export default function TradeJourneyPage() {
         <div className="border border-border-secondary rounded-xl p-5 bg-bg-secondary/30 mt-4 text-center">
           <p className="text-xs text-text-primary font-semibold">That's one trade. The system does this for every candidate, every day, automatically.</p>
           <p className="text-[10px] text-text-muted mt-1">
-            15 steps. 11 gates. 20+ MA services. 3 ML systems. Full audit trail.
+            16 steps. 11 gates. 20+ MA services. 3 ML systems. Full audit trail. One human decision.
             Zero human decisions during the trading day.
           </p>
         </div>
